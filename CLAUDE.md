@@ -88,18 +88,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Pre-commit review**: Before every commit, do a second thorough review of all staged changes. Read the diff carefully, check for bugs, style issues, missing tests, and leftover debug code. Fix all found issues before committing - never commit known problems.
 - **Docs with code**: Each commit should include relevant documentation updates (README, inline comments, CHANGELOG) when the code changes warrant it - keep docs, IaC, backend, and frontend all in sync.
 
-## Communication Style
-
-- **Detailed**: Explain reasoning and approach before acting
-- **Explain first**: Walk through the plan/rationale, then implement
-- Provide high-level summaries at each step of multi-step work
-
 ## Security
 
 - Never hardcode credentials, secrets, or API keys
 - Use environment variables or secret managers for sensitive config
 - Never commit `.env` files, credentials, or tokens
-- Before modifying a file, read and understand the existing patterns/conventions in the project first - match the style already in use
 
 ## Error Handling
 
@@ -124,6 +117,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Version APIs when breaking changes are unavoidable
 - Validate all input at system boundaries - don't trust external data
 - Design operations to be idempotent where possible (safe to retry/re-run without side effects)
+- Scripts, IaC, migrations, and handlers should be safe to run multiple times without side effects
 
 ## Rollback Awareness
 
