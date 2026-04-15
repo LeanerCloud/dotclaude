@@ -11,7 +11,10 @@ Conventions for commits, pre-commit review, pull requests, and post-push CI hand
 - Subject line: imperative mood, lowercase, no trailing period, ≤72 chars.
 - Body (when needed): bullet points explaining the *why*, not the *what*; wrap at 72 chars.
 - **NEVER** mention Anthropic or Claude in commit messages (no Co-Authored-By lines).
-- **Avoid heredocs for `git commit -m`**: patterns like `git commit -m "$(cat <<'EOF' ... EOF)"` are fragile — the `$(...)` command substitution can trigger approval prompts, the heredoc-inside-substitution interacts badly with pre-commit hooks that stash unstaged changes (the stash/restore cycle has been observed to fail repeatedly), and quoting/escaping bugs are easy to introduce. Instead, write the message to `.claude/scripts/tmp/commit-msg.txt` with the `Write` tool, run `git commit -F .claude/scripts/tmp/commit-msg.txt`, and delete the file after a successful commit.
+- **Avoid heredocs for `git commit -m`**: patterns like `git commit -m "$(cat <<'EOF' ... EOF)"` are fragile — the `$(...)` command substitution can trigger approval prompts, the heredoc-inside-substitution interacts badly with pre-commit hooks that stash unstaged changes (the stash/restore cycle has been observed to fail repeatedly), and quoting/escaping bugs are easy to introduce. Instead, keep a single persistent file at `.claude/scripts/tmp/commit-msg.txt` and commit via `git commit -F .claude/scripts/tmp/commit-msg.txt`.
+  - **First commit in a session**: create the file with the `Write` tool.
+  - **Every subsequent commit**: **edit the same file in place with the `Edit` tool** — replace the previous message body with the new one. Do NOT delete the file between commits and do NOT create a fresh file each time; both are wasted Bash calls and wasted approval prompts. The file is session-scoped scratch space, and its content is only meaningful while a commit is being staged — overwriting the previous message is the expected behaviour, not a loss.
+  - Leave the file in place at end of session. The `.claude/scripts/tmp/` cleanup rule in `tool-usage.md` still applies for actual throw-away scripts, but `commit-msg.txt` is a stable reusable buffer — treat it like a workbench, not an artefact.
 
 ## Atomic commits
 
