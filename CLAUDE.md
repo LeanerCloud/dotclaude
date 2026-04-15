@@ -14,6 +14,7 @@ Detailed guidance lives in dedicated files. **Always read** the ones marked as s
 | `~/.claude/infra-ops.md` | When working on infrastructure, deployments, cloud resources, or ops |
 | `~/.claude/project-docs.md` | When setting up, updating, or consulting project documentation |
 | `~/.claude/multi-agent-comms.md` | When multiple Claude instances or agents work on the same project concurrently |
+| `~/.claude/tool-usage.md` | **Always** — before any Bash call, before writing a shell script, or when choosing between a native tool (Read/Edit/Glob/Grep/NotebookEdit) and Bash |
 
 ## Projects
 
@@ -77,33 +78,13 @@ Before answering architecture questions or starting non-trivial work in an unfam
   - **When in doubt, go one tier cheaper and see if the result is good enough** — it's easy to re-spawn on a stronger model if Haiku/Sonnet struggles, and the savings on routine work add up.
   - The main conversation's model is set by the user and doesn't change mid-session; this rule only applies to `Task` tool spawns.
 
-### 2a. Tool Selection — Prefer Native Tools, Avoid Approval-Triggering Bash
+### 2a. Tool Selection
 
-- **Prefer native tools over Bash for file operations** — they're faster, safer, and don't trigger permission prompts:
-  - **Read files**: use the `Read` tool, not `cat`/`head`/`tail`/`less`
-  - **Edit files**: use `Edit` (or `Write` for new files), not `sed`/`awk`/heredoc-to-file
-  - **Find files**: use `Glob` (e.g. `**/*.tsx`), not `find` or `ls`
-  - **Search content**: use `Grep` (ripgrep-backed), not `grep -r` or `rg` via Bash
-  - **Edit notebooks**: use `NotebookEdit`, not direct file manipulation
-- **When you must use Bash, write commands that don't need approval**:
-  - **No compound `cd && ...`**: shells with `cd` followed by other commands often require approval (e.g. `cd && git ...` triggers bare-repository-attack prevention). Use absolute paths or the Bash tool's `working_dir` style instead, or set `cwd` once and use plain commands.
-  - **No shell expansions on untrusted paths**: glob expansions (`*`, `?`, `{a,b}`), command substitution (`$(...)`, backticks), and process substitution (`<(...)`) often trigger approval. Prefer literal arguments or use `Glob`/`Grep` to enumerate files first, then operate on the explicit list.
-  - **No `sudo`, `rm -rf`, `chmod`, `chown`** unless absolutely necessary — these always require approval and have wide blast radius.
-  - **No piping into `bash`/`sh`** (`curl ... | sh`) — always requires approval and is a common attack pattern.
-  - **No `eval` / `source` / `.` of dynamic content** — always requires approval.
-- **⚠️ ANY multiline shell command MUST be written as a script file — NO EXCEPTIONS**. If a shell snippet would span more than one line (multi-line heredocs, `for`/`while` loops, multi-statement `bash -c` blocks, complex pipelines with line continuations, anything with embedded newlines), do NOT inline it in a `Bash` call. Write it to a script file with the `Write` tool and execute via a plain `bash <path>` call. This rule has no exemptions — even "just this once" multiline commands count. Inline multiline shell is fragile, hard to debug, almost always triggers approval prompts, and quoting/escaping bugs are nearly guaranteed. Two distinct locations based on lifetime:
-  - **Temporary scripts** (single-task, throw-away within the current session) → `.claude/scripts/tmp/`
-    - Examples: a one-off jq pipeline to inspect a JSON file, a curl loop to test an endpoint, a debugging helper that won't be needed again
-    - **Clean up after each use**: delete the script when the task is done (use `Bash` with `rm` on the explicit path — single-file deletes are safe). At the end of a session, `.claude/scripts/tmp/` should be empty.
-  - **Persistent scripts** (reusable across sessions, but still session-tooling not project code) → `.claude/scripts/`
-    - Examples: a recurring environment diagnostic, a helper that wraps a long `aws cli` command you keep needing, a deployment sanity check
-    - **Don't auto-delete** — these accumulate intentionally as a personal toolbox. Review periodically and prune unused ones.
-  - **Use the `Write` tool** to create scripts in either location (not heredoc-to-file via Bash, which itself triggers approval).
-  - **⚠️ MANDATORY script review loop — same 3-clean-pass discipline as plans and commits**: before *executing* any script written to `.claude/scripts/` or `.claude/scripts/tmp/`, you MUST enter a review loop and iterate until **3 consecutive review passes find zero issues**. Each pass checks the same four dimensions: **Completeness** (does it do what you intended? all required args/env handled?), **Correctness** (quoting, escaping, exit-code propagation, `set -euo pipefail`, path handling, off-by-ones in loops), **Security** (no shell-injection from unquoted variables, no `eval` of untrusted input, no destructive ops on unvalidated paths, no leaked secrets in `set -x` output), **Bugs** (race conditions, missing error handling, resource leaks, broken assumptions about cwd/env). Fix every issue found and reset the clean-pass counter — you need 3 clean passes *after* the last fix. This applies even to "throw-away" tmp scripts: a buggy one-off script can still `rm -rf` the wrong directory or leak a token. The cost of a 30-second review is far less than the cost of a destructive bug.
-  - **Both directories should be gitignored** at the project level — session artefacts, not committed code. Propose adding `.claude/` to `.gitignore` if missing.
-  - **Promotion path**: if a `.claude/scripts/` script becomes broadly useful (others on the team would want it), propose moving it to a proper committed location (`scripts/`, `tools/`) with the user's approval. The `.claude/scripts/` tier is "useful to me, not yet promoted to project asset".
-- **The cost of approval prompts is real**: each one breaks flow, requires user attention, and slows the loop. Choosing the right tool the first time keeps the iteration fast and the user uninterrupted.
-- **When in doubt**: read the Bash tool's "When not to use" section in its description — it lists the exact dedicated tools to prefer.
+Full rules live in `~/.claude/tool-usage.md` — **read it before any Bash call or script creation**. Headline principles:
+
+- Prefer native tools (`Read`, `Edit`, `Write`, `Glob`, `Grep`, `NotebookEdit`) over Bash for file operations — faster, safer, no approval prompts.
+- When using Bash, avoid approval-triggering patterns: compound `cd && ...`, shell expansions on untrusted paths, `sudo`/`rm -rf`/`chmod`/`chown`, piping into `bash`/`sh`, `eval`/`source`.
+- **Any multiline shell MUST be a script file in `.claude/scripts/` (persistent) or `.claude/scripts/tmp/` (throw-away) — no exceptions.** Review every script with 3 clean passes before executing. See `tool-usage.md` for the full script review loop and cleanup rules.
 
 ### 3. Self-Improvement Loop
 
