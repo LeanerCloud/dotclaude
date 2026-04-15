@@ -63,7 +63,23 @@ Before answering architecture questions or starting non-trivial work in an unfam
   - **Correctness**: Logic errors, off-by-ones, wrong assumptions, broken control flow?
   - **Security**: Injection, auth bypass, secrets exposure, OWASP top 10, input validation at boundaries?
   - **Bugs**: Race conditions, null derefs, edge cases, error handling gaps, resource leaks?
+  - **Duplication**: Does the implementation re-invent anything that already exists in the project? If yes, switch to reuse or refactor the existing code per step 1a.
   - Fix every issue found. Re-review after fixes. Do not declare done until this passes cleanly.
+
+### 1a. Reuse Before Writing — Avoid Duplication
+
+Before writing any new function, type, helper, or module, actively search the codebase for existing functionality that already does the job or something close to it. Duplication is far easier to prevent than to clean up, and divergent copies drift over time into subtly different bugs.
+
+- **During planning**: Grep/Glob for keywords from the task — the behaviour, the data type, the verb in the task description, related domain nouns. Read the top 3–5 hits. Ask: "does something already solve this, or 80% of this?" Treat this as a required step of plan creation, not an optional one.
+- **Check neighbours first**: look in the same package/module, then the project's `utils`/`common`/`shared`/`lib` directories, then sibling packages. Most duplication lands within a single project, often within a few files of where you're about to add the new code.
+- **Use graphify when available**: if `graphify-out/` exists, search the wiki and god-node list — the graph often surfaces existing helpers and utilities that grep misses because names don't overlap.
+- **If similar code exists, decide explicitly**:
+  - **Exact fit**: reuse it. Import it, don't copy-paste it.
+  - **Close fit (covers ~80% of the need)**: propose refactoring the existing code to cover the new use case — add a parameter, extract a smaller helper, generalise a type, introduce an options struct. Flag the refactor in the plan, explain the blast radius (callers touched, tests affected), and get user approval before expanding scope beyond the original task.
+  - **Superficially similar but semantically different**: document in the plan *why* you're not reusing it, so the reader (and future you) knows the duplication is deliberate and not an oversight.
+- **Never silently copy-paste**: if you catch yourself writing something that "feels familiar" from earlier in the session or from another file you read, stop and search — you are almost certainly duplicating something that already exists.
+- **Cross-language duplication** (e.g. validation logic mirrored between frontend and backend) is acceptable only when unavoidable. Document both sides with a comment referencing the other location so they stay in sync.
+- **Scope discipline**: proposing a refactor to avoid duplication is not a licence to restructure the whole file. The refactor should be the minimum change that lets the existing code serve the new use case. If it balloons, split it into a separate refactor commit that lands first, then add the new use case on top.
 
 ### 2. Subagent Strategy
 
@@ -138,6 +154,7 @@ Full rules live in `~/.claude/tool-usage.md` — **read it before any Bash call 
     - **Correctness**: Any logic errors, off-by-ones, wrong assumptions, broken invariants, stale references, type mismatches, leftover debug code, unused imports?
     - **Security**: Any injection vectors, auth bypasses, secrets exposure, missing input validation, OWASP top 10 violations?
     - **Bugs**: Race conditions, null derefs, edge cases, resource leaks, error handling gaps, broken tests, stale mocks?
+    - **Duplication**: Does any new function/type/helper in this diff replicate logic that already exists in the project? Grep for distinctive identifiers, constants, or phrases from the new code to catch near-duplicates. If a duplicate is found, stop and either reuse the existing code or refactor it to cover both cases (per step 1a) — do NOT commit parallel copies.
   - **Each iteration**: print a short summary of issues found before and after fixing them (matches the plan-review-loop format). An iteration with fixes resets the clean-pass counter — you need 3 clean passes *after* the last fix.
   - **For multi-commit work** (a sequence of atomic commits implementing one plan): review each commit's staged diff individually AND think about how it interacts with already-committed work in the sequence.
   - **Delegate when useful**: for staged changes touching multiple concerns (Go + TS + Terraform), launch specialised review agents in parallel (`feature-dev:code-reviewer` works well) and compile findings before committing.
