@@ -1,0 +1,41 @@
+# Per-machine session state and runtime data
+sessions/
+tasks/
+todos/
+plans/
+debug/
+file-history/
+shell-snapshots/
+session-env/
+agent-comms/
+telemetry/
+statsig/
+
+# Per-session caches and logs
+cache/
+image-cache/
+paste-cache/
+backups/
+chrome/
+ide/
+history.jsonl
+stats-cache.json
+mcp-needs-auth-cache.json
+
+# Per-run security warning state
+security_warnings_state_*.json
+
+# Per-project memory (persisted per working directory)
+projects/
+
+# Local scratch scripts and commit-message buffer (see tool-usage.md, git-workflow.md)
+.claude/
+
+# Plugin install dir (managed by settings.json enabledPlugins)
+plugins/
+
+# Machine-local permission overrides
+settings.local.json
+
+# macOS junk
+.DS_Store
