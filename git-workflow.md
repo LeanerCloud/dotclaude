@@ -55,13 +55,22 @@ After committing, run a quick sanity scan (`git show HEAD`) to catch anything th
 
 ## Post-push CI watcher (background agent)
 
-After every `git push` that publishes new commits, immediately launch a background agent (`Agent` tool with `run_in_background: true`) to monitor the GitHub Actions run(s) for the pushed commit(s). The agent's job is to:
+After every `git push` that publishes new commits, immediately enumerate **all** GitHub Actions workflow runs triggered by the push and launch **one background agent per run** to monitor each independently. A single commit typically triggers multiple workflows (build, lint, test matrix, terraform validate, security scan, deploy) — they run in parallel, fail independently, and need fixes targeted at different parts of the codebase. A single watcher agent serialising across all of them would block on the slowest, miss parallel failures, and conflate diagnoses.
 
-1. Poll `gh run list --commit <sha>` and `gh run watch` until each workflow finishes.
-2. On failure, fetch logs with `gh run view --log-failed`, diagnose the root cause, and **fix it autonomously** with a follow-up commit + push (e.g., lint failures, broken tests, terraform validation, type errors, missing env vars in CI) — not just report back.
-3. Only escalate to the user if the failure requires a decision (credentials, infra changes, ambiguous design choices) or if its own fix attempt also fails CI.
+**Setup**:
 
-Use a clear background-agent name like `ci-watch-<short-sha>` so it's addressable via `SendMessage`. Do NOT poll the watcher from the foreground — it will notify on completion. This keeps the main session unblocked while CI runs and ensures broken main never sits unaddressed.
+1. Right after `git push`, run `gh run list --commit <sha> --json databaseId,name,status` to list every run for the pushed commit. Wait briefly (a few seconds) and re-list if the run list looks incomplete — workflows can take a moment to register.
+2. For each run ID, spawn a separate background agent (`Agent` tool with `run_in_background: true`) named `ci-watch-<short-sha>-<workflow-slug>` (e.g. `ci-watch-a1b2c3d-build`, `ci-watch-a1b2c3d-test`, `ci-watch-a1b2c3d-tf-validate`). Each name must be unique and addressable via `SendMessage`.
+3. Each agent monitors **only its assigned run ID** — pass the run ID explicitly in the prompt so it doesn't poll the wrong workflow.
+
+**Each agent's job**:
+
+1. Poll `gh run watch <run-id>` (or `gh run view <run-id> --json status,conclusion` in a loop) until that specific workflow finishes.
+2. On failure, fetch logs with `gh run view <run-id> --log-failed`, diagnose the root cause, and **fix it autonomously** with a follow-up commit + push (e.g., lint failures, broken tests, terraform validation, type errors, missing env vars in CI) — not just report back.
+3. Coordinate with sibling watchers via the multi-agent comms bus before pushing a fix: another watcher may already be fixing a related failure, and two parallel pushes can stomp on each other or trigger a fresh round of CI for both. Claim a `git-push` lock first (see `~/.claude/multi-agent-comms.md`).
+4. Only escalate to the user if the failure requires a decision (credentials, infra changes, ambiguous design choices) or if its own fix attempt also fails CI.
+
+Do NOT poll any watcher from the foreground — they will each notify on completion. This keeps the main session unblocked while CI runs and ensures broken main never sits unaddressed, regardless of how many workflows fired for the same commit.
 
 ## Pull requests
 
