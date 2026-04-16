@@ -140,7 +140,7 @@ Full rules live in `~/.claude/tool-usage.md` — **read it before any Bash call 
 
 Full rules live in `~/.claude/git-workflow.md` — **read it before every commit, PR, or push**. Headline principles:
 
-- **Conventional commits**: `type(scope): subject`, imperative mood, ≤72 chars. Never mention Anthropic/Claude. Never use heredoc-based `git commit -m` — write the message to `.claude/scripts/tmp/commit-msg.txt` and use `git commit -F`.
+- **Conventional commits**: `type(scope): subject`, imperative mood, ≤72 chars. Never mention Anthropic/Claude. Never use heredoc-based `git commit -m` — `Write` a fresh uniquely-named file under `/tmp/claude/`, commit with `git commit -F`, and delete the file after.
 - **Small atomic commits**: one concern per commit, independently revertable.
 - **⚠️ Mandatory pre-commit review loop — 3 clean passes**: read `git diff --cached` and check Completeness, Correctness, Security, Bugs, and Duplication. Fix in the same changeset, never via follow-up commits. See `git-workflow.md` for the full dimensions and delegation guidance.
 - **Post-push CI watcher**: after every `git push`, launch a background `Agent` (`run_in_background: true`) named `ci-watch-<short-sha>` that polls `gh run watch`, fetches failed logs, and **fixes CI failures autonomously** with follow-up commits. Only escalate when a decision is required.
