@@ -37,5 +37,9 @@ plugins/
 # Machine-local permission overrides
 settings.local.json
 
+# Personal config — commit .example files instead
+projects.md
+settings.json
+
 # macOS junk
 .DS_Store

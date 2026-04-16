@@ -50,8 +50,8 @@ Before answering architecture questions or starting non-trivial work in an unfam
 
 - Check if `graphify-out/GRAPH_REPORT.md` exists — if so, read it for god nodes, community structure, and component relationships before touching any code
 - If `graphify-out/wiki/index.md` exists, navigate it instead of reading raw source files
-- If neither exists and the project has more than ~5 source files or the architecture isn't clear from the directory listing alone, run graphify to build the graph: `~/devel/graphify/.venv/bin/python -m graphify .`
-- After modifying code files in a session, keep the graph current: `~/devel/graphify/.venv/bin/python -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"`
+- If neither exists and the project has more than ~5 source files or the architecture isn't clear from the directory listing alone, run graphify to build the graph: `graphify .`
+- After modifying code files in a session, keep the graph current: `python -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"`
 
 ### 1. Plan Mode Default
 
