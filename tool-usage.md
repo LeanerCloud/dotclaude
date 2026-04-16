@@ -30,9 +30,11 @@ This rule has no exemptions — even "just this once" multiline commands count. 
 
 ### Two script locations by lifetime
 
-- **Temporary scripts** (single-task, throw-away within the current session) → `.claude/scripts/tmp/`
+- **Temporary scripts** (single-task, throw-away within the current session) → `/tmp/claude/`
   - Examples: a one-off jq pipeline to inspect a JSON file, a curl loop to test an endpoint, a debugging helper that won't be needed again.
-  - **Clean up after each use**: delete the script when the task is done (use `Bash` with `rm` on the explicit path — single-file deletes are safe). At the end of a session, `.claude/scripts/tmp/` should be empty.
+  - Use a descriptive, unique filename per script (e.g. `/tmp/claude/inspect-<topic>.sh`) so concurrent tasks don't collide.
+  - **Why `/tmp/claude/` and not inside the project**: an in-project scratch path (e.g. `.claude/scripts/tmp/`) sits under every repo's sensitive-file radar — writing to it triggers per-project approval prompts. `/tmp/claude/` is outside any project, so writes don't trip that gating. Create the directory lazily with `mkdir -p /tmp/claude` before the first write if it doesn't exist. The OS clears `/tmp/` on reboot, so no long-term cleanup is needed.
+  - **Clean up after each use**: `rm` the script with `Bash` on the explicit path once the task is done — single-file deletes are safe and keep `/tmp/claude/` tidy within the session.
 - **Persistent scripts** (reusable across sessions, but still session-tooling not project code) → `.claude/scripts/`
   - Examples: a recurring environment diagnostic, a helper that wraps a long `aws cli` command you keep needing, a deployment sanity check.
   - **Don't auto-delete** — these accumulate intentionally as a personal toolbox. Review periodically and prune unused ones.
@@ -40,12 +42,12 @@ This rule has no exemptions — even "just this once" multiline commands count. 
 ### How to create and run scripts
 
 - **Use the `Write` tool** to create scripts in either location (not heredoc-to-file via Bash, which itself triggers approval).
-- **Both directories should be gitignored** at the project level — session artefacts, not committed code. Propose adding `.claude/` to `.gitignore` if missing.
+- **`.claude/scripts/` should be gitignored** at the project level — session artefacts, not committed code. Propose adding `.claude/` to `.gitignore` if missing. `/tmp/claude/` is outside any repo so no gitignore entry is needed.
 - **Promotion path**: if a `.claude/scripts/` script becomes broadly useful (others on the team would want it), propose moving it to a proper committed location (`scripts/`, `tools/`) with the user's approval. The `.claude/scripts/` tier is "useful to me, not yet promoted to project asset".
 
 ### ⚠️ Mandatory script review loop (3 clean passes)
 
-Before *executing* any script written to `.claude/scripts/` or `.claude/scripts/tmp/`, enter a review loop and iterate until **3 consecutive review passes find zero issues**. This applies even to throw-away tmp scripts — a buggy one-off script can still `rm -rf` the wrong directory or leak a token.
+Before *executing* any script written to `.claude/scripts/` or `/tmp/claude/`, enter a review loop and iterate until **3 consecutive review passes find zero issues**. This applies even to throw-away tmp scripts — a buggy one-off script can still `rm -rf` the wrong directory or leak a token.
 
 Each pass checks the same four dimensions:
 

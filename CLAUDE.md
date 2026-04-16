@@ -101,7 +101,7 @@ Full rules live in `~/.claude/tool-usage.md` — **read it before any Bash call 
 
 - Prefer native tools (`Read`, `Edit`, `Write`, `Glob`, `Grep`, `NotebookEdit`) over Bash for file operations — faster, safer, no approval prompts.
 - When using Bash, avoid approval-triggering patterns: compound `cd && ...`, shell expansions on untrusted paths, `sudo`/`rm -rf`/`chmod`/`chown`, piping into `bash`/`sh`, `eval`/`source`.
-- **Any multiline shell MUST be a script file in `.claude/scripts/` (persistent) or `.claude/scripts/tmp/` (throw-away) — no exceptions.** Review every script with 3 clean passes before executing. See `tool-usage.md` for the full script review loop and cleanup rules.
+- **Any multiline shell MUST be a script file in `.claude/scripts/` (persistent) or `/tmp/claude/` (throw-away) — no exceptions.** Review every script with 3 clean passes before executing. See `tool-usage.md` for the full script review loop and cleanup rules.
 
 ### 3. Self-Improvement Loop
 
