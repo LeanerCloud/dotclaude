@@ -72,6 +72,8 @@ Agents should post a `sync` message:
 
 Locks are directories at `locks/<resource-name>.lock/` — use `mkdir` to acquire (atomic on POSIX; fails if already exists) and `rmdir` to release. Place a file inside (`info`) with the `AGENT_ID` and timestamp. Locks older than 10 minutes without a corresponding status beacon are considered stale and can be removed.
 
+> **Note**: the `&&` chaining below is intentional — the `echo`/`rm` must only run if `mkdir`/`rmdir` succeeds to preserve lock atomicity. This is an acceptable exception to the "avoid `&&`" rule in `tool-usage.md`. Write these as a script file per the multiline-shell rule.
+
 ```bash
 # Acquire lock (atomic — fails if already held)
 mkdir ~/.claude/agent-comms/locks/git-commit.lock && \
@@ -132,7 +134,7 @@ When you discover siblings working on the same project, check `~/.claude/agent-c
 
 ## Reading Messages
 
-When starting work or resuming after a pause, read all messages newer than your last read timestamp:
+When starting work or resuming after a pause, read all messages newer than your last read timestamp. Use `find` here — the `Glob` tool doesn't support `-newer` filtering:
 
 ```bash
 # Find messages from the last 30 minutes

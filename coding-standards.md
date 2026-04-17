@@ -21,7 +21,7 @@ Set up [`pre-commit`](https://pre-commit.com/) (or Husky for Node projects) if n
 - Language type checker where applicable (`tsc --noEmit`, `mypy`)
 - Run affected tests (at minimum, tests touching changed files)
 
-Hooks must pass cleanly on all existing code before being introduced — fix violations first, then add the hook.
+Hooks must pass cleanly on all existing code before being introduced — fix violations first, then add the hook. Never skip hooks with `--no-verify` (see `git-workflow.md`).
 
 ### CI Pipeline
 Ensure `.github/workflows/` (or equivalent) has at minimum:
@@ -138,6 +138,6 @@ Ensure `.github/workflows/` (or equivalent) has at minimum:
 
 - Update READMEs when adding features, changing setup steps, or altering project structure
 - Inline comments only for non-obvious logic — document the *why*, not the *what*
-- Maintain a CHANGELOG if one already exists and add one if missing
+- Maintain a CHANGELOG if one already exists; add one for projects with releases or external users (skip for small internal tools — scale to context)
 - Keep API docs (OpenAPI, docstrings) in sync with implementation — stale docs are harmful
 - Use ADRs for significant decisions — see `~/.claude/project-docs.md` for the ADR template and format

@@ -9,7 +9,7 @@ Read this file when working on infrastructure, deployments, cloud resources, or 
 - **Database rollbacks are much harder than code rollbacks** — a code rollback doesn't undo schema migrations; always verify the down migration path is tested and safe before running the up migration in production
 - Design changes to be reversible: feature flags, backward-compatible schema migrations, blue/green deployments
 - For Terraform: destructive operations (`destroy`, forced resource replacement) require user confirmation first; present the plan summary clearly
-- **Terraform output must never be truncated**: always tee the full output to a file (`terraform plan 2>&1 | tee /tmp/tf-plan.txt`); never pipe through `head`, `tail`, or any length-limiting filter — truncated plans hide resource deletions and replacement cascades
+- **Terraform output must never be truncated**: always capture the full output to a file (e.g. redirect to `/tmp/tf-plan.txt` or use `tee`); never pipe through `head`, `tail`, or any length-limiting filter — truncated plans hide resource deletions and replacement cascades. When running as Claude, use the Bash tool's output directly or redirect to a file and `Read` it — avoid `2>&1 | tee` piping which triggers approval prompts (see `tool-usage.md`)
 - **Always plan before apply**: run `terraform plan` and read the full output; explicitly count destroyed/replaced resources before proceeding
 - **Never `-auto-approve` in production**: gate production applies behind a manual approval step; `-auto-approve` is acceptable only in dev/CI with no production state
 - **Avoid `-target`**: targeted applies leave state inconsistent with config — treat it as a break-glass measure only, never routine workflow

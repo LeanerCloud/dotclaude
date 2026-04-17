@@ -31,7 +31,7 @@ graphify builds a persistent knowledge graph from the codebase — community det
   - If yes → read it before starting work; it shows god nodes, community clusters, and component relationships
   - If `graphify-out/wiki/index.md` exists → navigate the wiki instead of reading raw source files
   - If neither exists and the project is non-trivial → run `graphify .` to build the graph
-- **During work**: after modifying code files, keep the graph current: `python -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"`
+- **During work**: after modifying code files, re-run `graphify .` to keep the graph current
 - **Install into a project**: `graphify claude install` — writes the graphify section to the project's `CLAUDE.md` and installs git hooks for auto-rebuild
 
 ## Rules

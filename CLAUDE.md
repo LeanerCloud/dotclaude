@@ -32,7 +32,7 @@ The project list lives in `~/.claude/projects.md`. Read it when starting work on
 
 ## Core Principles
 
-> **Scale to context**: Some rules below (PR reviews, staging environments, on-call rotations) assume a multi-person team. Apply them proportionally — a solo project doesn't need a formal review process, but the underlying principle (don't merge broken code, test before deploying) always applies.
+> **Scale to context**: Some rules below (PR reviews, staging environments, on-call rotations — see `infra-ops.md`) assume a multi-person team. Apply them proportionally — a solo project doesn't need a formal review process, but the underlying principle (don't merge broken code, test before deploying) always applies.
 
 - **Simplicity First**: Make every change as simple as possible. Minimal impact.
 - **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
@@ -50,8 +50,8 @@ Before answering architecture questions or starting non-trivial work in an unfam
 
 - Check if `graphify-out/GRAPH_REPORT.md` exists — if so, read it for god nodes, community structure, and component relationships before touching any code
 - If `graphify-out/wiki/index.md` exists, navigate it instead of reading raw source files
-- If neither exists and the project has more than ~5 source files or the architecture isn't clear from the directory listing alone, run graphify to build the graph: `graphify .`
-- After modifying code files in a session, keep the graph current: `python -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"`
+- If neither exists and the project has more than ~5 source files or the architecture isn't clear from the directory listing alone, run `graphify .` to build the graph
+- After modifying code files in a session, re-run `graphify .` to keep the graph current
 
 ### 1. Plan Mode Default
 
@@ -88,7 +88,7 @@ Before writing any new function, type, helper, or module, actively search the co
 - Offload research, exploration, and parallel analysis to subagents
 - One task per subagent for focused execution
 - If a subagent runs out of context, split across multiple smaller subagents and re-run
-- **Match model to task complexity via the `Task` tool's `model` parameter** — pay for capability only when it earns it:
+- **Match model to task complexity via the `Agent` tool's `model` parameter** — pay for capability only when it earns it:
   - **Haiku**: file renames, typo fixes, mechanical edits with a clear spec, simple lookups (grep for a symbol, find where X is called), reading a single file to answer a factual question, formatting/style fixes, running a single command and reporting output. Cheap, fast, good enough when the answer is mostly mechanical.
   - **Sonnet** (default for most delegations): focused multi-file changes with clear requirements, writing a new test, implementing a well-specified function, code review of a single diff, migrating between APIs with known mappings.
   - **Opus** (or stay on the current top-level model): architecture decisions, multi-file refactors where the shape is unclear, debugging gnarly bugs that need hypothesis iteration, reading a large unfamiliar codebase and synthesising a mental model, any work where "understanding" is the hard part rather than the mechanical output.
@@ -100,7 +100,7 @@ Before writing any new function, type, helper, or module, actively search the co
 Full rules live in `~/.claude/tool-usage.md` — **read it before any Bash call or script creation**. Headline principles:
 
 - Prefer native tools (`Read`, `Edit`, `Write`, `Glob`, `Grep`, `NotebookEdit`) over Bash for file operations — faster, safer, no approval prompts.
-- When using Bash, avoid approval-triggering patterns: compound `cd && ...`, shell expansions on untrusted paths, `sudo`/`rm -rf`/`chmod`/`chown`, piping into `bash`/`sh`, `eval`/`source`.
+- When using Bash, avoid approval-triggering patterns: composed commands (`&&`, `||`, `;`), compound `cd && ...`, shell expansions on untrusted paths, `sudo`/`rm -rf`/`chmod`/`chown`, piping into `bash`/`sh`, `eval`/`source`.
 - **Any multiline shell MUST be a script file in `.claude/scripts/` (persistent) or `/tmp/claude/` (throw-away) — no exceptions.** Review every script with 3 clean passes before executing. See `tool-usage.md` for the full script review loop and cleanup rules.
 
 ### 3. Self-Improvement Loop
@@ -143,7 +143,7 @@ Full rules live in `~/.claude/git-workflow.md` — **read it before every commit
 - **Conventional commits**: `type(scope): subject`, imperative mood, ≤72 chars. Never mention Anthropic/Claude. Never use heredoc-based `git commit -m` — `Write` a fresh uniquely-named file under `/tmp/claude/`, commit with `git commit -F`, and delete the file after.
 - **Small atomic commits**: one concern per commit, independently revertable.
 - **⚠️ Mandatory pre-commit review loop — 3 clean passes**: read `git diff --cached` and check Completeness, Correctness, Security, Bugs, and Duplication. Fix in the same changeset, never via follow-up commits. See `git-workflow.md` for the full dimensions and delegation guidance.
-- **Post-push CI watcher**: after every `git push`, launch a background `Agent` (`run_in_background: true`) named `ci-watch-<short-sha>` that polls `gh run watch`, fetches failed logs, and **fixes CI failures autonomously** with follow-up commits. Only escalate when a decision is required.
+- **Post-push CI watcher**: after every `git push`, enumerate all workflow runs for the pushed commit and launch **one background `Agent` per run** (`run_in_background: true`) named `ci-watch-<short-sha>-<workflow-slug>`. Each watcher monitors its assigned run, fetches failed logs, and **fixes CI failures autonomously** with follow-up commits. Coordinate via the multi-agent comms `git-push` lock before pushing fixes. Only escalate when a decision is required.
 - **PRs**: ≤400 lines, one concern, conventional commits title, feature branch named `type/short-description`. Never skip pre-commit hooks with `--no-verify`.
 
 ## Session Handoff

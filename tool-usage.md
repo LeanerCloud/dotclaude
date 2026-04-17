@@ -35,6 +35,7 @@ This rule has no exemptions — even "just this once" multiline commands count. 
   - Use a descriptive, unique filename per script (e.g. `/tmp/claude/inspect-<topic>.sh`) so concurrent tasks don't collide.
   - **Why `/tmp/claude/` and not inside the project**: an in-project scratch path (e.g. `.claude/scripts/tmp/`) sits under every repo's sensitive-file radar — writing to it triggers per-project approval prompts. `/tmp/claude/` is outside any project, so writes don't trip that gating. Create the directory lazily with `mkdir -p /tmp/claude` before the first write if it doesn't exist. The OS clears `/tmp/` on reboot, so no long-term cleanup is needed.
   - **Clean up after each use**: `rm` the script with `Bash` on the explicit path once the task is done — single-file deletes are safe and keep `/tmp/claude/` tidy within the session.
+  - **Commit-message files also live here** — see `git-workflow.md` for the full protocol. The same cleanup rule applies: delete after `git commit -F` succeeds.
 - **Persistent scripts** (reusable across sessions, but still session-tooling not project code) → `.claude/scripts/`
   - Examples: a recurring environment diagnostic, a helper that wraps a long `aws cli` command you keep needing, a deployment sanity check.
   - **Don't auto-delete** — these accumulate intentionally as a personal toolbox. Review periodically and prune unused ones.
