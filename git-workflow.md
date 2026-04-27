@@ -84,6 +84,130 @@ Do NOT poll any watcher from the foreground — they will each notify on complet
 - Include a short description of *why* the change is needed, not just *what* it does.
 - Create feature branches for non-trivial work; name them `type/short-description` (e.g. `feat/oauth-login`, `fix/nil-pointer-api`).
 
+## Post-PR review loop (CodeRabbit + human merge)
+
+Opening a PR is not the end of the agent's work — there's a full lifecycle to manage in background agents while the main session moves on. This complements the §"Post-push CI watcher" rules: CI watchers handle build/test/deploy automation; the watchers below handle human-and-bot review.
+
+The loop applies to any project that uses CodeRabbit (or an equivalent automated reviewer). Where projects use a different bot or no bot, skip steps 1–3 and start at §4.
+
+### 1. Trigger CodeRabbit immediately after PR creation
+
+- Right after `gh pr create`, post a comment with the literal body `@coderabbitai review` (or whichever trigger phrase the project uses — check the project's `CLAUDE.md` or memory).
+- Verify the comment landed with `gh pr view <#> --json comments` before walking away.
+
+### 2. CodeRabbit-watcher background agent
+
+Spawn a background `Agent` named `cr-watch-<pr-#>` that:
+
+- Polls `gh api repos/<owner>/<repo>/pulls/<#>/comments` and `gh pr view <#> --json reviews` every **60–120s** (never faster — CodeRabbit's own backend rate-limits review processing and aggressive polling won't make the review come faster).
+- Treats `429`, `403 secondary rate limit`, or any "rate limit" string in the response body as a **soft** error: log, sleep 120s, retry. Do not escalate. Rate-limit responses are normal during high-traffic windows; a watcher that escalates on every 429 wastes user attention.
+- Stops polling once one of these terminal states is reached:
+  - CodeRabbit posts a review (success — proceed to §3).
+  - The PR is closed without merging (terminal — clean up, exit).
+  - 24h elapses without a review (escalate to user with a "CodeRabbit hasn't reviewed in 24h" note).
+
+### 3. Address CodeRabbit nitpicks
+
+When CodeRabbit's review arrives, the watcher reads each suggestion and triages it into one of three buckets:
+
+- **Actionable** (real bug, security concern, missing test, broken type, valid code-smell with a clear fix): fix in a new commit on the same branch. Each fix commit follows the §"Mandatory pre-commit review loop" — 3 clean passes, no shortcuts. Push triggers a fresh CI watcher pass per §"Post-push CI watcher".
+- **Stylistic preference contrary to project conventions** (or a trade-off that was already considered during implementation): reply on the PR comment with a brief justification linking to the convention in `CLAUDE.md` or the relevant code; do NOT commit a change.
+- **Genuine nitpick** (minor, unambiguously safe to apply, not contrary to convention): fix it. **Batch nitpicks into one commit** rather than one-commit-per-nitpick — single-line fix commits create review noise and inflate the history without buying anything.
+
+After the response pass, post one PR comment summarising what was addressed vs. dismissed and why. This avoids leaving CodeRabbit's threads silently unaddressed and gives the human reviewer a clean signal that the bot pass is complete.
+
+If CodeRabbit re-reviews after the fix push (it usually does), the `cr-watch-<pr-#>` agent processes the second pass the same way. Loop exits when CodeRabbit posts an "all clear" review or when its only remaining comments are dismissed-with-justification.
+
+### 4. Wait for human merge — do NOT self-merge by default
+
+After CI is green and CodeRabbit's loop has settled, hand off to the user. Spawn a background agent named `merge-watch-<pr-#>` that polls `gh pr view <#> --json state,merged,mergeCommit,mergedAt` until:
+
+- `merged: true` → proceed to §5.
+- `state: CLOSED` and not merged → terminal, clean up, exit (and notify user that the PR was closed unmerged so any in-flight work can be re-planned).
+
+**Self-merge exception**: if the project's `CLAUDE.md` or a project-level memory entry explicitly authorises agent self-merge (e.g., a solo project where the user is also the agent operator and CI green is sufficient), the agent may merge after CI is green and CodeRabbit is settled. The default is **wait for human review**.
+
+### 5. Post-merge verification
+
+Once merged, the `merge-watch-<pr-#>` agent waits for the deploy pipeline (`gh run list --branch <base> --limit 5` polled until the relevant deploy run is green), then exercises a verification appropriate to the change type:
+
+- **UI / frontend changes**: navigate the deployed URL via Chrome MCP (`mcp__claude-in-chrome__*` tools), exercise the affected flow, and confirm the bug repro from the originating issue no longer reproduces. For multi-page flows, walk the golden path AND the previously-broken edge case. Record concrete observations (which selectors clicked, what the network tab showed, which API responses came back).
+- **Backend / API changes**: `curl` the affected endpoint(s) with realistic input, assert the response shape, status code, and key field values. For state-changing endpoints, follow up with a read to confirm the state actually changed.
+- **CLI / batch changes**: run the relevant command on a representative input and capture stdout/stderr.
+- **Infrastructure**: `terraform plan` (expect "no changes" if the apply already happened, or expect the now-applied diff to be gone) on the affected environment.
+
+When verification can't be done remotely (sandboxed env, gated credentials, change requires a real customer scenario): say so explicitly in the comment in §6 — never silently skip and claim done.
+
+### 6. Comment on the originating issue with the verification outcome
+
+Post a structured comment to the GitHub issue that the PR was solving:
+
+- **Deployed**: link to the merged PR + commit SHA.
+- **Verified**: concrete steps taken, what was observed, what passed.
+- **Recommendation**: close the issue (if everything passed), or describe what's still pending and link to follow-up issues from §7.
+
+Do NOT close the issue from the agent — leave that to the user. Posting "recommend close" is the agent's signal; the human decides.
+
+### 7. Capture follow-up tasks as new GitHub issues — ⚠️ MANDATORY, NOT OPTIONAL
+
+**This is a hard step of the workflow.** Skipping it leaves work invisible to future sessions and is a process failure on par with skipping the pre-commit review loop. Do NOT exit the post-PR loop without completing this step.
+
+Anything surfaced during implementation, CodeRabbit review, or post-merge verification that's out-of-scope for the just-merged PR gets a fresh GitHub issue. Sources include:
+
+- **Latent bugs found while reading the surrounding code** (the §"Mandatory pre-commit review loop"'s Duplication / Correctness checks often surface these — file them when found, don't bundle into the in-flight PR unless they're directly entangled).
+- **CodeRabbit suggestions that were actionable but out of scope** (e.g., "this whole module would benefit from refactor X").
+- **Verification observations that revealed a separate bug** not covered by the original issue.
+- **TODOs, `// FIXME`, `// remove once X` markers** added during the implementation.
+- **Phrases the agent itself wrote in the report** like *"out of scope"*, *"deferred"*, *"separate gap"*, *"not addressed"*, *"narrow scope to"*, *"AWS verification still needed"*, *"requires operator action"* — every one of these is a follow-up that MUST be filed before exit. Re-read your own draft commit message + PR body before exit and grep for these phrases — if any appear, file the corresponding issue.
+- **`Refs #N` instead of `Closes #N`** in the commit/PR body — by definition the original issue isn't fully resolved; the unresolved part needs either (a) a clear note in the parent issue explaining what stays open, or (b) a separate follow-up issue tracking the deferred work. Pick one explicitly; don't leave the gap implicit.
+- **Pre-flight findings that uncovered a real bug fixed in this PR** but where the bug points at a class of issues — e.g., "the variable referenced in the godoc didn't actually exist" suggests other docs/wiring may have similar drift. File a sweep-audit follow-up.
+
+**Exit checklist — answer these before declaring the PR work done:**
+
+1. Did I write `Refs #N` (not `Closes #N`) for any issue? → must file a follow-up tracking the deferred portion.
+2. Did my report contain "out of scope", "deferred", "separate gap", "not addressed", "narrow scope to", "operator action needed", or "verification still needed"? → file an issue per phrase.
+3. Did CodeRabbit's review include any actionable suggestions I dismissed as out-of-scope (rather than addressed in a fix commit)? → file an issue per dismissed-but-actionable suggestion.
+4. Did pre-flight investigation reveal any unrelated bug or class of similar bugs? → file an audit issue.
+5. Did the implementation introduce any `// TODO:`, `// FIXME:`, `// remove once X`, `t.Skip("until …")`, or similar markers? → file an issue per marker.
+
+If the answer to any of 1–5 is yes and the corresponding issue is **not** filed, the loop is incomplete. Spawn an Agent to file each missing issue if needed — it's worth the marginal cost.
+
+Each follow-up issue MUST include: Summary, Current behaviour, Steps to reproduce (or "Steps to verify the gap" for non-bug items), Expected behaviour, Proposed fix with file paths and line refs, References (parent issue + commit/PR + relevant `known_issues/*.md` doc), and Severity. Reference back to the parent issue + PR in the new issue body so the link is bidirectional.
+
+If you have prior successful runs of this loop on your own projects, listing them in `~/.claude/local-paths.md` (see `local-paths.md.example`) gives future sessions a concrete template to mirror when unsure of the issue shape.
+
+**Final report contract**: every PR-workflow Agent's return summary must include a `Follow-up issues filed:` line. If none, write `Follow-up issues filed: none — confirmed against the exit checklist above`. The orchestrator should treat the absence of this line as evidence the agent skipped step 7 and re-spawn an audit agent.
+
+### Lifecycle summary
+
+```
+gh pr create
+   ↓
+@coderabbitai review comment
+   ↓
+[cr-watch-<pr-#>] background agent → poll 60-120s, handle 429s
+   ↓
+CodeRabbit review arrives
+   ↓
+Triage: actionable / dismiss-with-justification / batch-nitpick
+   ↓ (commits + pushes follow §pre-commit review loop)
+[ci-watch-<sha>-<wf>] watchers per §Post-push CI watcher
+   ↓
+CI green + CodeRabbit settled → PR comment summarising
+   ↓
+[merge-watch-<pr-#>] background agent → poll until merged
+   ↓
+Deploy pipeline green
+   ↓
+Verification (Chrome MCP / curl / terraform plan / CLI)
+   ↓
+Comment on originating issue with outcome + close recommendation
+   ↓
+File follow-up issues for out-of-scope items
+```
+
+All four watcher classes (`cr-watch-*`, `ci-watch-*`, `merge-watch-*`, plus any project-specific deploy-watch) run in background — the main session never blocks on PR review and continues with the next task.
+
 ## Hooks & docs
 
 - **Pre-commit hooks**: projects must have hooks for linting, formatting, and tests. Never skip with `--no-verify`.
