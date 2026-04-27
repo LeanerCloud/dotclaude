@@ -2,6 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in any repository.
 
+## Core Tenets
+
+1. **Understand before changing** — For non-trivial work in unfamiliar code, read `graphify-out/GRAPH_REPORT.md` and `wiki/index.md` first. If `graphify-out/` is missing, **create it first** before any non-trivial exploration — run the graphify rebuild command (see the graphify section below; short form: `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` via the graphify venv). Don't edit code you haven't mapped.
+2. **Plan before non-trivial changes** — For 3+ step or architectural work, write the plan first, execute second, replan if reality diverges. Skip for mechanical one-liners.
+3. **Reuse before writing** — Before adding a new function, type, or helper, grep the codebase for existing functionality. Exact fit: reuse. Close fit (~80%): refactor existing code (flag the scope change in the plan). Never silently copy-paste.
+4. **Delegate to subagents** — Offload research, parallel exploration, and focused subtasks to keep the main context clean. Match model tier (Haiku/Sonnet/Opus) to task complexity.
+5. **Capture every correction** — When the user corrects an approach, immediately save a memory entry that prevents the same mistake. Review relevant memories at session start.
+6. **No "done" without proof** — Run tests, check logs, exercise the UI. "Should work" is not a status. If verification isn't possible, say so explicitly.
+7. **Prefer elegance to hacks** — On non-trivial changes, pause and ask "is there a cleaner way?" before shipping. If a fix feels hacky, do it right. Skip for obvious one-liners.
+8. **Bugs: triage now, fix at root** — Don't defer. Symptom → root cause → fix → regression test. No temporary patches that hide the real issue.
+9. **Never delete data — including hidden/metadata files** — When the user says "don't delete files," they mean ALL files: `.git` directories, hidden dotfiles, config caches, lockfiles, logs, build artifacts — everything. Do NOT rationalize deletion as "just metadata," "can be regenerated," "not user data," or "the plan said so." Version control history, IDE state, caches, and sync metadata are user data. Before `rm`, `rm -rf`, `git filter-repo`, `git branch -D`, `git reset --hard`, dropping tables, or any operation that destroys on-disk or committed state you did not create in this session, pause and get explicit per-item confirmation — even if a broader plan appeared to authorize it. If you need a "fresh" git repo, use additive approaches: `git checkout --orphan` or clone the working tree to a new path. If unsure whether a given file matters to the user, assume it does.
+
 ## Reference Files
 
 Detailed guidance lives in dedicated files. **Always read** the ones marked as such; read the rest when the work touches that area.
@@ -48,17 +60,40 @@ The project list lives in `~/.claude/projects.md`. Read it when starting work on
 
 Before answering architecture questions or starting non-trivial work in an unfamiliar project:
 
+- Read the project's `CLAUDE.md` first — it takes precedence over global rules for anything it addresses
+- Check `known-issues.md` at the project root (format in `~/.claude/project-docs.md`) to avoid tripping over documented bugs or tech debt
 - Check if `graphify-out/GRAPH_REPORT.md` exists — if so, read it for god nodes, community structure, and component relationships before touching any code
 - If `graphify-out/wiki/index.md` exists, navigate it instead of reading raw source files
-- If neither exists and the project has more than ~5 source files or the architecture isn't clear from the directory listing alone, run `graphify .` to build the graph
-- After modifying code files in a session, re-run `graphify .` to keep the graph current
+- **If neither exists** (and the project has more than ~5 source files, or the architecture isn't clear from the directory listing alone): **build the graph first** before any non-trivial exploration. The graphify CLI binary registers hooks and installs the skill — the actual graph build is driven by the graphify venv's Python entry point:
+
+  ```bash
+  <graphify-venv>/bin/python3 \
+    -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"
+  ```
+
+  Resolve `<graphify-venv>` and the CLI binary path from `~/.claude/local-paths.md` (gitignored — see `local-paths.md.example` for the expected shape).
+
+  Runs 1–5 minutes depending on repo size. Use Bash `run_in_background: true` so you can start reading other things while it finishes, then wait for the completion notification before declaring the graph ready.
+
+- After modifying code files in a session, re-run the same command to keep the graph current. The `PreToolUse` hook installed by `graphify claude install` rebuilds automatically after Write/Edit/MultiEdit, but the hook has a 5-second timeout — on large edit batches it may be skipped, so run the command manually after a big refactor.
+- If `graphify claude install` has never been run in the current project, run it once to register the PreToolUse hook + add a project-level graphify section to `CLAUDE.md`.
+- For broad codebase questions (>3 searches expected), spawn an `Explore` subagent instead of burning main-context tokens
 
 ### 1. Plan Mode Default
 
 - Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions)
 - If something goes sideways, STOP and re-plan — don't keep pushing
 - Write detailed specs upfront to reduce ambiguity
-- **Plan review loop**: After creating a plan, review it thoroughly and fix issues found. Repeat until 3 consecutive passes find nothing. Then implement in distinct atomic commits, writing tests as you go.
+- **Plan format**: atomic tasks with explicit file paths, each independently verifiable. State what changes, where, and how to prove the change works.
+- **User checkpoint**: for multi-commit plans, cross-cutting refactors, or anything touching shared infrastructure (see `~/.claude/infra-ops.md`), share the plan with the user before starting implementation.
+- **Plan review loop — MANDATORY gate before implementation starts**: After drafting a plan, review it thoroughly and fix every issue found. Re-review after fixes. Repeat until **three consecutive passes find nothing** (partial credit does not exist — any finding restarts the count at zero). Do NOT create the §1b worktree, do NOT enter ExitPlanMode, and do NOT write any code until this gate passes. Each pass must cover:
+  - The five dimensions of the §1 post-implementation review — Completeness, Correctness, Security, Bugs, Duplication
+  - **Reuse (§1a)**: does the plan already search for and reference existing code this change can extend rather than duplicate?
+  - **Scope discipline**: are we touching only what was asked, or has the plan quietly grown drive-by refactors?
+  - **Blast radius**: which callers, tests, migrations, and downstream consumers does the plan's changeset affect? Are they all listed?
+  - **Unknowns**: what does the plan say "verify first" about? Verify those NOW, not at implementation time — late SDK-shape surprises force plan revisions after worktree creation, which is exactly what the gate is meant to prevent.
+  - Per-pass findings go in the plan itself as a short "review pass N" note so the loop is auditable, not a silent internal monologue.
+- Only after three clean passes: implement in distinct atomic commits, writing tests as you go.
 - **⚠️ MANDATORY post-implementation review — NO EXCEPTIONS**: After finishing a plan's implementation, you MUST perform a thorough review of ALL changes made before reporting the task as done. This review is a hard gate — never skip it, never defer it. Check every dimension:
   - **Completeness**: Does it fulfil every requirement in the plan? Nothing left out?
   - **Correctness**: Logic errors, off-by-ones, wrong assumptions, broken control flow?
@@ -73,7 +108,7 @@ Before writing any new function, type, helper, or module, actively search the co
 
 - **During planning**: Grep/Glob for keywords from the task — the behaviour, the data type, the verb in the task description, related domain nouns. Read the top 3–5 hits. Ask: "does something already solve this, or 80% of this?" Treat this as a required step of plan creation, not an optional one.
 - **Check neighbours first**: look in the same package/module, then the project's `utils`/`common`/`shared`/`lib` directories, then sibling packages. Most duplication lands within a single project, often within a few files of where you're about to add the new code.
-- **Use graphify when available**: if `graphify-out/` exists, search the wiki and god-node list — the graph often surfaces existing helpers and utilities that grep misses because names don't overlap.
+- **Use graphify when available**: if `graphify-out/` exists, search the wiki and god-node list — the graph often surfaces existing helpers and utilities that grep misses because names don't overlap. When missing, create it first (see the workflow above) rather than falling back to raw grep for cross-cutting exploration.
 - **If similar code exists, decide explicitly**:
   - **Exact fit**: reuse it. Import it, don't copy-paste it.
   - **Close fit (covers ~80% of the need)**: propose refactoring the existing code to cover the new use case — add a parameter, extract a smaller helper, generalise a type, introduce an options struct. Flag the refactor in the plan, explain the blast radius (callers touched, tests affected), and get user approval before expanding scope beyond the original task.
@@ -82,12 +117,90 @@ Before writing any new function, type, helper, or module, actively search the co
 - **Cross-language duplication** (e.g. validation logic mirrored between frontend and backend) is acceptable only when unavoidable. Document both sides with a comment referencing the other location so they stay in sync.
 - **Scope discipline**: proposing a refactor to avoid duplication is not a licence to restructure the whole file. The refactor should be the minimum change that lets the existing code serve the new use case. If it balloons, split it into a separate refactor commit that lands first, then add the new use case on top.
 
+### 1b. Worktree Isolation Per Change
+
+Non-trivial work happens in a dedicated git worktree branched off the current branch — never commit in-progress work directly on the branch you started from. The base branch stays clean until the change is fully implemented and verified, so a broken or abandoned attempt never pollutes it.
+
+- **Precondition — plan has passed the §1 three-pass review gate**. The worktree is the commitment to implement. Don't create one while the plan is still being iterated on, or it becomes a dumping ground for exploratory edits made on an unverified plan (and once commits start landing, reviewing the plan becomes fighting the code's momentum instead of shaping its design). If the plan needs more revision, stay on the base branch, revise, re-review, then come back.
+- **Record the base branch** (the branch checked out when the task starts — e.g., `feat/multicloud-web-frontend`, `main`) in the plan. That's what you'll rebase/merge onto at the end. If the base branch is `main` or another protected branch, still use a worktree — PR discipline from `~/.claude/git-workflow.md` applies on top.
+- **Create the worktree after the plan review gate passes**, before the first commit:
+  ```
+  git worktree add ../<repo>-<slug> -b <type>/<slug> <base-branch>
+  ```
+  where `<type>` matches conventional commit types (`feat`, `fix`, `refactor`, `chore`, etc.) and `<slug>` is a short kebab-case name for the change. All implementation, commits, tests, and reviews run inside the worktree.
+- **Persist the plan outside the worktree so it survives crashes**: write the authoritative plan to `~/.claude/projects/<project>/plans/<slug>.md` (create the dir if missing). The plan file has three mandatory sections in order: (1) a YAML header, (2) an embedded workflow checklist (so the process travels with the plan even if a reader skips CLAUDE.md), and (3) the task breakdown itself.
+  - **Header block** (YAML frontmatter):
+    ```
+    ---
+    worktree: /absolute/path/to/<repo>-<slug>
+    base_branch: <base-branch>
+    feature_branch: <type>/<slug>
+    started: <ISO-8601 timestamp>
+    status: in-progress   # in-progress | verifying | merged | abandoned
+    pid: <PID of the owning Claude process — $$ from the shell the session runs in>
+    host: <hostname — $(hostname) output>
+    pid_updated: <ISO-8601 timestamp of the last pid write>
+    ---
+    ```
+  - **Embedded workflow checklist** (paste verbatim below the header — copy-paste, don't paraphrase, so every plan carries the same rules):
+    ```
+    ## Workflow (embedded from ~/.claude/CLAUDE.md §1b — DO NOT SKIP)
+
+    **Before touching any file in the worktree, resolve ownership**:
+    1. Read `pid:`, `host:`, and `pid_updated:` from the header.
+    2. If `host:` equals the current hostname, run `kill -0 <pid> 2>/dev/null`. Exit code 0 → another session owns this plan. STOP and coordinate via `~/.claude/agent-comms/` (see `~/.claude/multi-agent-comms.md`) — do not adopt.
+    3. If `host:` differs OR `kill -0` fails OR `pid_updated:` is older than 24h, the plan is orphaned. Adopt it: overwrite `pid:` with your own PID, `host:` with your hostname, `pid_updated:` with now (ISO-8601). Save the header BEFORE any code edit. The adoption write is the lock — whichever session writes last wins; the other must abandon if it discovers the change.
+    4. Re-read the header after a short delay (~2s) to detect a competing adopter. If your PID is still there, you own the plan; otherwise back off.
+
+    **While working**: refresh `pid_updated:` at least every 30 min (or at each task checkpoint) so a watchdog can tell a live session from a stuck one.
+
+    **Merge gate — ALL must hold before rebasing onto `base_branch:`**:
+    - Every item in this plan is implemented (tick each line).
+    - The CLAUDE.md §1 post-implementation review is clean.
+    - **Three consecutive verification passes find no gaps.** A pass covers tests, lint/typecheck, the §4 per-change-type verification (UI smoke, API curl, etc.), and a re-read of the diff against the plan. Any finding → fix and restart the count at zero. Partial credit does not exist.
+
+    **On completion**: rebase onto `base_branch:`, push, `git worktree remove` the worktree, flip `status:` to `merged`, then delete (or archive) this plan file.
+
+    **On abandonment**: flip `status:` to `abandoned`, clear `pid:`, then remove the worktree and delete the plan file.
+    ```
+  - **Task breakdown**: the actual plan — atomic tasks with file paths and verification steps per CLAUDE.md §1.
+
+  Then symlink the plan into the worktree:
+  ```
+  ln -s ~/.claude/projects/<project>/plans/<slug>.md <worktree>/plan.md
+  ```
+  Add `plan.md` to the worktree's `.git/info/exclude` (per-clone, local-only — keeps it untracked without touching the committed `.gitignore`). Update the plan file in place as the work evolves — it's the single source of truth; `plan.md` inside the worktree is just a convenient handle.
+- **PID lifecycle — writes are the ownership protocol**:
+  - On plan creation: set `pid:` to the current Claude process PID (the shell's `$$` from the same terminal the session runs in), `host:` to `$(hostname)`, `pid_updated:` to now.
+  - On every task checkpoint or at least every 30 min while actively editing: rewrite `pid_updated:` (and `pid:` if it changed). This is the liveness heartbeat.
+  - On adoption by a new session: rewrite `pid:`, `host:`, `pid_updated:` in one atomic write BEFORE any code change. Then verify after ~2s that your PID is still there — if not, another adopter raced you; yield.
+  - On clean exit (merge or abandon): clear `pid:` (set to empty or omit) so the plan is trivially identifiable as not-owned even before file deletion.
+- **Crash recovery & orphan detection**: the next session enumerates `~/.claude/projects/<project>/plans/` and reads each header. For every plan with `status: in-progress` or `verifying`:
+  - `host:` matches current hostname AND `kill -0 <pid>` succeeds → **active**, leave alone.
+  - `host:` matches AND `kill -0` fails → **orphaned locally**, safe to adopt.
+  - `host:` differs → can't verify PID across machines; treat as orphaned only if `pid_updated:` is older than 24h (stale heartbeat). Otherwise leave alone and coordinate via the multi-agent comms bus.
+  - After adoption, `cd` to the `worktree:` path, re-read the embedded workflow, run `git status` and `git log <base_branch>..HEAD` to see progress, and resume from the first unchecked task.
+- **Prefer the `Agent` tool's `isolation: "worktree"` parameter** when delegating the implementation to a subagent — it creates and cleans up the worktree automatically. For subagent worktrees, still persist the plan to `~/.claude/projects/<project>/plans/` with the subagent's PID in the header so the parent session can recover if the subagent crashes.
+- **Merge gate — ALL of these must hold before rebasing/merging back onto the base branch**:
+  1. Every item in the plan is implemented (cross-check the plan line-by-line).
+  2. The §1 post-implementation review is complete and clean.
+  3. **Three consecutive verification passes find no gaps.** A pass covers: tests, lint/typecheck, the §4 per-change-type verification (UI smoke, API curl, etc.), and a re-read of the diff against the plan. If any pass surfaces anything — missing behaviour, regression, hack, duplication, security concern — fix it and **restart the count at zero**. Partial credit does not exist.
+- **Rebase, don't merge, by default**: `git rebase <base-branch>` inside the worktree to keep history linear, then fast-forward the base branch. Use a merge commit only if the base branch protects against force-pushes or the team convention demands it.
+- **After the merge**: push the base branch (triggering the post-push CI watcher per `~/.claude/git-workflow.md`), then `git worktree remove ../<repo>-<slug>`, delete the feature branch if it's no longer needed, and delete the plan file at `~/.claude/projects/<project>/plans/<slug>.md` (or flip its `status:` header to `merged` and move it to a `plans/archive/` subdir if you want an audit trail). Crash-recovery enumeration should only surface active work — stale plan files and worktrees confuse future sessions.
+- **If a worktree is abandoned** (idea didn't pan out, approach superseded): flip the plan's `status:` to `abandoned` before removing the worktree, so recovery doesn't try to resume dead work. Then delete the plan file and worktree as above.
+- **Skip the worktree only for trivially mechanical edits** — a single-line typo fix, a rename with no logic change, a comment tweak — the same bar as "skip the plan". When in doubt, create the worktree; the overhead is seconds and the isolation is worth it.
+- **If a plan turns out to require multiple independent changes**, create one worktree per change. Land them one at a time onto the base branch in dependency order, re-running the 3-pass verification for each.
+
 ### 2. Subagent Strategy
 
 - Use subagents liberally to keep the main context window clean
 - Offload research, exploration, and parallel analysis to subagents
 - One task per subagent for focused execution
 - If a subagent runs out of context, split across multiple smaller subagents and re-run
+- **Subagent briefing checklist** — the agent starts cold with none of your context. Include: the goal, relevant context (what you already tried or ruled out), expected output format, and a length cap. Terse prompts produce shallow work.
+- **When NOT to use subagents**: tight debugging loops where each iteration informs the next, work requiring multiple rounds of your own judgement, interactive refinement with the user.
+- **Parallel vs background**: multiple independent queries → send them in one message as parallel `Agent` tool calls. Long-running watchers (CI, builds) → `run_in_background: true`, then read output when notified.
+- **Multi-agent coordination**: see `~/.claude/multi-agent-comms.md` for lock patterns (e.g., `git-push` lock before pushing shared-branch fixes).
 - **Match model to task complexity via the `Agent` tool's `model` parameter** — pay for capability only when it earns it:
   - **Haiku**: file renames, typo fixes, mechanical edits with a clear spec, simple lookups (grep for a symbol, find where X is called), reading a single file to answer a factual question, formatting/style fixes, running a single command and reporting output. Cheap, fast, good enough when the answer is mostly mechanical.
   - **Sonnet** (default for most delegations): focused multi-file changes with clear requirements, writing a new test, implementing a well-specified function, code review of a single diff, migrating between APIs with known mappings.
@@ -107,6 +220,9 @@ Full rules live in `~/.claude/tool-usage.md` — **read it before any Bash call 
 
 - After ANY correction from the user: save the lesson to auto-memory (`~/.claude/projects/<project>/memory/`)
 - Write rules that prevent the same mistake
+- **Memory entry structure**: lead with the rule or fact, then a **Why:** line (the reason or past incident) and a **How to apply:** line (when the rule triggers). Knowing *why* lets you judge edge cases instead of following the rule blindly.
+- **Before creating a new entry, search existing memories** — prefer updating an existing one over creating a duplicate.
+- **Remove stale entries promptly** — if a memory is wrong or the underlying code has changed, delete it rather than letting it rot.
 - Review lessons at session start for relevant project
 - **Workflow improvements**: whenever you notice that a rule or process described in `~/.claude/CLAUDE.md` or any linked file (`coding-standards.md`, `conventions.md`, `infra-ops.md`, `project-docs.md`, `multi-agent-comms.md`, or project-level `CLAUDE.md`) could be improved — missing guidance, ambiguous wording, outdated advice, a gap that just caused a problem — **proactively propose the change** to the user. Describe what you'd add/change and why, and wait for approval before editing the file. Do not silently skip improvements; the system gets better only if gaps are surfaced. This applies equally to project-level `CLAUDE.md` files for project-specific workflow gaps.
 
@@ -115,19 +231,38 @@ Full rules live in `~/.claude/tool-usage.md` — **read it before any Bash call 
 - Never mark a task complete without proving it works
 - Ask: "Would a staff engineer approve this?"
 - Run tests, check logs, demonstrate correctness
-- Simulate CI/CD locally when possible (`act` for GitHub Actions)
+- **Per-change-type verification**:
+  - **UI/frontend**: start the dev server, use the feature in a browser, check the golden path and edge cases, monitor for regressions elsewhere. Type checks and unit tests verify correctness of code, not correctness of feature.
+    - **If the project deploys on push** (preview environments, staging-on-push, Vercel/Netlify/etc.): after local verification, push, wait for the deployment to finish (poll CI or the platform), then re-verify in the deployed browser before declaring done. Local pass ≠ deployed pass — build differences, env vars, and bundling can hide bugs that only surface in the deployed artifact.
+  - **Backend/API**: hit the endpoint with `curl` or a test, verify response shape, status codes, and error paths.
+  - **Libraries/shared code**: run the test suite AND exercise at least one consumer to catch interface regressions.
+  - **Infrastructure/ops**: see `~/.claude/infra-ops.md` for staging-first rules and rollback expectations.
+  - **CI/CD changes**: simulate locally with `act` (for GitHub Actions) before pushing.
+- **When verification isn't possible** (no dev env, external dependency, sandbox limitation): say so explicitly. Don't claim success based on type checks alone.
+- For language-specific testing conventions, see `~/.claude/conventions.md`.
 
 ### 5. Demand Elegance (Balanced)
 
 - For non-trivial changes: pause and ask "is there a more elegant way?"
+- **Signs a fix is hacky** (if any apply, look for an elegant alternative):
+  - Special-case branches for the one caller that's broken
+  - A comment apologizing for the approach ("hack:", "temporary", "TODO: revisit")
+  - A `try`/`except` (or equivalent) swallowing a symptom rather than fixing the cause
+  - A new flag or config knob added just to route around the problem
+  - Duplicated logic with slight differences between copies (see §1a)
 - If a fix feels hacky: implement the elegant solution
-- Skip for simple, obvious fixes — don't over-engineer
+- Skip for simple, obvious fixes — don't over-engineer. A three-line conditional doesn't need a new abstraction.
+- See `~/.claude/coding-standards.md` for broader quality and style expectations.
 
 ### 6. Autonomous Bug Fixing
 
 - When given a bug report: just fix it. Don't ask for hand-holding.
 - Point at logs, errors, failing tests — then resolve them.
 - Fix failing CI tests without being told how.
+- **Root-cause process**: reproduce → isolate → identify the faulty assumption → fix the assumption, not the symptom. A bug fix that only makes the test pass is often a patch that hides the real issue.
+- **Add a regression test** that would have caught the bug. If a test can't reasonably be written (environmental bug, flaky race condition), document why in the commit message.
+- **Escalate only for decisions, not investigations** — if you need a product call or a risky tradeoff, ask. If you just haven't finished investigating yet, keep investigating.
+- For CI failures after a push, see `~/.claude/git-workflow.md` (post-push CI watcher rules).
 
 ## Task Management
 
@@ -145,6 +280,7 @@ Full rules live in `~/.claude/git-workflow.md` — **read it before every commit
 - **⚠️ Mandatory pre-commit review loop — 3 clean passes**: read `git diff --cached` and check Completeness, Correctness, Security, Bugs, and Duplication. Fix in the same changeset, never via follow-up commits. See `git-workflow.md` for the full dimensions and delegation guidance.
 - **Post-push CI watcher**: after every `git push`, enumerate all workflow runs for the pushed commit and launch **one background `Agent` per run** (`run_in_background: true`) named `ci-watch-<short-sha>-<workflow-slug>`. Each watcher monitors its assigned run, fetches failed logs, and **fixes CI failures autonomously** with follow-up commits. Coordinate via the multi-agent comms `git-push` lock before pushing fixes. Only escalate when a decision is required.
 - **PRs**: ≤400 lines, one concern, conventional commits title, feature branch named `type/short-description`. Never skip pre-commit hooks with `--no-verify`.
+- **Post-PR review loop (background agents)**: after `gh pr create`, trigger CodeRabbit (`@coderabbitai review`), spawn `cr-watch-<pr-#>` to wait for the bot review (60–120s polling, soft-handle 429 rate limits), triage suggestions into actionable / dismiss-with-justification / batch-nitpick, push fix commits per the pre-commit review loop, then `merge-watch-<pr-#>` waits for **human merge** (no self-merge by default), then run deploy + verification (Chrome MCP for UI, `curl` for API, `terraform plan` for IaC), then post a recommendation-to-close comment on the originating issue and **file new GitHub issues for any out-of-scope follow-ups surfaced during the loop**. Full lifecycle in `git-workflow.md`.
 
 ## Session Handoff
 
