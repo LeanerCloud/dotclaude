@@ -1,0 +1,28 @@
+# Local Paths
+
+Per-machine paths and tool locations referenced from `CLAUDE.md` and other docs
+in this repo. This file is gitignored — copy this `.example` to `local-paths.md`
+and fill in your own values.
+
+## Graphify
+
+Used by §0 ("Understand the Codebase First") in `CLAUDE.md` to build the
+codebase graph (`graphify-out/`) when one isn't already present.
+
+- **CLI binary**: `~/bin/graphify` (the `graphify claude install` entry point;
+  also commonly aliased to `graphify` on the shell `PATH`)
+- **Python entry point**: `<graphify-checkout>/.venv/bin/python3`
+  Used to drive the rebuild directly when the CLI hook is unavailable, e.g.:
+  ```bash
+  <graphify-checkout>/.venv/bin/python3 \
+    -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"
+  ```
+
+## Reference runs of the post-PR review loop
+
+`git-workflow.md` §"Capture follow-up tasks as new GitHub issues" mentions that
+prior successful runs of the loop make good templates for issue shape. List
+them here for your own projects, e.g.:
+
+- `<owner>/<repo>` issues `#<from>`–`#<to>` — filed during the `<YYYY-MM-DD>`
+  `known_issues` sweep.

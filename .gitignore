@@ -38,6 +38,7 @@ plugins/
 settings.local.json
 
 # Personal config — commit .example files instead
+local-paths.md
 projects.md
 settings.json
 
