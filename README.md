@@ -1,8 +1,14 @@
 # dotclaude
 
-A personal, opinionated configuration for [Claude Code](https://claude.com/claude-code). These are the files that live under `~/.claude/` and shape how Claude Code behaves across every project on the machine — coding standards, git workflow, tool-selection rules, multi-agent coordination, and a curated agent library.
+A personal, opinionated configuration for [Claude Code](https://claude.com/claude-code). These are the files that live under `~/.claude/` and shape how Claude Code behaves across every project on the machine — coding standards, git workflow, tool-selection rules, multi-agent coordination, backlog triage, and a curated agent library.
 
 Published as-is in case it's useful as a starting point. Fork it, trim what you don't need, bend the rest to your preferences.
+
+## About
+
+I'm [Cristian Magherusan-Stanciu](https://www.linkedin.com/in/cristim/), founder of [LeanerCloud](https://leanercloud.com). We build cloud cost-optimization tooling — the open-source [AutoSpotting](https://github.com/LeanerCloud/AutoSpotting) (Spot-instance automation), [savings-estimator](https://github.com/LeanerCloud/savings-estimator), and a multi-cloud commitment optimizer (RIs / Savings Plans / GCP CUDs / Azure Reservations) deployed across AWS, Azure, and GCP.
+
+That work shapes the opinions in here: heavy use of multi-cloud Terraform, supply-chain-hardening reflexes, post-push CI watchers, CodeRabbit-loop iteration, and a strong preference for landing security and cost-optimization fixes through small atomic PRs against shared feature branches rather than direct pushes. If your day looks similar — multi-cloud infra, security-first reviews, CR-driven feedback loops — these rules will probably feel natural. If it doesn't, fork freely.
 
 ## What's in here
 
@@ -11,13 +17,15 @@ Published as-is in case it's useful as a starting point. Fork it, trim what you 
 | [`CLAUDE.md`](CLAUDE.md) | Root config. Loaded at the start of every session. Points at the topic files below. |
 | [`coding-standards.md`](coding-standards.md) | Stack preferences, testing philosophy, error handling, security, API design. |
 | [`conventions.md`](conventions.md) | Language- and tool-specific conventions: Go, TypeScript, Python, Shell, Docker, Terraform, databases. |
-| [`git-workflow.md`](git-workflow.md) | Conventional commits, pre-commit review loop, atomic commits, PR rules, post-push CI watcher. |
+| [`git-workflow.md`](git-workflow.md) | Conventional commits, pre-commit review loop, atomic commits, PR rules, post-push CI watcher, post-PR CodeRabbit + human-merge loop with iterate-to-silence and merge-conflict resolution. |
 | [`tool-usage.md`](tool-usage.md) | When to use native tools vs. Bash, how to avoid approval prompts, script review loop. |
 | [`infra-ops.md`](infra-ops.md) | Rollback awareness, secrets, monitoring, timeouts, CI/CD, Terraform ops. |
 | [`project-docs.md`](project-docs.md) | Project knowledge-base layout, ADR template, runbook template, `known-issues.md` convention. |
 | [`multi-agent-comms.md`](multi-agent-comms.md) | Protocol for multiple Claude instances / agents coordinating on the same project. |
+| [`triage.md`](triage.md) | Backlog triage + work selection: 5-dimension labelling (priority/severity/urgency/impact/effort), parallel-agent fan-out, three-pass approach for large backlogs, stale-sweep procedure. |
 | [`commands/`](commands/) | Custom slash commands. |
 | [`agents/`](agents/) | Submodule pointing to [`contains-studio/agents`](https://github.com/contains-studio/agents) — a curated agent library. |
+| [`local-paths.md.example`](local-paths.md.example) | Template for `local-paths.md`, per-machine paths and tool locations referenced from the rule files (e.g. graphify CLI / venv). |
 | [`projects.md.example`](projects.md.example) | Template for `projects.md`, the personal index of projects Claude should know about. |
 | [`settings.example.json`](settings.example.json) | Template for `settings.json`, listing enabled plugins and other Claude Code options. |
 
@@ -43,9 +51,10 @@ Published as-is in case it's useful as a starting point. Fork it, trim what you 
 3. **Create your personal config from the templates:**
    ```bash
    cp ~/.claude/projects.md.example ~/.claude/projects.md
+   cp ~/.claude/local-paths.md.example ~/.claude/local-paths.md
    cp ~/.claude/settings.example.json ~/.claude/settings.json
    ```
-   Both are gitignored, so edits stay local.
+   All three are gitignored, so edits stay local.
 
 4. **Restore anything you need** from the backup (e.g. `plugins/`, `projects/`, `sessions/`).
 
