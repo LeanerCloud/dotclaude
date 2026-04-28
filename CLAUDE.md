@@ -28,6 +28,7 @@ Detailed guidance lives in dedicated files. **Always read** the ones marked as s
 | `~/.claude/multi-agent-comms.md` | When multiple Claude instances or agents work on the same project concurrently |
 | `~/.claude/tool-usage.md` | **Always** — before any Bash call, before writing a shell script, or when choosing between a native tool (Read/Edit/Glob/Grep/NotebookEdit) and Bash |
 | `~/.claude/git-workflow.md` | **Always** — before staging a commit, writing a commit message, opening a PR, or after `git push` (for the CI watcher rules) |
+| `~/.claude/triage.md` | When the user asks to triage / prioritize / "what should I work on next", before sprint planning, after a major merge invalidates open items, or when starting in an unfamiliar repo and the open count is overwhelming |
 
 ## Projects
 
@@ -263,6 +264,27 @@ Full rules live in `~/.claude/tool-usage.md` — **read it before any Bash call 
 - **Add a regression test** that would have caught the bug. If a test can't reasonably be written (environmental bug, flaky race condition), document why in the commit message.
 - **Escalate only for decisions, not investigations** — if you need a product call or a risky tradeoff, ask. If you just haven't finished investigating yet, keep investigating.
 - For CI failures after a push, see `~/.claude/git-workflow.md` (post-push CI watcher rules).
+
+### 7. Backlog triage + work selection
+
+Run a full triage pass per `~/.claude/triage.md` when ANY of these is true:
+
+- The user says "triage", "let's triage", "prioritize the backlog", "go over open issues", or asks for a backlog/issue overview by name.
+- The user asks "what should I work on next?" AND the open count is non-trivial (>10 items) or the existing labels don't already give a clear ordering. (At ≤10 already-labelled items, skip the full pass and just sort.)
+- A backlog scan at session start (or after a major merge) shows >30 untriaged items / >5 open PRs not touched in the last 7 days (`updated:<…` not `created:<…`) / a P0 issue without recent activity — in which case offer a triage pass to the user; don't run it uninvited.
+
+For a casual "what should I do next" with a small, well-labelled backlog, **skip the full triage** — just sort the existing labels and surface the top 3 with one-line "why now" rationales. The full process is for backlogs that aren't already legible.
+
+Headline rules from the reference file:
+
+- **Triage tags 5 dimensions plus a derived priority** — not just severity. The user-facing framing is "importance × urgency × impact"; in the taxonomy, importance is encoded as `severity/*` (no separate `importance/*` label). Apply `priority/p[0-3]`, `severity/*`, `urgency/*`, `impact/*`, `effort/*`, `type/*`, plus a `triaged` positive marker. Conform to the project's existing label scheme (run `gh label list` first); only propose new labels if none exists.
+- **Parallelize for mid-to-large backlogs.** For ~20+ untriaged items (or when the user says "in parallel"), partition the open list into chunks of ~10–15 items and spawn one `Agent` per chunk in a single message — the main session aggregates their reports into a calibrated focus list. Cap concurrency at ~6 agents per wave; for backlogs that produce more chunks, run sequential waves. Don't fan out for trivially small backlogs (<15 items). Parallelization composes with the three-pass approach for 100+ item backlogs (parallelize within each pass).
+- **Picking work is in priority order, not interest order.** Open PRs (yours-with-CI-red, yours-awaiting-fix, mergeable-yours, teammates-you-review) almost always outrank issues — scan the PR queue first. For issues, sort by 5 tiers in this order: priority band (P0→P3) → urgency → impact → unblocks-others (downstream-dependency items beat standalone ones) → effort (cheaper fixes win at all-else-equal). Surface the top 3–5 with one-line "why now" rationales. If you think the user might prefer a lower-ranked item for non-obvious reasons (strategic bet, customer commitment), name the tradeoff explicitly — don't silently substitute.
+- **`type/question` items skip the priority rubric** during *triage* — apply `type/question` + `status/needs-info`, post the clarifying question, leave open. They re-enter triage as `type/bug` or `type/feat` once the user confirms what they actually need. During *work selection*, surface questions without `status/needs-info` (they're awaiting a response) so they get answered or closed; don't pre-filter them out.
+- **Proactively close gaps and add learnings** during triage — don't just label-and-move-on. (1) When you can't decide severity / impact / effort because the issue lacks key info, post a *specific* clarifying-question comment and apply `status/needs-info` (don't block the rest of the triage waiting for an answer). (2) When you discover context the asker didn't include (root cause hypothesis, repro steps, related PRs, environment matrix), **edit the issue** to capture it: fix a misleading title via `gh issue edit --title`, or append a clearly-marked *"Triage notes (added by @\<handle\> on YYYY-MM-DD)"* section to the body — never overwrite the asker's words. Comments are not enough — title and body are what the next reader sees first.
+- **End every triage pass** with counts and a focus list. The exact counts depend on pass type: a *regular* triage pass reports open-before / newly-triaged / stale-candidates-flagged / closed-as-duplicate / closed-as-wontdo / closed-as-completed / open-after (it does NOT close stale items — that's the dedicated sweep's job); a *stale-sweep* pass reports stale-candidate-count-before / closed-as-stale-or-wontdo / reactivated / stale-candidate-count-after. Surface hygiene flags worth raising (e.g. "5 P1s are 6+ months old — recalibrate").
+
+The detailed playbook (label rubric, three-pass approach for huge backlogs, parallel-agent farming pattern, stale-sweep procedure, anti-patterns, mechanics, proactive flagging at session start) lives in the reference file.
 
 ## Task Management
 
