@@ -216,9 +216,9 @@ For mid-to-large backlogs (~20+ untriaged items) or when the user explicitly ask
 
 **Choose model tier per agent** (`Agent` tool's `model` parameter):
 
-- **Haiku**: chunks where most items are clearly typo / dup / stale on a quick read.
-- **Sonnet**: most chunks. Default.
-- **Opus**: chunks heavy with security findings, architecture proposals, or anything that needs judgement on priority calibration.
+- **Haiku** (default): most chunks. Triage is mostly mechanical labelling against the rubric — typo/dup/stale, clear severity/effort calls, items with enough info in title+body to label without investigation.
+- **Sonnet**: chunks where priority calibration needs judgement — items where severity vs. impact tradeoffs aren't obvious, or where the issue needs weighing against broader project context.
+- **Opus**: rare. Chunks dominated by security findings (CVE-class issues needing exploitability assessment) or architecture proposals where evaluating the proposal itself requires deep design judgement.
 
 ## Three-pass approach for very large backlogs (100+ items)
 
