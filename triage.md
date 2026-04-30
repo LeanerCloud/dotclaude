@@ -19,6 +19,17 @@ Run a **full** triage pass when:
 
 For a casual "what should I work on next?" with a **small, already-labelled** backlog (≤10 items, with priority labels visible), **skip the full triage**. Just sort the existing labels per §"Picking the next thing to work on" and surface the top 3 with one-line rationales. The full process is for backlogs that aren't already legible. The CLAUDE.md §7 gating rule formalises this — don't loop back to here if the lighter selection is enough.
 
+### Always-on per-item rule (separate from full passes)
+
+> **Whenever you read, create, or update an issue or PR**, apply the rubric inline if the item lacks the `triaged` marker. Don't leave untriaged items in your wake.
+
+- **Creating** (`gh issue create`, `gh pr create`): pass `--label` with the full rubric on the same call. Don't ship a creation without labels and rely on a later sweep to clean up.
+- **Updating** (editing body/title, posting a comment, applying any `gh issue edit`/`gh pr edit`): if the item has no `triaged` label, fold a triage pass into the same edit. Either apply labels yourself if you can decide them, or apply `status/needs-info` + post a specific clarifying-question comment per §"Mechanics".
+- **Reading** as part of a larger task: if you'd be the next human-attention checkpoint that item gets, apply the rubric. Skip if the item is genuinely incidental to your task with no signal to apply the rubric on; in that case, mention it to the user as a hygiene note.
+- **Exception — `type/question` items** still skip the priority rubric per the §"Picking the next thing to work on" rule: apply `type/question` + `status/needs-info`, post the clarifying question, mark `triaged`, and leave open.
+
+The rubric to apply is the same as in a full pass — see §"Default label set" + §"Priority rubric". The point of the always-on rule is that untriaged items accumulate silently between scheduled sweeps; the cheap moment to label them correctly is when they're already in your context.
+
 ## What "untriaged" means (and what "stale" means — independently)
 
 **Untriaged**: pick the heuristic that fits the repo, in this order of preference:

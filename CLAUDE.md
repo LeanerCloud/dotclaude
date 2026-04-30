@@ -14,12 +14,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 8. **Bugs: triage now, fix at root** — Don't defer. Symptom → root cause → fix → regression test. No temporary patches that hide the real issue.
 9. **Never delete data — including hidden/metadata files** — When the user says "don't delete files," they mean ALL files: `.git` directories, hidden dotfiles, config caches, lockfiles, logs, build artifacts — everything. Do NOT rationalize deletion as "just metadata," "can be regenerated," "not user data," or "the plan said so." Version control history, IDE state, caches, and sync metadata are user data. Before `rm`, `rm -rf`, `git filter-repo`, `git branch -D`, `git reset --hard`, dropping tables, or any operation that destroys on-disk or committed state you did not create in this session, pause and get explicit per-item confirmation — even if a broader plan appeared to authorize it. If you need a "fresh" git repo, use additive approaches: `git checkout --orphan` or clone the working tree to a new path. If unsure whether a given file matters to the user, assume it does.
 
-This document may be used by OpenAI tooling as well. When it names Anthropic model tiers, use the corresponding OpenAI tiers in the same role:
+This document may be used by OpenAI or Gemini tooling as well. When it names Anthropic model tiers, use the corresponding OpenAI or Gemini tiers in the same role:
 
-- Haiku -> gpt-5.4-mini
-- Sonnet -> gpt-5.4
-- Opus -> gpt-5.5
-- Keep the cheapest/mid/top-tier mapping aligned if the local OpenAI model names change.
+- Haiku -> gpt-5.4-mini -> Gemini 3.1 Flash-Lite
+- Sonnet -> gpt-5.4 -> Gemini 3.1 Flash
+- Opus -> gpt-5.5 -> Gemini 3.1 Pro
+- Keep the cheapest/mid/top-tier mapping aligned if the local model names change.
+
+> **If you're running on an Anthropic model** (Claude Opus / Sonnet / Haiku), **ignore this mapping** — the tier names below already correspond to your model family directly. The mapping above is for OpenAI- or Gemini-backed tooling that consumes this same file.
 
 ## Reference Files
 
@@ -209,16 +211,13 @@ Non-trivial work happens in a dedicated git worktree branched off the current br
 - **When NOT to use subagents**: tight debugging loops where each iteration informs the next, work requiring multiple rounds of your own judgement, interactive refinement with the user.
 - **Parallel vs background**: multiple independent queries → send them in one message as parallel `Agent` tool calls. Long-running watchers (CI, builds) → `run_in_background: true`, then read output when notified.
 - **Multi-agent coordination**: see `~/.claude/multi-agent-comms.md` for lock patterns (e.g., `git-push` lock before pushing shared-branch fixes).
-- **Default: delegate to the cheapest sufficient tier — actively, not just when in doubt.** Before doing a piece of work in the main session (or spawning a subagent at the same tier as the main session), ask: *can a cheaper Claude or OpenAI subagent handle this per the rubric below?* If yes, spawn that subagent. The main session's tier is typically the most expensive option available, so reserving it for work that genuinely needs it is the single biggest cost lever. Treat the rubric as a positive obligation to delegate down, not just a tie-breaker. This applies recursively — when a subagent itself needs to spawn further subagents, it should also default to the cheapest sufficient tier.
+- **Default: delegate to the cheapest sufficient tier — actively, not just when in doubt.** Before doing a piece of work in the main session (or spawning a subagent at the same tier as the main session), ask: *can a cheaper Claude, OpenAI, or Gemini subagent handle this per the rubric below?* If yes, spawn that subagent using the `Agent` tool's `model` parameter. The main session's tier is typically the most expensive option available, so reserving it for work that genuinely needs it is the single biggest cost lever. Treat the rubric as a positive obligation to delegate down, not just a tie-breaker. This applies recursively — when a subagent itself needs to spawn further subagents, it should also default to the cheapest sufficient tier.
 - **Match model to task complexity via the `Agent` tool's `model` parameter** — pay for capability only when it earns it:
-  - **Haiku** (default for Claude-family delegations): file renames, typo fixes, mechanical edits with a clear spec, simple lookups (grep for a symbol, find where X is called), reading a single file to answer a factual question, formatting/style fixes, running a single command (or routine `gh`/`git` operations) and reporting output, implementing a tightly-specified function, writing a new test from a tight spec, code review of a small single-file diff, mechanical API/SDK migration where the mapping is documented, classifying or labelling items against a clear rubric (e.g. backlog triage chunks), summarising a single file or short diff. Cheap, fast, good enough when the answer is mostly mechanical or rubric-driven.
-  - **Sonnet**: focused multi-file changes where coordination across files needs judgement, implementing a function whose spec is mostly clear but has 1–2 design choices, code review of a multi-file diff or a diff with non-trivial logic, refactors with a clear target shape, agentic loops where each step requires non-trivial reasoning (not just rubric-driven labelling). Use when there's some judgement involved but not deep design or hypothesis iteration.
-  - **Opus** (or stay on the current top-level model): architecture decisions, multi-file refactors where the shape is unclear, debugging gnarly bugs that need hypothesis iteration, reading a large unfamiliar codebase from scratch (without `graphify-out/` available) to synthesise a mental model, any work where "understanding" is the hard part rather than the mechanical output.
-  - **OpenAI mini-tier** (default for OpenAI-family delegations; same role as Haiku): Use for file renames, typo fixes, mechanical edits with a clear spec, simple lookups, reading a single file to answer a factual question, formatting/style fixes, routine shell/git operations, tight-spec tests, and other rubric-driven work.
-  - **OpenAI mid-tier** (same role as Sonnet): Handles focused multi-file changes, moderately complex code review, and refactors with a clear target shape.
-  - **OpenAI top-tier** (same role as Opus): Best for architecture decisions, unclear refactors, gnarly debugging, and large unfamiliar-codebase synthesis.
-  - **When in doubt, go one tier cheaper and see if the result is good enough** — this applies to both Claude and OpenAI model families. It's easy to re-spawn on a stronger model if the cheaper one struggles, and the savings on routine work add up.
-  - The main conversation's model is set by the user and doesn't change mid-session; this rule only applies to `Task` tool spawns.
+  - **Haiku / gpt-5.4-mini / Gemini 3.1 Flash-Lite** (default for most delegations): file renames, typo fixes, mechanical edits with a clear spec, simple lookups (grep for a symbol, find where X is called), reading a single file to answer a factual question, formatting/style fixes, running a single command (or routine `gh`/`git` operations) and reporting output, implementing a tightly-specified function, writing a new test from a tight spec, code review of a small single-file diff, mechanical API/SDK migration where the mapping is documented, classifying or labelling items against a clear rubric (e.g. backlog triage chunks), summarising a single file or short diff. Cheap, fast, good enough when the answer is mostly mechanical or rubric-driven.
+  - **Sonnet / gpt-5.4 / Gemini 3.1 Flash**: focused multi-file changes where coordination across files needs judgement, implementing a function whose spec is mostly clear but has 1–2 design choices, code review of a multi-file diff or a diff with non-trivial logic, refactors with a clear target shape, agentic loops where each step requires non-trivial reasoning (not just rubric-driven labelling). Use when there's some judgement involved but not deep design or hypothesis iteration.
+  - **Opus / gpt-5.5 / Gemini 3.1 Pro** (or stay on the current top-level model): architecture decisions, multi-file refactors where the shape is unclear, debugging gnarly bugs that need hypothesis iteration, reading a large unfamiliar codebase from scratch (without `graphify-out/` available) to synthesise a mental model, any work where "understanding" is the hard part rather than the mechanical output.
+  - **When in doubt, go one tier cheaper and see if the result is good enough** — this applies across all model families. It's easy to re-spawn on a stronger model if the cheaper one struggles, and the savings on routine work add up.
+  - The main conversation's model is set by the user and doesn't change mid-session; this rule only applies to `Agent` tool spawns.
 
 ### 2a. Tool Selection
 
@@ -285,6 +284,19 @@ Run a full triage pass per `~/.claude/triage.md` when ANY of these is true:
 - A backlog scan at session start (or after a major merge) shows >30 untriaged items / >5 open PRs not touched in the last 7 days (`updated:<…` not `created:<…`) / a P0 issue without recent activity — in which case offer a triage pass to the user; don't run it uninvited.
 
 For a casual "what should I do next" with a small, well-labelled backlog, **skip the full triage** — just sort the existing labels and surface the top 3 with one-line "why now" rationales. The full process is for backlogs that aren't already legible.
+
+**Always-on per-item rule** — applies regardless of whether you're running a backlog pass:
+
+> **Whenever you read, create, or update an issue or PR**, apply the triage rubric inline if the item lacks the `triaged` marker. Don't leave untriaged items in your wake.
+
+Concretely:
+
+- **Creating a new issue or PR** (`gh issue create`, `gh pr create`): pass `--label` with the full rubric on the same call — `priority/p[0-3]`, `severity/*`, `urgency/*`, `impact/*`, `effort/*`, `type/*`, plus the positive `triaged` marker. Don't ship a `gh issue create` without labels and rely on a follow-up sweep to clean up. The rubric reasoning lives in `~/.claude/triage.md`'s "Default label set" + "Priority rubric" sections; consult them when the call isn't obvious.
+- **Updating an existing issue or PR** (editing body/title, posting a comment, applying any `gh issue edit`/`gh pr edit`): if the item has no `triaged` label, fold a triage pass into the same edit. Either apply the labels yourself if you can decide them, or apply `status/needs-info` + post a specific clarifying-question comment. Either way, the item exits your interaction triaged.
+- **Reading an issue or PR** (e.g. as part of a larger task — investigating a bug, looking up a related ticket, surveying which PRs reference a topic): if you'd be the next human-attention checkpoint that item gets, apply the rubric. Skip if the item is genuinely incidental to your task and you have no signal to apply the rubric on; in that case, mention it to the user as a hygiene note.
+- **Exception — `type/question` items** still skip the priority rubric per `~/.claude/triage.md` §"Picking the next thing to work on": apply `type/question` + `status/needs-info`, post the clarifying question, mark `triaged`, and leave open.
+
+Why per-item, not just per-pass: untriaged items accumulate silently between dedicated triage passes. The cheap moment to label them correctly is when they're already in your context — re-deriving severity/impact/effort during a scheduled sweep is more expensive than capturing it now while the situation is fresh.
 
 Headline rules from the reference file:
 
