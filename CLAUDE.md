@@ -16,9 +16,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This document may be used by OpenAI tooling as well. When it names Anthropic model tiers, use the corresponding OpenAI tiers in the same role:
 
-- Haiku -> GPT-5.4-mini
-- Sonnet -> GPT-5.4
-- Opus -> GPT-5.5
+- Haiku -> gpt-5.4-mini
+- Sonnet -> gpt-5.4
+- Opus -> gpt-5.5
 - Keep the cheapest/mid/top-tier mapping aligned if the local OpenAI model names change.
 
 ## Reference Files
@@ -211,10 +211,10 @@ Non-trivial work happens in a dedicated git worktree branched off the current br
 - **Multi-agent coordination**: see `~/.claude/multi-agent-comms.md` for lock patterns (e.g., `git-push` lock before pushing shared-branch fixes).
 - **Default: delegate to the cheapest sufficient tier — actively, not just when in doubt.** Before doing a piece of work in the main session (or spawning a subagent at the same tier as the main session), ask: *can a cheaper Claude or OpenAI subagent handle this per the rubric below?* If yes, spawn that subagent. The main session's tier is typically the most expensive option available, so reserving it for work that genuinely needs it is the single biggest cost lever. Treat the rubric as a positive obligation to delegate down, not just a tie-breaker. This applies recursively — when a subagent itself needs to spawn further subagents, it should also default to the cheapest sufficient tier.
 - **Match model to task complexity via the `Agent` tool's `model` parameter** — pay for capability only when it earns it:
-  - **Haiku** (default for most delegations): file renames, typo fixes, mechanical edits with a clear spec, simple lookups (grep for a symbol, find where X is called), reading a single file to answer a factual question, formatting/style fixes, running a single command (or routine `gh`/`git` operations) and reporting output, implementing a tightly-specified function, writing a new test from a tight spec, code review of a small single-file diff, mechanical API/SDK migration where the mapping is documented, classifying or labelling items against a clear rubric (e.g. backlog triage chunks), summarising a single file or short diff. Cheap, fast, good enough when the answer is mostly mechanical or rubric-driven.
+  - **Haiku** (default for Claude-family delegations): file renames, typo fixes, mechanical edits with a clear spec, simple lookups (grep for a symbol, find where X is called), reading a single file to answer a factual question, formatting/style fixes, running a single command (or routine `gh`/`git` operations) and reporting output, implementing a tightly-specified function, writing a new test from a tight spec, code review of a small single-file diff, mechanical API/SDK migration where the mapping is documented, classifying or labelling items against a clear rubric (e.g. backlog triage chunks), summarising a single file or short diff. Cheap, fast, good enough when the answer is mostly mechanical or rubric-driven.
   - **Sonnet**: focused multi-file changes where coordination across files needs judgement, implementing a function whose spec is mostly clear but has 1–2 design choices, code review of a multi-file diff or a diff with non-trivial logic, refactors with a clear target shape, agentic loops where each step requires non-trivial reasoning (not just rubric-driven labelling). Use when there's some judgement involved but not deep design or hypothesis iteration.
   - **Opus** (or stay on the current top-level model): architecture decisions, multi-file refactors where the shape is unclear, debugging gnarly bugs that need hypothesis iteration, reading a large unfamiliar codebase from scratch (without `graphify-out/` available) to synthesise a mental model, any work where "understanding" is the hard part rather than the mechanical output.
-  - **OpenAI mini-tier** (same role as Haiku): file renames, typo fixes, mechanical edits with a clear spec, simple lookups, reading a single file to answer a factual question, formatting/style fixes, routine shell/git operations, tight-spec tests, and other rubric-driven work.
+  - **OpenAI mini-tier** (default for OpenAI-family delegations; same role as Haiku): file renames, typo fixes, mechanical edits with a clear spec, simple lookups, reading a single file to answer a factual question, formatting/style fixes, routine shell/git operations, tight-spec tests, and other rubric-driven work.
   - **OpenAI mid-tier** (same role as Sonnet): focused multi-file changes, moderately complex code review, and refactors with a clear target shape.
   - **OpenAI top-tier** (same role as Opus): architecture decisions, unclear refactors, gnarly debugging, and large unfamiliar-codebase synthesis.
   - **When in doubt, go one tier cheaper and see if the result is good enough** — this applies to both Claude and OpenAI model families. It's easy to re-spawn on a stronger model if the cheaper one struggles, and the savings on routine work add up.
