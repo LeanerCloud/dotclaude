@@ -24,7 +24,7 @@ That work shapes the opinions in here: heavy use of multi-cloud Terraform, suppl
 | [`multi-agent-comms.md`](multi-agent-comms.md) | Protocol for multiple Claude instances / agents coordinating on the same project. |
 | [`triage.md`](triage.md) | Backlog triage + work selection: 5-dimension labelling (priority/severity/urgency/impact/effort), parallel-agent fan-out, three-pass approach for large backlogs, stale-sweep procedure. |
 | [`commands/`](commands/) | Custom slash commands. |
-| [`scripts/setup-agent-symlinks.sh`](scripts/setup-agent-symlinks.sh) | Recreate or update symlinked guidance files inside `~/.codex` and `~/.gemini` so each file points back to the shared guidance files. |
+| [`scripts/setup-agent-symlinks.sh`](scripts/setup-agent-symlinks.sh) | Recreate or update the symlinked guidance files inside `~/.codex` and `~/.gemini` so each file points back to the shared guidance files. |
 | [`agents/`](agents/) | Submodule pointing to [`contains-studio/agents`](https://github.com/contains-studio/agents) — a curated agent library. |
 | [`local-paths.md.example`](local-paths.md.example) | Template for `local-paths.md`, per-machine paths and tool locations referenced from the rule files (e.g. graphify CLI / venv). |
 | [`projects.md.example`](projects.md.example) | Template for `projects.md`, the personal index of projects Claude should know about. |
