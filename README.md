@@ -73,6 +73,14 @@ The topic-file layout (root `CLAUDE.md` pointing at focused sub-docs) keeps each
 
 This is primarily a personal config. PRs that fix clear bugs, typos, or outdated advice are welcome. Feature additions that make sense only for a specific workflow are better kept in a fork.
 
+If you'll be opening PRs, install the pre-commit hooks once:
+```bash
+brew install pre-commit         # or: pipx install pre-commit
+pre-commit install              # registers the git hook in this clone
+pre-commit run --all-files      # one-time clean pass before your first commit
+```
+The hook set is conservative (trailing whitespace, missing final newline, merge-conflict markers, malformed YAML, accidental large-file commits) — see [`.pre-commit-config.yaml`](.pre-commit-config.yaml) for the full list and rationale.
+
 ## License
 
 [MIT](LICENSE).

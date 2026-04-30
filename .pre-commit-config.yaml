@@ -1,0 +1,30 @@
+# Pre-commit hooks for the ~/.claude config repo.
+#
+# Setup once per clone:
+#   brew install pre-commit          # or pipx install pre-commit
+#   pre-commit install               # registers the git hook
+#
+# Run all hooks against every tracked file (e.g. before opening a PR):
+#   pre-commit run --all-files
+#
+# The hook set is intentionally conservative — it catches obviously-broken
+# state (trailing whitespace, missing final newline, merge-conflict markers,
+# accidental large-file commits, mixed line endings, malformed YAML) without
+# reformatting prose. Stricter rules (markdownlint, mdformat, codespell)
+# are deliberately left out: they require per-document tuning that's not
+# worth the friction on a personal config repo.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-yaml
+        files: \.(yaml|yml)$
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: mixed-line-ending
+        args: [--fix=lf]
