@@ -328,3 +328,23 @@ The triage isn't done until the user has a clear, ranked next-action list — no
 The cadence should match the project's velocity. A high-velocity project benefits from weekly triage; a low-velocity one drowns in process if you triage weekly.
 
 **Proactive flagging from the assistant side**: at session start, when reading a project's CLAUDE.md / known-issues / project state, if the open backlog appears overwhelming (>30 untriaged items, OR >5 open PRs not touched in the last 7 days, OR a P0 issue without recent activity), surface this to the user with a one-line offer: *"This project has 47 open issues with no triage labels — want a triage pass before we pick up other work?"* Don't run the triage uninvited; surface and let the user decide. Skip the prompt for projects where the user is clearly mid-task — wait for a natural break.
+
+## Capturing follow-ups discovered while working an issue
+
+Whenever processing a GitHub issue (implementing the fix, investigating the bug, exercising the feature) and noticing something that *could* be done but isn't strictly part of the current issue, **file it as a separate GitHub issue immediately and triage it at creation** — don't silently expand the scope of the current PR, don't drop the observation, don't leave a TODO comment in code as the only record. This complements `git-workflow.md` §"Capture follow-up tasks as new GitHub issues" — that rule fires at PR-completion time; this one fires the moment you spot the side-quest, regardless of where you are in the issue's lifecycle.
+
+**Triggers — file a new issue when you notice**:
+- a related-but-separate bug while reproducing the current one
+- a TODO / FIXME / `XXX` in nearby code that's worth tracking
+- an infra or hygiene gap surfaced during repro setup (missing test, stale doc, broken local-dev path)
+- a refactor opportunity that the current change makes *possible* but doesn't itself require
+- a question for the maintainer about scope or intent that you don't want to block the current issue on
+
+**How to file**:
+
+1. `gh issue create --title "..." --body "..."` with a title specific enough that triage doesn't need to re-derive context. Reference the originating issue in the title or first line of the body — *"Discovered while working #123: ..."* — so the link survives even if labels get reshuffled later.
+2. **Triage at creation** — apply `triaged` plus the full label set per §"Default label set" (priority, severity, urgency, impact, effort, type). The rubric is the same as §"The triage pass itself"; you have the context cold from the issue you're already working, so this is the cheapest possible moment to triage. If you can't decide a dimension, apply a best-guess value plus `status/needs-info` and post the clarifying question — same flow as during a regular triage pass. Untriaged follow-ups are a regression: they push triage cost into the future and lose the context that made labelling cheap right now.
+3. **Link both ways**: comment on the originating issue ("Filed #<new> for the follow-up on X") and reference the originating issue in the new issue's body. Bidirectional links survive re-organisation better than one-way ones.
+4. **Skip filing for trivia** — typos in your own draft, scratch observations, things only a future-you-in-this-session would care about. The bar is *"would a future agent / future maintainer be annoyed having to rediscover this?"* If yes, file; if no, drop it.
+
+This rule applies recursively: if while filing a follow-up you notice yet *another* follow-up, file that one too. Don't batch into one mega-issue — each follow-up gets its own issue, triaged at creation. Batching defeats the point; the goal is granular, individually-triaged tracking that the next triage / work-selection pass can rank against everything else.
