@@ -64,7 +64,7 @@ After every `git push` that publishes new commits, immediately enumerate **all**
 **Setup**:
 
 1. Right after `git push`, run `gh run list --commit <sha> --json databaseId,name,status` to list every run for the pushed commit. Wait briefly (a few seconds) and re-list if the run list looks incomplete — workflows can take a moment to register.
-2. For each run ID, spawn a separate background agent (`Agent` tool with `run_in_background: true`, `model: haiku`) named `ci-watch-<short-sha>-<workflow-slug>` (e.g. `ci-watch-a1b2c3d-build`, `ci-watch-a1b2c3d-test`, `ci-watch-a1b2c3d-tf-validate`). Each name must be unique and addressable via `SendMessage`. The watcher's core work — polling `gh run view`, fetching failed logs, classifying the failure — fits Haiku per CLAUDE.md §2. If the diagnosed fix requires non-trivial reasoning (multi-file logic bug, race condition), re-spawn just the fix step on Sonnet rather than forcing Haiku through it.
+2. For each run ID, spawn a separate background agent (`Agent` tool with `run_in_background: true`, `model: haiku`) named `ci-watch-<short-sha>-<workflow-slug>-<run-id>` (e.g. `ci-watch-a1b2c3d-build-123456789`, `ci-watch-a1b2c3d-test-123456790`). Each name must be unique and addressable via `SendMessage`. The watcher's core work — polling `gh run view`, fetching failed logs, classifying the failure — fits Haiku per CLAUDE.md §2. If the diagnosed fix requires non-trivial reasoning (multi-file logic bug, race condition), re-spawn just the fix step on Sonnet rather than forcing Haiku through it.
 3. Each agent monitors **only its assigned run ID** — pass the run ID explicitly in the prompt so it doesn't poll the wrong workflow.
 
 **Each agent's job**:
