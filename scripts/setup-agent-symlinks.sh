@@ -66,6 +66,11 @@ link_one() {
   target="$1"
   link_path="$2"
 
+  if [ ! -e "$target" ]; then
+    echo "error: target does not exist: $target" >&2
+    return 1
+  fi
+
   if [ -e "$link_path" ] && [ ! -L "$link_path" ]; then
     echo "error: refusing to overwrite non-symlink: $link_path" >&2
     return 1
