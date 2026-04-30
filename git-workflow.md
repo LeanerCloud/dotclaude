@@ -64,7 +64,7 @@ After every `git push` that publishes new commits, immediately enumerate **all**
 **Setup**:
 
 1. Right after `git push`, run `gh run list --commit <sha> --json databaseId,name,status` to list every run for the pushed commit. Wait briefly (a few seconds) and re-list if the run list looks incomplete — workflows can take a moment to register.
-2. For each run ID, spawn a separate background agent (`Agent` tool with `run_in_background: true`) named `ci-watch-<short-sha>-<workflow-slug>` (e.g. `ci-watch-a1b2c3d-build`, `ci-watch-a1b2c3d-test`, `ci-watch-a1b2c3d-tf-validate`). Each name must be unique and addressable via `SendMessage`.
+2. For each run ID, spawn a separate background agent (`Agent` tool with `run_in_background: true`, `model: haiku`) named `ci-watch-<short-sha>-<workflow-slug>` (e.g. `ci-watch-a1b2c3d-build`, `ci-watch-a1b2c3d-test`, `ci-watch-a1b2c3d-tf-validate`). Each name must be unique and addressable via `SendMessage`. The watcher's core work — polling `gh run view`, fetching failed logs, classifying the failure — fits Haiku per CLAUDE.md §2. If the diagnosed fix requires non-trivial reasoning (multi-file logic bug, race condition), re-spawn just the fix step on Sonnet rather than forcing Haiku through it.
 3. Each agent monitors **only its assigned run ID** — pass the run ID explicitly in the prompt so it doesn't poll the wrong workflow.
 
 **Each agent's job**:
@@ -97,7 +97,7 @@ The loop applies to any project that uses CodeRabbit (or an equivalent automated
 
 ### 2. CodeRabbit-watcher background agent
 
-Spawn a background `Agent` named `cr-watch-<pr-#>` that:
+Spawn a background `Agent` named `cr-watch-<pr-#>` (`model: haiku` — polling, rate-limit handling, and the §3 triage into Actionable/Stylistic/Nitpick are all rubric-driven; re-spawn fix commits on Sonnet only if a finding requires non-trivial reasoning) that:
 
 - Polls `gh api repos/<owner>/<repo>/pulls/<#>/comments` and `gh pr view <#> --json reviews` every **60–120s** (never faster — CodeRabbit's own backend rate-limits review processing and aggressive polling won't make the review come faster).
 - Treats `429`, `403 secondary rate limit`, or any "rate limit" string in the response body as a **soft** error: log, sleep 120s, retry. Do not escalate. Rate-limit responses are normal during high-traffic windows; a watcher that escalates on every 429 wastes user attention.
@@ -135,7 +135,7 @@ If conflicts span more than the immediate diff (e.g., a base-branch refactor mov
 
 ### 4. Wait for human merge — do NOT self-merge by default
 
-After CI is green and CodeRabbit's loop has settled, hand off to the user. Spawn a background agent named `merge-watch-<pr-#>` that polls `gh pr view <#> --json state,merged,mergeCommit,mergedAt` until:
+After CI is green and CodeRabbit's loop has settled, hand off to the user. Spawn a background agent named `merge-watch-<pr-#>` (`model: haiku` — polling and the routine §5 verifications (terraform plan, curl, simple Chrome MCP walkthroughs) are mechanical; if §5 verification turns out to need exploratory UI debugging, re-spawn that step on Sonnet) that polls `gh pr view <#> --json state,merged,mergeCommit,mergedAt` until:
 
 - `merged: true` → proceed to §5.
 - `state: CLOSED` and not merged → terminal, clean up, exit (and notify user that the PR was closed unmerged so any in-flight work can be re-planned).
