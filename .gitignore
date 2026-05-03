@@ -42,5 +42,11 @@ local-paths.md
 projects.md
 settings.json
 
+# Personal tooling integration docs (e.g. RTK / Rust Token Killer) — not portable to forks
+RTK.md
+
+# Editor / shell / settings backups — never tracked
+*.bak
+
 # macOS junk
 .DS_Store
