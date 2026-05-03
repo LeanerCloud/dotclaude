@@ -9,7 +9,7 @@ This file is the full worktree-isolation protocol: when to create one, how to pe
 - **Precondition — plan has passed the §1 three-pass review gate.** The worktree is the commitment to implement. Don't create one while the plan is still being iterated on, or it becomes a dumping ground for exploratory edits made on an unverified plan (and once commits start landing, reviewing the plan becomes fighting the code's momentum instead of shaping its design). If the plan needs more revision, stay on the base branch, revise, re-review, then come back.
 - **Record the base branch** (the branch checked out when the task starts — e.g., `feat/multicloud-web-frontend`, `main`) in the plan. That's what you'll rebase/merge onto at the end. If the base branch is `main` or another protected branch, still use a worktree — PR discipline from `~/.claude/git-workflow.md` applies on top.
 - **Create the worktree after the plan review gate passes**, before the first commit:
-  ```
+  ```bash
   git worktree add ../<repo>-<slug> -b <type>/<slug> <base-branch>
   ```
   where `<type>` matches conventional commit types (`feat`, `fix`, `refactor`, `chore`, etc.) and `<slug>` is a short kebab-case name for the change. All implementation, commits, tests, and reviews run inside the worktree.
@@ -20,7 +20,7 @@ Persist the plan outside the worktree so it survives crashes: write the authorit
 
 ### Header block (YAML frontmatter)
 
-```
+```yaml
 ---
 worktree: /absolute/path/to/<repo>-<slug>
 base_branch: <base-branch>
@@ -37,7 +37,7 @@ pid_updated: <ISO-8601 timestamp of the last pid write>
 
 Paste verbatim below the header — copy-paste, don't paraphrase, so every plan carries the same rules:
 
-```
+```markdown
 ## Workflow (embedded from ~/.claude/worktrees.md — DO NOT SKIP)
 
 **Before touching any file in the worktree, resolve ownership**:
@@ -66,7 +66,7 @@ The actual plan — atomic tasks with file paths and verification steps per CLAU
 
 Then symlink the plan into the worktree:
 
-```
+```bash
 ln -s ~/.claude/projects/<project>/plans/<slug>.md <worktree>/plan.md
 ```
 
