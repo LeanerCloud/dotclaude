@@ -203,6 +203,7 @@ Full rules live in `~/.claude/tool-usage.md` — **read it before any Bash call 
   - A `try`/`except` (or equivalent) swallowing a symptom rather than fixing the cause
   - A new flag or config knob added just to route around the problem
   - Duplicated logic with slight differences between copies (see §1a)
+  - A hardcoded placeholder value (`0`, `""`, `false`, or `nil`) with a comment like "TODO" or "doesn't always provide" — represent absent data explicitly (use a pointer `*T`, a sentinel, or omit the field) so downstream code can distinguish "missing" from "actually zero"; a literal zero propagates silently through every consumer that doesn't know to special-case it
 - If a fix feels hacky: implement the elegant solution
 - Skip for simple, obvious fixes — don't over-engineer. A three-line conditional doesn't need a new abstraction.
 - See `~/.claude/coding-standards.md` for broader quality and style expectations.
