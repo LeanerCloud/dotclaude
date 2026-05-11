@@ -64,6 +64,7 @@ The project list lives in `~/.claude/projects.md`. Read it when starting work on
 - **Don't touch what you weren't asked to touch**: No drive-by refactors, no unsolicited formatting changes, no adding types/comments to untouched code — unless explicitly asked for a thorough review.
 - **Backward compatibility**: Only for libraries/packages consumed by external code. Within the project itself, refactor freely.
 - **Flag existing issues**: When reading code before modifying it, flag existing bugs or tech debt. Maintain a `known-issues.md` in source control (see `~/.claude/project-docs.md` for guidance); consult it before starting work; remove resolved issues promptly.
+- **Never use em-dashes (Unicode U+2014) in generated prose by default.** This applies to chat responses, comments, commit messages, PR/issue text, and documentation. Use a regular hyphen, comma, semicolon, colon, parenthetical, or a fresh sentence instead. Em-dashes are an unmistakable AI-tell that the user does not want in the work product. If a task explicitly requires exact literal fidelity (for example quoted source text, fixtures, protocol examples, or parser tests), preserve the literal exactly and note why. `---` for horizontal rules is fine because it is three hyphens, not an em-dash.
 
 ## Workflow
 
