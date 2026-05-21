@@ -1,0 +1,31 @@
+# Subagent Strategy — Detailed Rubric
+
+Detail extracted from `CLAUDE.md` §2. The headline triggers stay in `CLAUDE.md`; the rationale, the model rubric, and the PR-shipping tier split live here. Read this when deciding how to delegate work or which model tier to spawn a subagent on.
+
+## Delegate to the cheapest sufficient tier — actively
+
+Before doing a piece of work in the main session (or spawning a subagent at the parent's tier), ask: *can a cheaper Claude, OpenAI, or Gemini subagent handle this per the rubric below?* If yes, spawn it with the `Agent` tool's `model` parameter. The main session's tier is typically the most expensive option available, so reserving it for work that genuinely needs it is the single biggest cost lever. Treat the rubric as a positive obligation to delegate down, not just a tie-breaker. This applies recursively: a subagent that needs to spawn further subagents also defaults to the cheapest sufficient tier.
+
+**Set the `model` parameter on EVERY `Agent` call — never rely on inheritance.** Omitting it makes the subagent inherit the parent's model, which when the parent is Opus silently makes every subagent Opus too: a 5-10x cost premium for work that almost always doesn't need it. Even when you want the parent's tier, pass it explicitly so the choice is visible at the call site.
+
+## Routine PR-shipping splits across tiers
+
+The standard pattern (plan + 3-pass review + worktree + implement + test + push + open-PR + ping-CR + arm-CI-watcher) is NOT a single-tier workload:
+
+- **Planning phase -> Opus.** Drafting the §1b plan file, the three-pass plan review gate, the §1 post-implementation review, the §1a reuse analysis, and the §5 elegance check all require holding multiple competing constraints in working memory at once: invariants from the issue body, lessons from prior commits, cross-cutting test impact, edge cases the acceptance criteria didn't enumerate. Sonnet plan reviews miss enough subtleties on real PR work that the rework cost exceeds the up-front Opus delta.
+- **Iteration loops -> Opus.** Responding to CodeRabbit pass-N findings, fix-push cycles after a failed CI run, worktree-recovery after a watchdog stall, the §1c local review loop, and conflict-resolution rebases all share one shape: react to feedback that didn't fit the original plan without breaking what already worked. Sonnet stalls here; the triage surface grows each round and a Sonnet-tier triage either dismisses real findings as "out of scope" without filing a follow-up or produces fixes that don't exercise the contract under review.
+- **Implementation phase -> Sonnet.** Writing the diff per the plan's task breakdown, running tests/lint/build, opening the PR, mirroring labels, routine `gh`/`git` mechanics. With a clean plan in hand and design questions answered upstream, Sonnet ships diffs cleanly across multi-file changes.
+- **Carve-out boundary.** A single mechanical step within an iteration loop (apply a one-line CR-suggested diff verbatim, push) is still Haiku/Sonnet-able. Escalate to Opus when the loop step requires judgement about *what* to do, not just executing a decided fix. (Same rule of thumb as §1b's "skip the worktree only for trivially mechanical edits".)
+- **Scope.** This split applies to PR-shipping. Other workflows have their own rubrics: backlog triage uses `triage.md`; routine watchers (`ci-watch-*`, `cr-watch-*`, `merge-watch-*`) use polling-on-Haiku, escalate-on-Opus per `git-workflow.md`.
+
+## Model rubric — match tier to task complexity
+
+- **Haiku / gpt-5.4-mini / Gemini 3.1 Flash-Lite** (default for most delegations): file renames, typo fixes, mechanical edits with a clear spec, simple lookups (grep for a symbol, find where X is called), reading one file to answer a factual question, formatting/style fixes, running a single command (or routine `gh`/`git` op) and reporting output, implementing a tightly-specified function, writing a test from a tight spec, code review of a small single-file diff, mechanical API/SDK migration with a documented mapping, classifying/labelling against a clear rubric (e.g. triage chunks), summarising one file or short diff. Cheap, fast, good enough when the answer is mostly mechanical or rubric-driven.
+- **Sonnet / gpt-5.4 / Gemini 3.1 Flash**: the implementation phase of PR-shipping; focused multi-file changes where coordination needs judgement but the target shape is decided; implementing a function whose spec is mostly clear but has 1-2 design choices; code review of a multi-file or non-trivial-logic diff; refactors with a clear target shape. Use when design questions are answered upstream and the work is "execute the plan", not "decide the plan" or "react to a reviewer".
+- **Opus / gpt-5.5 / Gemini 3.1 Pro** (or stay on the top-level model): the planning phase and the iteration loops of PR-shipping (per the split above); architecture decisions; multi-file refactors where the shape is unclear; debugging gnarly bugs needing hypothesis iteration; reading a large unfamiliar codebase from scratch (no `graphify-out/`) to synthesise a mental model; any work where "understanding" or "weighing options" is the hard part.
+
+**When in doubt, go one tier cheaper and see if it's good enough** — for implementation, research, and mechanical work; re-spawn stronger if it struggles. *Exception*: planning phases and iteration loops default to Opus and step down only when the specific step is clearly mechanical. The cost of a stalled iteration agent that needs main-session takeover exceeds the up-front Opus delta. The main conversation's model is user-set and fixed mid-session; this rule only governs `Agent` spawns.
+
+## Label-mirroring on PR creation
+
+Every `gh pr create` MUST be followed by mirroring the closing issue's triage labels onto the new PR: `priority/*`, `severity/*`, `urgency/*`, `impact/*`, `effort/*`, `type/*`, plus `triaged` (only if the issue carries it — never invent it). PRs without triage labels are invisible to the same priority queries that surface the issues, so an unlabeled PR is effectively unreviewable in priority order. Treat label-mirroring as part of the `open-PR` step. For PRs closing multiple issues, take the highest `priority/*` and `severity/*` across the set and union the rest. When delegating PR shipping to a subagent, include this step in the prompt explicitly.
