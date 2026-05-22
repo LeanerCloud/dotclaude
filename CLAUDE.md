@@ -4,24 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Core Tenets
 
-1. **Understand before changing** — For non-trivial work in unfamiliar code, read `graphify-out/GRAPH_REPORT.md` and `wiki/index.md` first. If `graphify-out/` is missing, **create it first** before any non-trivial exploration — run the graphify rebuild command (see the graphify section below; short form: `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` via the graphify venv). Don't edit code you haven't mapped.
+1. **Understand before changing** — For non-trivial work in unfamiliar code, read `graphify-out/GRAPH_REPORT.md` and `wiki/index.md` first. If `graphify-out/` is missing, **create it first** before any non-trivial exploration (see §0 for the rebuild command). Don't edit code you haven't mapped.
 2. **Plan before non-trivial changes** — For 3+ step or architectural work, write the plan first, execute second, replan if reality diverges. Skip for mechanical one-liners.
-3. **Reuse before writing** — Before adding a new function, type, or helper, grep the codebase for existing functionality. Exact fit: reuse. Close fit (~80%): refactor existing code (flag the scope change in the plan). Never silently copy-paste.
-4. **Delegate to subagents** — Offload research, parallel exploration, and focused subtasks to keep the main context clean. Match model tier (Haiku/Sonnet/Opus) to task complexity.
-5. **Capture every correction** — When the user corrects an approach, immediately save a memory entry that prevents the same mistake. Review relevant memories at session start.
-6. **No "done" without proof** — Run tests, check logs, exercise the UI. "Should work" is not a status. If verification isn't possible, say so explicitly.
-7. **Prefer elegance to hacks** — On non-trivial changes, pause and ask "is there a cleaner way?" before shipping. If a fix feels hacky, do it right. Skip for obvious one-liners.
-8. **Bugs: triage now, fix at root** — Don't defer. Symptom → root cause → fix → regression test. No temporary patches that hide the real issue.
-9. **Never delete data — including hidden/metadata files** — When the user says "don't delete files," they mean ALL files: `.git` directories, hidden dotfiles, config caches, lockfiles, logs, build artifacts — everything. Do NOT rationalize deletion as "just metadata," "can be regenerated," "not user data," or "the plan said so." Version control history, IDE state, caches, and sync metadata are user data. Before `rm`, `rm -rf`, `git filter-repo`, `git branch -D`, `git reset --hard`, dropping tables, or any operation that destroys on-disk or committed state you did not create in this session, pause and get explicit per-item confirmation — even if a broader plan appeared to authorize it. If you need a "fresh" git repo, use additive approaches: `git checkout --orphan` or clone the working tree to a new path. If unsure whether a given file matters to the user, assume it does.
+3. **Reuse before writing** — Before adding a new function, type, or helper, grep for existing functionality. Exact fit: reuse. Close fit (~80%): refactor existing code (flag the scope change in the plan). Never silently copy-paste. (§1a)
+4. **Delegate to subagents** — Offload research, parallel exploration, and focused subtasks to keep the main context clean. Match model tier (Haiku/Sonnet/Opus) to task complexity. (§2)
+5. **Capture every correction** — When the user corrects an approach, immediately save a memory entry that prevents the same mistake. Review relevant memories at session start. (§3)
+6. **No "done" without proof** — Run tests, check logs, exercise the UI. "Should work" is not a status. If verification isn't possible, say so explicitly. (§4)
+7. **Prefer elegance to hacks** — On non-trivial changes, pause and ask "is there a cleaner way?" before shipping. If a fix feels hacky, do it right. Skip for obvious one-liners. (§5)
+8. **Bugs: triage now, fix at root** — Symptom → root cause → fix → regression test. No temporary patches that hide the real issue. (§6)
+9. **Never delete data — including hidden/metadata files** — "Don't delete files" means ALL files: `.git` dirs, dotfiles, config caches, lockfiles, logs, build artifacts. Do NOT rationalize deletion as "just metadata," "can be regenerated," "not user data," or "the plan said so." Before `rm`, `rm -rf`, `git filter-repo`, `git branch -D`, `git reset --hard`, dropping tables, or any operation destroying on-disk or committed state you did not create this session, pause and get explicit per-item confirmation — even if a broader plan appeared to authorize it. For a "fresh" git repo use additive approaches (`git checkout --orphan`, or clone the working tree to a new path). If unsure whether a file matters, assume it does.
 
-This document may be used by OpenAI or Gemini tooling as well. When it names Anthropic model tiers, use the corresponding OpenAI or Gemini tiers in the same role:
+This document may be used by OpenAI or Gemini tooling. When it names Anthropic tiers, use the corresponding tiers in the same role: Haiku -> gpt-5.4-mini -> Gemini 3.1 Flash-Lite; Sonnet -> gpt-5.4 -> Gemini 3.1 Flash; Opus -> gpt-5.5 -> Gemini 3.1 Pro. Keep cheapest/mid/top aligned if local model names change.
 
-- Haiku -> gpt-5.4-mini -> Gemini 3.1 Flash-Lite
-- Sonnet -> gpt-5.4 -> Gemini 3.1 Flash
-- Opus -> gpt-5.5 -> Gemini 3.1 Pro
-- Keep the cheapest/mid/top-tier mapping aligned if the local model names change.
-
-> **If you're running on an Anthropic model** (Claude Opus / Sonnet / Haiku), **ignore this mapping** — the tier names below already correspond to your model family directly. The mapping above is for OpenAI- or Gemini-backed tooling that consumes this same file.
+> **If you're running on an Anthropic model**, **ignore this mapping** — the tier names below already correspond to your model family. The mapping is for OpenAI- or Gemini-backed tooling consuming this same file.
 
 ## Reference Files
 
@@ -30,41 +25,33 @@ Detailed guidance lives in dedicated files. **Always read** the ones marked as s
 | File | When to read |
 |------|-------------|
 | `~/.claude/projects.md` | **Always** — at the start of every session |
-| `~/.claude/coding-standards.md` | **Always** — when writing or reviewing code, and on first visit to any project (bootstrap checklist) |
+| `~/.claude/coding-standards.md` | **Always** — when writing/reviewing code, and on first visit to any project (bootstrap checklist) |
 | `~/.claude/conventions.md` | When working with Go, TypeScript, Python, Terraform, Docker, or databases |
 | `~/.claude/infra-ops.md` | When working on infrastructure, deployments, cloud resources, or ops |
 | `~/.claude/project-docs.md` | When setting up, updating, or consulting project documentation |
 | `~/.claude/multi-agent-comms.md` | When multiple Claude instances or agents work on the same project concurrently |
-| `~/.claude/tool-usage.md` | **Always** — before any Bash call, before writing a shell script, or when choosing between a native tool (Read/Edit/Glob/Grep/NotebookEdit) and Bash |
-| `~/.claude/git-workflow.md` | **Always** — before staging a commit, writing a commit message, opening a PR, or after `git push` (for the CI watcher rules) |
-| `~/.claude/worktrees.md` | When starting any non-trivial change — the worktree-creation step, plan-file YAML header, PID/ownership lifecycle, crash recovery, and merge gate live here (referenced from §1b) |
-| `~/.claude/triage.md` | When the user asks to triage / prioritize / "what should I work on next", before sprint planning, after a major merge invalidates open items, or when starting in an unfamiliar repo and the open count is overwhelming |
+| `~/.claude/subagent-strategy.md` | When deciding how to delegate or which model tier to spawn a subagent on (§2 detail) |
+| `~/.claude/tool-usage.md` | **Always** — before any Bash call, before writing a shell script, or when choosing native tools vs Bash |
+| `~/.claude/git-workflow.md` | **Always** — before staging a commit, writing a commit message, opening a PR, or after `git push` (CI watcher rules) |
+| `~/.claude/worktrees.md` | When starting any non-trivial change (§1b) |
+| `~/.claude/triage.md` | When triaging/prioritizing, before sprint planning, after a major merge, or when starting in an unfamiliar repo with an overwhelming open count (§7) |
 
 ## Projects
 
-Each project has its own `CLAUDE.md` with project-specific overrides. Always read the project `CLAUDE.md` at session start — it takes precedence over this file for anything it addresses.
-
-The project list lives in `~/.claude/projects.md`. Read it when starting work on any project, and update it whenever working in a project that isn't listed yet. Each entry should include:
-
-| Field | Purpose |
-|-------|---------|
-| Project | Short name |
-| Path | Absolute path |
-| Stack | Primary language(s) and key frameworks |
-| Description | One sentence on what it does and who uses it |
+Each project has its own `CLAUDE.md` with project-specific overrides that take precedence over this file. Always read it at session start. The project list lives in `~/.claude/projects.md` — read it when starting work on any project, and update it whenever working in a project not yet listed (fields: Project, Path, Stack, Description).
 
 ## Core Principles
 
-> **Scale to context**: Some rules below (PR reviews, staging environments, on-call rotations — see `infra-ops.md`) assume a multi-person team. Apply them proportionally — a solo project doesn't need a formal review process, but the underlying principle (don't merge broken code, test before deploying) always applies.
+> **Scale to context**: some rules below (PR reviews, staging environments, on-call — see `infra-ops.md`) assume a multi-person team. Apply proportionally — a solo project doesn't need a formal review process, but the underlying principle (don't merge broken code, test before deploying) always applies.
 
-- **Simplicity First**: Make every change as simple as possible. Minimal impact.
-- **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
-- **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.
-- When uncertain between two approaches, pick the simpler one and move forward rather than asking.
-- **Don't touch what you weren't asked to touch**: No drive-by refactors, no unsolicited formatting changes, no adding types/comments to untouched code — unless explicitly asked for a thorough review.
-- **Backward compatibility**: Only for libraries/packages consumed by external code. Within the project itself, refactor freely.
-- **Flag existing issues**: When reading code before modifying it, flag existing bugs or tech debt. Maintain a `known-issues.md` in source control (see `~/.claude/project-docs.md` for guidance); consult it before starting work; remove resolved issues promptly.
-- **Never use em-dashes (Unicode U+2014) in generated prose by default.** This applies to chat responses, comments, commit messages, PR/issue text, and documentation. Use a regular hyphen, comma, semicolon, colon, parenthetical, or a fresh sentence instead. Em-dashes are an unmistakable AI-tell that the user does not want in the work product. If a task explicitly requires exact literal fidelity (for example quoted source text, fixtures, protocol examples, or parser tests), preserve the literal exactly and note why. `---` for horizontal rules is fine because it is three hyphens, not an em-dash.
+- **Always run a rate-limit retry cron — for every request, never stall.** From the start of any request, keep a ~2-minute cron running (`CronCreate`, e.g. `*/2 * * * *`) that catches any throttling (`429` / secondary rate limit / usage limit / "try again later" from any tool, model, or API) and retries the pending work a few minutes later, so nothing stalls silently on a rate limit. The cron self-deletes (`CronDelete`) once the work completes and escalates after a sensible ceiling. Fuller version in `git-workflow.md` §"Rate-limit handling".
+- **Simplicity First**: make every change as simple as possible. Minimal impact.
+- **No Laziness**: find root causes. No temporary fixes. Senior developer standards.
+- **Minimal Impact**: touch only what's necessary. When uncertain between two approaches, pick the simpler one and move forward rather than asking.
+- **Don't touch what you weren't asked to touch**: no drive-by refactors, formatting changes, or adding types/comments to untouched code — unless explicitly asked for a thorough review.
+- **Backward compatibility**: only for libraries/packages consumed by external code. Within the project, refactor freely.
+- **Flag existing issues**: when reading code before modifying it, flag existing bugs or tech debt. Maintain a `known-issues.md` in source control (see `project-docs.md`); consult it before starting work; remove resolved issues promptly.
+- **Never use em-dashes (Unicode U+2014) in generated prose by default.** Applies to chat, comments, commit messages, PR/issue text, and docs. Use a hyphen, comma, semicolon, colon, parenthetical, or a fresh sentence. Em-dashes are an unmistakable AI-tell the user does not want. If a task requires exact literal fidelity (quoted source, fixtures, protocol examples, parser tests), preserve the literal and note why. `---` for horizontal rules is fine (three hyphens, not an em-dash).
 
 ## Workflow
 
@@ -72,221 +59,174 @@ The project list lives in `~/.claude/projects.md`. Read it when starting work on
 
 Before answering architecture questions or starting non-trivial work in an unfamiliar project:
 
-- Read the project's `CLAUDE.md` first — it takes precedence over global rules for anything it addresses
-- Check `known-issues.md` at the project root (format in `~/.claude/project-docs.md`) to avoid tripping over documented bugs or tech debt
-- Check if `graphify-out/GRAPH_REPORT.md` exists — if so, read it for god nodes, community structure, and component relationships before touching any code
-- If `graphify-out/wiki/index.md` exists, navigate it instead of reading raw source files
-- **If neither exists** (and the project has more than ~5 source files, or the architecture isn't clear from the directory listing alone): **build the graph first** before any non-trivial exploration. The graphify CLI binary registers hooks and installs the skill — the actual graph build is driven by the graphify venv's Python entry point:
+- Read the project's `CLAUDE.md` first — it takes precedence over global rules.
+- Check `known-issues.md` at the project root (format in `project-docs.md`).
+- If `graphify-out/GRAPH_REPORT.md` exists, read it for god nodes, community structure, and component relationships before touching code. If `graphify-out/wiki/index.md` exists, navigate it instead of raw source.
+- **If neither exists** (and the project has >~5 source files, or the architecture isn't clear from the directory listing): **build the graph first** before any non-trivial exploration:
 
   ```bash
   <graphify-venv>/bin/python3 \
     -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"
   ```
 
-  Resolve `<graphify-venv>` and the CLI binary path from `~/.claude/local-paths.md` (gitignored — see `local-paths.md.example` for the expected shape).
-
-  Runs 1–5 minutes depending on repo size. Use Bash `run_in_background: true` so you can start reading other things while it finishes, then wait for the completion notification before declaring the graph ready.
-
-- After modifying code files in a session, re-run the same command to keep the graph current. The `PreToolUse` hook installed by `graphify claude install` rebuilds automatically after Write/Edit/MultiEdit, but the hook has a 5-second timeout — on large edit batches it may be skipped, so run the command manually after a big refactor.
-- If `graphify claude install` has never been run in the current project, run it once to register the PreToolUse hook + add a project-level graphify section to `CLAUDE.md`.
-- For broad codebase questions (>3 searches expected), spawn an `Explore` subagent instead of burning main-context tokens
+  Resolve `<graphify-venv>` and the CLI binary path from `~/.claude/local-paths.md` (gitignored; see `local-paths.md.example`). Runs 1-5 min; use Bash `run_in_background: true` and wait for the completion notification before declaring the graph ready.
+- After modifying code, re-run the same command to keep the graph current. The `PreToolUse` hook installed by `graphify claude install` rebuilds automatically after Write/Edit/MultiEdit, but its 5-second timeout may skip large edit batches — run the command manually after a big refactor. If `graphify claude install` has never run in the project, run it once.
+- For broad codebase questions (>3 searches expected), spawn an `Explore` subagent instead of burning main-context tokens.
 
 ### 1. Plan Mode Default
 
-- Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions)
-- If something goes sideways, STOP and re-plan — don't keep pushing
-- Write detailed specs upfront to reduce ambiguity
-- **Plan format**: atomic tasks with explicit file paths, each independently verifiable. State what changes, where, and how to prove the change works.
-- **User checkpoint**: for multi-commit plans, cross-cutting refactors, or anything touching shared infrastructure (see `~/.claude/infra-ops.md`), share the plan with the user before starting implementation.
-- **Plan review loop — MANDATORY gate before implementation starts**: After drafting a plan, review it thoroughly and fix every issue found. Re-review after fixes. Repeat until **three consecutive passes find nothing** (partial credit does not exist — any finding restarts the count at zero). Do NOT create the §1b worktree, do NOT enter ExitPlanMode, and do NOT write any code until this gate passes. Each pass must cover:
-  - The five dimensions of the §1 post-implementation review — Completeness, Correctness, Security, Bugs, Duplication
-  - **Reuse (§1a)**: does the plan already search for and reference existing code this change can extend rather than duplicate?
-  - **Scope discipline**: are we touching only what was asked, or has the plan quietly grown drive-by refactors?
-  - **Blast radius**: which callers, tests, migrations, and downstream consumers does the plan's changeset affect? Are they all listed?
-  - **Unknowns**: what does the plan say "verify first" about? Verify those NOW, not at implementation time — late SDK-shape surprises force plan revisions after worktree creation, which is exactly what the gate is meant to prevent.
-  - Per-pass findings go in the plan itself as a short "review pass N" note so the loop is auditable, not a silent internal monologue.
+- Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions). If something goes sideways, STOP and re-plan.
+- **Plan format**: atomic tasks with explicit file paths, each independently verifiable. State what changes, where, and how to prove it works.
+- **User checkpoint**: for multi-commit plans, cross-cutting refactors, or anything touching shared infrastructure (`infra-ops.md`), share the plan before implementing.
+- **Plan review loop — MANDATORY gate before implementation starts**: review the plan, fix every issue, re-review. Repeat until **three consecutive passes find nothing** (any finding restarts the count at zero). Do NOT create the §1b worktree, enter ExitPlanMode, or write code until this passes. Each pass covers: the five review dimensions (see below); Reuse (§1a); scope discipline (only what was asked?); blast radius (callers, tests, migrations, downstream consumers all listed?); unknowns (verify "verify-first" items NOW, not at implementation time). Per-pass findings go in the plan as a short "review pass N" note.
 - Only after three clean passes: implement in distinct atomic commits, writing tests as you go.
-- **⚠️ MANDATORY post-implementation review — NO EXCEPTIONS**: After finishing a plan's implementation, you MUST perform a thorough review of ALL changes made before reporting the task as done. This review is a hard gate — never skip it, never defer it. Check every dimension:
-  - **Completeness**: Does it fulfil every requirement in the plan? Nothing left out?
-  - **Correctness**: Logic errors, off-by-ones, wrong assumptions, broken control flow?
-  - **Security**: Injection, auth bypass, secrets exposure, OWASP top 10, input validation at boundaries?
-  - **Bugs**: Race conditions, null derefs, edge cases, error handling gaps, resource leaks?
-  - **Duplication**: Does the implementation re-invent anything that already exists in the project? If yes, switch to reuse or refactor the existing code per step 1a.
-  - Fix every issue found. Re-review after fixes. Do not declare done until this passes cleanly.
+- **⚠️ MANDATORY post-implementation review — NO EXCEPTIONS**: after implementing, review ALL changes before reporting done. Hard gate; never skip or defer. Fix every issue, re-review, don't declare done until clean.
+
+**The five review dimensions** (used by the plan-review gate, the post-implementation review, the §1c local loop, and the `git-workflow.md` pre-commit loop):
+- **Completeness**: fulfils every requirement? Nothing left out?
+- **Correctness**: logic errors, off-by-ones, wrong assumptions, broken control flow?
+- **Security**: injection, auth bypass, secrets exposure, OWASP top 10, input validation at boundaries?
+- **Bugs**: race conditions, null derefs, edge cases, error-handling gaps, resource leaks?
+- **Duplication**: re-invents anything already in the project? If yes, reuse/refactor per §1a.
 
 ### 1a. Reuse Before Writing — Avoid Duplication
 
-Before writing any new function, type, helper, or module, actively search the codebase for existing functionality that already does the job or something close to it. Duplication is far easier to prevent than to clean up, and divergent copies drift over time into subtly different bugs.
+Before writing any new function, type, helper, or module, search the codebase for existing functionality that does the job or ~80% of it. Duplication is far easier to prevent than to clean up.
 
-- **During planning**: Grep/Glob for keywords from the task — the behaviour, the data type, the verb in the task description, related domain nouns. Read the top 3–5 hits. Ask: "does something already solve this, or 80% of this?" Treat this as a required step of plan creation, not an optional one.
-- **Check neighbours first**: look in the same package/module, then the project's `utils`/`common`/`shared`/`lib` directories, then sibling packages. Most duplication lands within a single project, often within a few files of where you're about to add the new code.
-- **Use graphify when available**: if `graphify-out/` exists, search the wiki and god-node list — the graph often surfaces existing helpers and utilities that grep misses because names don't overlap. When missing, create it first (see the workflow above) rather than falling back to raw grep for cross-cutting exploration.
-- **If similar code exists, decide explicitly**:
-  - **Exact fit**: reuse it. Import it, don't copy-paste it.
-  - **Close fit (covers ~80% of the need)**: propose refactoring the existing code to cover the new use case — add a parameter, extract a smaller helper, generalise a type, introduce an options struct. Flag the refactor in the plan, explain the blast radius (callers touched, tests affected), and get user approval before expanding scope beyond the original task.
-  - **Superficially similar but semantically different**: document in the plan *why* you're not reusing it, so the reader (and future you) knows the duplication is deliberate and not an oversight.
-- **Never silently copy-paste**: if you catch yourself writing something that "feels familiar" from earlier in the session or from another file you read, stop and search — you are almost certainly duplicating something that already exists.
-- **Cross-language duplication** (e.g. validation logic mirrored between frontend and backend) is acceptable only when unavoidable. Document both sides with a comment referencing the other location so they stay in sync.
-- **Scope discipline**: proposing a refactor to avoid duplication is not a licence to restructure the whole file. The refactor should be the minimum change that lets the existing code serve the new use case. If it balloons, split it into a separate refactor commit that lands first, then add the new use case on top.
+- **During planning** (required step): grep/Glob for keywords from the task — the behaviour, the data type, the verb, related domain nouns. Read the top 3-5 hits. Ask: "does something already solve this, or 80% of this?"
+- **Check neighbours first**: same package/module, then `utils`/`common`/`shared`/`lib`, then sibling packages.
+- **Use graphify when available**: search the wiki and god-node list — the graph surfaces helpers grep misses because names don't overlap. When missing, create it first (§0).
+- **If similar code exists, decide explicitly**: exact fit -> reuse (import, don't copy); close fit (~80%) -> propose refactoring the existing code (flag the refactor and blast radius in the plan, get approval before expanding scope); superficially similar but semantically different -> document in the plan *why* you're not reusing it.
+- **Never silently copy-paste.** If something "feels familiar," stop and search.
+- **Cross-language duplication** (e.g. validation mirrored frontend/backend) is acceptable only when unavoidable; comment both sides referencing the other.
+- **Scope discipline**: a reuse refactor is the minimum change that lets existing code serve the new case. If it balloons, land it as a separate refactor commit first, then build on top.
 
 ### 1b. Worktree Isolation Per Change
 
-Non-trivial work happens in a dedicated git worktree branched off the current branch — never commit in-progress work directly on the branch you started from. The base branch stays clean until the change is fully implemented and verified, so a broken or abandoned attempt never pollutes it.
-
-Full rules in `~/.claude/worktrees.md` — the worktree-creation command, the plan-file YAML header (worktree/base_branch/feature_branch/status/pid/host/pid_updated), the embedded workflow checklist that travels with each plan, the PID/ownership write-as-lock protocol, crash-recovery and orphan-detection rules, the 3-clean-pass merge gate, and the rebase + cleanup steps. Headline rules:
+Non-trivial work happens in a dedicated git worktree branched off the current branch — never commit in-progress work directly on the branch you started from. Full rules in `~/.claude/worktrees.md`. Headline rules:
 
 - **Precondition**: plan has passed the §1 three-pass review gate before the worktree exists.
-- **Plan persistence**: authoritative plan lives at `~/.claude/projects/<project>/plans/<slug>.md` (with YAML header + embedded workflow + tasks) so a crash mid-implementation is recoverable; symlinked into the worktree as `plan.md` and added to `.git/info/exclude`.
-- **Merge gate**: all plan items implemented + §1 post-implementation review clean + **three consecutive verification passes find no gaps** (any finding restarts the count at zero, no partial credit).
+- **Plan persistence**: authoritative plan lives at `~/.claude/projects/<project>/plans/<slug>.md` (YAML header + embedded workflow + tasks) so a crash mid-implementation is recoverable; symlinked into the worktree as `plan.md` and added to `.git/info/exclude`.
+- **Merge gate**: all plan items implemented + §1 post-implementation review clean + **three consecutive verification passes find no gaps** (any finding restarts the count at zero).
 - **Rebase, don't merge**, by default; clean up the worktree and delete the plan file after.
-- **Skip only for trivially mechanical edits** — a typo fix, a pure rename, a comment tweak. When in doubt, create the worktree.
+- **Skip only for trivially mechanical edits** — typo, pure rename, comment tweak. When in doubt, create the worktree.
+
+### 1c. Local Review Loop — Opus Reviews Every Sonnet Change, Sonnet Fixes, Repeat
+
+Every code change Sonnet produces during the implementation phase is reviewed locally by Opus before it counts as done. Local analog of the post-PR CodeRabbit loop (`git-workflow.md`): catch issues in the worktree before the diff is pushed. Does NOT replace the §1 post-implementation review or the §1b merge gate; it runs inside the implementation phase, upstream of both.
+
+The loop:
+1. **Sonnet implements** an atomic task (or one logically complete chunk) per the approved plan.
+2. **Opus reviews the diff locally** across the five review dimensions plus Reuse (§1a) and scope discipline. Review on the main session when it is Opus, or spawn a dedicated Opus reviewer subagent to keep the implementer's context clean. Emit a concrete findings list (`file:line` + what's wrong + suggested fix), or an explicit "no actionable findings".
+3. **Sonnet addresses** every finding. Mechanical, decided fixes stay on Sonnet; a finding needing a design call escalates that item to Opus (§2 carve-out), then the decided fix goes back to Sonnet.
+4. **Opus re-reviews** the updated diff.
+5. Repeat 3-4 until a review pass returns no actionable findings. "Until everything is addressed" means a clean pass, not "the obvious ones are fixed".
+
+Rules: reviewer and implementer are distinct roles, ideally distinct agents (review the diff as if a stranger wrote it); implementer on Sonnet, reviewer on Opus (set via `model`); log per-round findings in the plan file for auditability; review per task as it lands, don't batch; skip only for the same trivially mechanical edits §1b lets you skip the worktree for.
 
 ### 2. Subagent Strategy
 
-- Use subagents liberally to keep the main context window clean
-- Offload research, exploration, and parallel analysis to subagents
-- One task per subagent for focused execution
-- If a subagent runs out of context, split across multiple smaller subagents and re-run
-- **Subagent briefing checklist** — the agent starts cold with none of your context. Include: the goal, relevant context (what you already tried or ruled out), expected output format, and a length cap. Terse prompts produce shallow work.
-- **When NOT to use subagents**: tight debugging loops where each iteration informs the next, work requiring multiple rounds of your own judgement, interactive refinement with the user.
-- **Parallel vs background**: multiple independent queries → send them in one message as parallel `Agent` tool calls. Long-running watchers (CI, builds) → `run_in_background: true`, then read output when notified.
-- **Multi-agent coordination**: see `~/.claude/multi-agent-comms.md` for lock patterns (e.g., `git-push` lock before pushing shared-branch fixes).
-- **Default: delegate to the cheapest sufficient tier — actively, not just when in doubt.** Before doing a piece of work in the main session (or spawning a subagent at the same tier as the main session), ask: *can a cheaper Claude, OpenAI, or Gemini subagent handle this per the rubric below?* If yes, spawn that subagent using the `Agent` tool's `model` parameter. The main session's tier is typically the most expensive option available, so reserving it for work that genuinely needs it is the single biggest cost lever. Treat the rubric as a positive obligation to delegate down, not just a tie-breaker. This applies recursively — when a subagent itself needs to spawn further subagents, it should also default to the cheapest sufficient tier.
-- **Explicitly set the `model` parameter on EVERY `Agent` call — never rely on inheritance.** Omitting the parameter means the subagent inherits the parent session's model, which when the parent is Opus silently makes every subagent Opus too. That's a 5–10× cost premium for work that almost always doesn't need it. The rubric below tells you which tier — pick one and pass it explicitly. If you genuinely want the parent's tier (because you've judged the work warrants it), still pass it explicitly so the choice is visible in the call site, not implicit via inheritance.
-- **Routine PR-shipping splits across tiers: planning + iteration loops on Opus, implementation on Sonnet.** The standard pattern of plan + 3-pass review + worktree + implement + test + push + open-PR + ping-CR + arm-CI-watcher is NOT a single-tier workload:
-  - **Planning phase → Opus.** Drafting the §1b plan file, the three-pass plan review gate, the §1 post-implementation three-pass review, the §1a reuse-before-writing analysis, and the §5 "is there a cleaner way" check all require holding multiple competing constraints in working memory at once — invariants from the issue body, lessons from prior commits in the PR, cross-cutting test impact, edge cases the acceptance criteria didn't enumerate. Empirically, Sonnet plan reviews on real PR work miss enough subtleties (off-by-one in the rebase resolution, contract-not-actually-exercised tests, dismissed-but-still-real CR actionables) that the rework cost exceeds the up-front Opus delta.
-  - **Iteration loops → Opus.** Responding to CodeRabbit pass-N findings, fix-push cycles after a failed CI run, worktree-recovery after a watchdog stall, and conflict-resolution rebases all share the same shape: react to feedback that didn't fit the original plan, while not breaking what already worked. Sonnet agents stall on these workloads — the surface area to triage grows with each round, and a Sonnet-tier triage either dismisses real findings as "out of scope" without filing a follow-up issue or produces fix commits that don't actually exercise the contract under review.
-  - **Implementation phase → Sonnet.** Writing the diff per the plan's task breakdown, running tests/lint/build, opening the PR, mirroring labels, and the routine `gh`/`git` mechanics. With a clean plan in hand and the design questions answered upstream, Sonnet ships diffs cleanly across multi-file changes without rework.
-  - **Carve-out boundary.** A single mechanical step within an iteration loop (apply a one-line CR-suggested diff verbatim, push) is still Haiku/Sonnet-able — escalate to Opus when the loop step requires judgement about what to do, not just executing a decided fix. The §1b "skip the worktree only for trivially mechanical edits" precedent is the analogue: same rule of thumb applies to the model-tier choice within an iteration step.
-  - **Scope.** This split applies to PR-shipping workflows. Other workflows have their own rubrics — backlog triage uses the rubric in `~/.claude/triage.md`; routine watchers (`ci-watch-*`, `cr-watch-*`, `merge-watch-*`) use the polling-on-Haiku, escalate-on-Opus pattern documented in `~/.claude/git-workflow.md`.
-- **Every `gh pr create` MUST be followed by mirroring the closing issue's triage labels onto the new PR.** The full set: `priority/*`, `severity/*`, `urgency/*`, `impact/*`, `effort/*`, `type/*`, plus `triaged` (only if the issue carries it — never invent it). PRs that lack triage labels are invisible to the same priority queries that surface the issues, so an unlabeled PR is effectively unreviewable in priority order — the same shape of bug as forgetting the post-push CI watcher. Treat label-mirroring as part of the `open-PR` step, not a follow-up. For PRs that close multiple issues, take the highest `priority/*` and `severity/*` across the closed set, and union the rest. When delegating PR shipping to a subagent, include the label-mirror step in the prompt explicitly (don't assume the subagent will infer it). Project-level CLAUDE.md may add the exact `gh` invocation; the global rule is the requirement itself.
-- **Match model to task complexity via the `Agent` tool's `model` parameter** — pay for capability only when it earns it:
-  - **Haiku / gpt-5.4-mini / Gemini 3.1 Flash-Lite** (default for most delegations): file renames, typo fixes, mechanical edits with a clear spec, simple lookups (grep for a symbol, find where X is called), reading a single file to answer a factual question, formatting/style fixes, running a single command (or routine `gh`/`git` operations) and reporting output, implementing a tightly-specified function, writing a new test from a tight spec, code review of a small single-file diff, mechanical API/SDK migration where the mapping is documented, classifying or labelling items against a clear rubric (e.g. backlog triage chunks), summarising a single file or short diff. Cheap, fast, good enough when the answer is mostly mechanical or rubric-driven.
-  - **Sonnet / gpt-5.4 / Gemini 3.1 Flash**: the **implementation phase** of PR-shipping (writing the diff per a plan that already exists, running tests/lint/build, opening the PR, mirroring labels); focused multi-file changes where coordination across files needs judgement but the target shape is decided; implementing a function whose spec is mostly clear but has 1–2 design choices; code review of a multi-file diff or a diff with non-trivial logic; refactors with a clear target shape. Use when the design questions are answered upstream and the work is "execute the plan", not "decide what the plan is" or "react to a reviewer".
-  - **Opus / gpt-5.5 / Gemini 3.1 Pro** (or stay on the current top-level model): the **planning phase** of PR-shipping (drafting the §1b plan, the three-pass plan review gate, the §1 post-impl review, the §1a reuse analysis, the §5 elegance check); the **iteration loops** that follow it (CR pass-N response, fix-push after failed CI, worktree-recovery after a stall, conflict-resolution rebases); architecture decisions; multi-file refactors where the shape is unclear; debugging gnarly bugs that need hypothesis iteration; reading a large unfamiliar codebase from scratch (without `graphify-out/` available) to synthesise a mental model; any work where "understanding" or "weighing options" is the hard part rather than the mechanical output.
-  - **When in doubt, go one tier cheaper and see if the result is good enough** — for implementation, research, and mechanical work. It's easy to re-spawn on a stronger model if the cheaper one struggles, and the savings on routine work add up. **Exception**: planning phases and iteration loops (per the bullets above) default to Opus and step down only when the specific step is clearly mechanical (e.g., applying a one-line CR-suggested diff verbatim). The cost of a stalled iteration agent that needs main-session takeover exceeds the up-front Opus delta.
-  - The main conversation's model is set by the user and doesn't change mid-session; this rule only applies to `Agent` tool spawns.
+Full rubric, PR-shipping tier split, and rationale in `~/.claude/subagent-strategy.md`. Headline rules:
+
+- Use subagents liberally to keep the main context clean; one focused task per subagent. **Brief them fully** — they start cold: goal, relevant context (what you tried/ruled out), expected output format, length cap.
+- **When NOT to use subagents**: tight debugging loops where each iteration informs the next, work needing multiple rounds of your own judgement, interactive refinement with the user.
+- **Parallel vs background**: multiple independent queries -> one message with parallel `Agent` calls. Long-running watchers (CI, builds) -> `run_in_background: true`, read output when notified. Lock patterns for concurrent agents in `multi-agent-comms.md`.
+- **Delegate to the cheapest sufficient tier — actively, not just when in doubt.** The main session is usually the most expensive option; reserving it for work that needs it is the biggest cost lever.
+- **Set the `model` parameter on EVERY `Agent` call — never rely on inheritance** (inheriting Opus is a 5-10x premium on work that rarely needs it).
+- **PR-shipping splits across tiers**: planning phase + iteration loops (incl. the §1c review loop, CR responses, fix-push, rebases) -> **Opus**; implementation phase (writing the diff, tests/lint/build, opening the PR, label-mirror, `gh`/`git` mechanics) -> **Sonnet**. Mechanical single steps within an iteration loop stay Haiku/Sonnet. Compact tier guide:
+
+  | Tier | Use for |
+  |------|---------|
+  | Haiku | renames, typo/format fixes, mechanical edits with a clear spec, simple lookups, single-command runs, tightly-specified function/test, small single-file review, documented API migration, rubric classification, short summaries |
+  | Sonnet | PR implementation phase; focused multi-file changes with a decided shape; functions with 1-2 design choices; multi-file/non-trivial-logic review; refactors with a clear target |
+  | Opus | PR planning + iteration loops; architecture decisions; unclear-shape refactors; gnarly hypothesis-driven debugging; reading a large unfamiliar codebase from scratch; any work where understanding/weighing options is the hard part |
+
+  When in doubt, go one tier cheaper and re-spawn stronger if it struggles — *except* planning/iteration loops, which default to Opus.
+- **Every `gh pr create` MUST mirror the closing issue's triage labels onto the PR** (`priority/*`, `severity/*`, `urgency/*`, `impact/*`, `effort/*`, `type/*`, plus `triaged` only if the issue carries it). Part of the open-PR step, not a follow-up. Detail in `subagent-strategy.md`.
 
 ### 2a. Tool Selection
 
-Full rules live in `~/.claude/tool-usage.md` — **read it before any Bash call or script creation**. Headline principles:
+Full rules in `~/.claude/tool-usage.md` — **read before any Bash call or script creation**. Headline:
 
-- Prefer native tools (`Read`, `Edit`, `Write`, `Glob`, `Grep`, `NotebookEdit`) over Bash for file operations — faster, safer, no approval prompts.
+- Prefer native tools (`Read`, `Edit`, `Write`, `Glob`, `Grep`, `NotebookEdit`) over Bash for file ops — faster, safer, no approval prompts.
 - When using Bash, avoid approval-triggering patterns: composed commands (`&&`, `||`, `;`), compound `cd && ...`, shell expansions on untrusted paths, `sudo`/`rm -rf`/`chmod`/`chown`, piping into `bash`/`sh`, `eval`/`source`.
-- **Any multiline shell MUST be a script file in `.claude/scripts/` (persistent) or `/tmp/claude/` (throw-away) — no exceptions.** Review every script with 3 clean passes before executing. See `tool-usage.md` for the full script review loop and cleanup rules.
+- **Any multiline shell MUST be a script file in `.claude/scripts/` (persistent) or `/tmp/claude/` (throw-away)** — review with 3 clean passes before executing. Full script review loop and cleanup rules in `tool-usage.md`.
 
 ### 3. Self-Improvement Loop
 
-- After ANY correction from the user: save the lesson to auto-memory (`~/.claude/projects/<project>/memory/`)
-- Write rules that prevent the same mistake
-- **Memory entry structure**: lead with the rule or fact, then a **Why:** line (the reason or past incident) and a **How to apply:** line (when the rule triggers). Knowing *why* lets you judge edge cases instead of following the rule blindly.
-- **Before creating a new entry, search existing memories** — prefer updating an existing one over creating a duplicate.
-- **Remove stale entries promptly** — if a memory is wrong or the underlying code has changed, delete it rather than letting it rot.
-- Review lessons at session start for relevant project
-- **Workflow improvements**: whenever you notice that a rule or process described in `~/.claude/CLAUDE.md` or any linked file (`coding-standards.md`, `conventions.md`, `infra-ops.md`, `project-docs.md`, `multi-agent-comms.md`, or project-level `CLAUDE.md`) could be improved — missing guidance, ambiguous wording, outdated advice, a gap that just caused a problem — **proactively propose the change** to the user. Describe what you'd add/change and why, and wait for approval before editing the file. Do not silently skip improvements; the system gets better only if gaps are surfaced. This applies equally to project-level `CLAUDE.md` files for project-specific workflow gaps.
+- After ANY correction: save the lesson to auto-memory (`~/.claude/projects/<project>/memory/`) as a rule that prevents the same mistake.
+- **Memory entry structure**: lead with the rule or fact, then a **Why:** line (reason or past incident) and a **How to apply:** line (when it triggers). Knowing *why* lets you judge edge cases.
+- **Before creating an entry, search existing memories** — prefer updating over duplicating. **Remove stale entries promptly.** Review lessons at session start for the relevant project.
+- **Workflow improvements**: when you notice a rule in `CLAUDE.md` or any linked file could be improved (missing guidance, ambiguous wording, outdated advice, a gap that just caused a problem), **proactively propose the change** and wait for approval before editing. Applies equally to project-level `CLAUDE.md` files.
 
 ### 4. Verification Before Done
 
-- Never mark a task complete without proving it works
-- Ask: "Would a staff engineer approve this?"
-- Run tests, check logs, demonstrate correctness
-- **Per-change-type verification**:
-  - **UI/frontend**: start the dev server, use the feature in a browser, check the golden path and edge cases, monitor for regressions elsewhere. Type checks and unit tests verify correctness of code, not correctness of feature.
-    - **If the project deploys on push** (preview environments, staging-on-push, Vercel/Netlify/etc.): after local verification, push, wait for the deployment to finish (poll CI or the platform), then re-verify in the deployed browser before declaring done. Local pass ≠ deployed pass — build differences, env vars, and bundling can hide bugs that only surface in the deployed artifact.
-  - **Backend/API**: hit the endpoint with `curl` or a test, verify response shape, status codes, and error paths.
-  - **Libraries/shared code**: run the test suite AND exercise at least one consumer to catch interface regressions.
-  - **Infrastructure/ops**: see `~/.claude/infra-ops.md` for staging-first rules and rollback expectations.
-  - **CI/CD changes**: simulate locally with `act` (for GitHub Actions) before pushing.
-- **When verification isn't possible** (no dev env, external dependency, sandbox limitation): say so explicitly. Don't claim success based on type checks alone.
-- For language-specific testing conventions, see `~/.claude/conventions.md`.
+- Never mark a task complete without proving it works. Ask: "Would a staff engineer approve this?" Run tests, check logs, demonstrate correctness.
+- **Per-change-type**:
+  - **UI/frontend**: start the dev server, use the feature in a browser, check golden path + edge cases, watch for regressions. Type checks and unit tests verify code, not feature. *If the project deploys on push* (preview/staging-on-push, Vercel/Netlify): after local verification, push, wait for the deploy, then re-verify in the deployed browser. Local pass ≠ deployed pass.
+  - **Backend/API**: hit the endpoint with `curl` or a test; verify response shape, status codes, error paths.
+  - **Libraries/shared code**: run the test suite AND exercise at least one consumer.
+  - **Infrastructure/ops**: staging-first rules in `infra-ops.md`.
+  - **CI/CD changes**: simulate locally with `act` before pushing.
+- **When verification isn't possible** (no dev env, external dep, sandbox limit): say so explicitly. Don't claim success from type checks alone. Language-specific testing conventions in `conventions.md`.
 
 ### 5. Demand Elegance (Balanced)
 
 - For non-trivial changes: pause and ask "is there a more elegant way?"
-- **Signs a fix is hacky** (if any apply, look for an elegant alternative):
-  - Special-case branches for the one caller that's broken
-  - A comment apologizing for the approach ("hack:", "temporary", "TODO: revisit")
-  - A `try`/`except` (or equivalent) swallowing a symptom rather than fixing the cause
-  - A new flag or config knob added just to route around the problem
-  - Duplicated logic with slight differences between copies (see §1a)
-  - A hardcoded placeholder value (`0`, `""`, `false`, or `nil`) with a comment like "TODO" or "doesn't always provide" — represent absent data explicitly (use a pointer `*T`, a sentinel, or omit the field) so downstream code can distinguish "missing" from "actually zero"; a literal zero propagates silently through every consumer that doesn't know to special-case it
-- If a fix feels hacky: implement the elegant solution
-- Skip for simple, obvious fixes — don't over-engineer. A three-line conditional doesn't need a new abstraction.
-- See `~/.claude/coding-standards.md` for broader quality and style expectations.
+- **Signs a fix is hacky** (if any apply, look for an alternative): special-case branches for the one broken caller; an apologetic comment ("hack:", "temporary", "TODO: revisit"); a `try`/`except` swallowing a symptom instead of fixing the cause; a new flag/config knob added to route around the problem; duplicated logic with slight differences (§1a); a hardcoded placeholder (`0`, `""`, `false`, `nil`) with a "TODO"-style comment — represent absent data explicitly (pointer `*T`, sentinel, or omit the field) so consumers can distinguish "missing" from "actually zero".
+- If a fix feels hacky, implement the elegant solution. Skip for simple obvious fixes — a three-line conditional doesn't need a new abstraction. Broader quality/style expectations in `coding-standards.md`.
 
 ### 6. Autonomous Bug Fixing
 
-- When given a bug report: just fix it. Don't ask for hand-holding.
-- Point at logs, errors, failing tests — then resolve them.
-- Fix failing CI tests without being told how.
-- **Root-cause process**: reproduce → isolate → identify the faulty assumption → fix the assumption, not the symptom. A bug fix that only makes the test pass is often a patch that hides the real issue.
-- **Add a regression test** that would have caught the bug. If a test can't reasonably be written (environmental bug, flaky race condition), document why in the commit message.
-- **Escalate only for decisions, not investigations** — if you need a product call or a risky tradeoff, ask. If you just haven't finished investigating yet, keep investigating.
-- For CI failures after a push, see `~/.claude/git-workflow.md` (post-push CI watcher rules).
+- Given a bug report: just fix it. Point at logs, errors, failing tests, then resolve them. Fix failing CI tests without being told how.
+- **Root-cause process**: reproduce -> isolate -> identify the faulty assumption -> fix the assumption, not the symptom. A fix that only makes the test pass is often a patch hiding the real issue.
+- **Add a regression test** that would have caught the bug; if one can't reasonably be written (environmental, flaky race), document why in the commit message.
+- **Escalate only for decisions, not investigations.** CI failures after a push: see `git-workflow.md` (post-push CI watcher).
 
-### 7. Backlog triage + work selection
+### 7. Backlog Triage + Work Selection
 
-Run a full triage pass per `~/.claude/triage.md` when ANY of these is true:
+Full playbook (label rubric, three-pass approach for huge backlogs, parallel-agent farming, stale-sweep, anti-patterns, mechanics) in `~/.claude/triage.md`. Run a full triage pass when ANY is true:
 
-- The user says "triage", "let's triage", "prioritize the backlog", "go over open issues", or asks for a backlog/issue overview by name.
-- The user asks "what should I work on next?" AND the open count is non-trivial (>10 items) or the existing labels don't already give a clear ordering. (At ≤10 already-labelled items, skip the full pass and just sort.)
-- A backlog scan at session start (or after a major merge) shows >30 untriaged items / >5 open PRs not touched in the last 7 days (`updated:<…` not `created:<…`) / a P0 issue without recent activity — in which case offer a triage pass to the user; don't run it uninvited.
+- The user says "triage", "prioritize the backlog", "go over open issues", or asks for a backlog/issue overview by name.
+- The user asks "what should I work on next?" AND the open count is non-trivial (>10 items) or labels don't already give a clear ordering. (At ≤10 already-labelled items, just sort.)
+- A backlog scan at session start (or after a major merge) shows >30 untriaged items / >5 open PRs not touched in 7 days (`updated:<…`) / a P0 without recent activity — *offer* a pass; don't run it uninvited.
 
-For a casual "what should I do next" with a small, well-labelled backlog, **skip the full triage** — just sort the existing labels and surface the top 3 with one-line "why now" rationales. The full process is for backlogs that aren't already legible.
+**Always-on per-item rule** (regardless of whether you're running a pass): **whenever you read, create, or update an issue or PR, apply the triage rubric inline if it lacks the `triaged` marker.** Don't leave untriaged items in your wake.
 
-**Always-on per-item rule** — applies regardless of whether you're running a backlog pass:
+- **Creating** (`gh issue/pr create`): pass `--label` with the full rubric on the same call — `priority/p[0-3]`, `severity/*`, `urgency/*`, `impact/*`, `effort/*`, `type/*`, plus `triaged`.
+- **Updating** (editing body/title, commenting, any `gh issue/pr edit`): if no `triaged` label, fold a triage pass into the same edit — apply the labels, or apply `status/needs-info` + post a specific clarifying question.
+- **Reading** as part of a larger task: if you'd be the next human-attention checkpoint, apply the rubric; skip if genuinely incidental (mention it as a hygiene note).
+- **`type/question` items skip the priority rubric**: apply `type/question` + `status/needs-info`, post the question, mark `triaged`, leave open.
 
-> **Whenever you read, create, or update an issue or PR**, apply the triage rubric inline if the item lacks the `triaged` marker. Don't leave untriaged items in your wake.
+Why per-item: untriaged items accumulate silently between passes; labelling is cheapest while the context is fresh.
 
-Concretely:
-
-- **Creating a new issue or PR** (`gh issue create`, `gh pr create`): pass `--label` with the full rubric on the same call — `priority/p[0-3]`, `severity/*`, `urgency/*`, `impact/*`, `effort/*`, `type/*`, plus the positive `triaged` marker. Don't ship a `gh issue create` without labels and rely on a follow-up sweep to clean up. The rubric reasoning lives in `~/.claude/triage.md`'s "Default label set" + "Priority rubric" sections; consult them when the call isn't obvious.
-- **Updating an existing issue or PR** (editing body/title, posting a comment, applying any `gh issue edit`/`gh pr edit`): if the item has no `triaged` label, fold a triage pass into the same edit. Either apply the labels yourself if you can decide them, or apply `status/needs-info` + post a specific clarifying-question comment. Either way, the item exits your interaction triaged.
-- **Reading an issue or PR** (e.g. as part of a larger task — investigating a bug, looking up a related ticket, surveying which PRs reference a topic): if you'd be the next human-attention checkpoint that item gets, apply the rubric. Skip if the item is genuinely incidental to your task and you have no signal to apply the rubric on; in that case, mention it to the user as a hygiene note.
-- **Exception — `type/question` items** still skip the priority rubric per `~/.claude/triage.md` §"Picking the next thing to work on": apply `type/question` + `status/needs-info`, post the clarifying question, mark `triaged`, and leave open.
-
-Why per-item, not just per-pass: untriaged items accumulate silently between dedicated triage passes. The cheap moment to label them correctly is when they're already in your context — re-deriving severity/impact/effort during a scheduled sweep is more expensive than capturing it now while the situation is fresh.
-
-Headline rules from the reference file:
-
-- **Triage tags 5 dimensions plus a derived priority** — not just severity. The user-facing framing is "importance × urgency × impact"; in the taxonomy, importance is encoded as `severity/*` (no separate `importance/*` label). Apply `priority/p[0-3]`, `severity/*`, `urgency/*`, `impact/*`, `effort/*`, `type/*`, plus a `triaged` positive marker. Conform to the project's existing label scheme (run `gh label list` first); only propose new labels if none exists.
-- **Parallelize for mid-to-large backlogs.** For ~20+ untriaged items (or when the user says "in parallel"), partition the open list into chunks of ~10–15 items and spawn one `Agent` per chunk in a single message — the main session aggregates their reports into a calibrated focus list. Cap concurrency at ~6 agents per wave; for backlogs that produce more chunks, run sequential waves. Don't fan out for trivially small backlogs (<15 items). Parallelization composes with the three-pass approach for 100+ item backlogs (parallelize within each pass).
-- **Picking work is in priority order, not interest order.** Open PRs (yours-with-CI-red, yours-awaiting-fix, mergeable-yours, teammates-you-review) almost always outrank issues — scan the PR queue first. For issues, sort by 5 tiers in this order: priority band (P0→P3) → urgency → impact → unblocks-others (downstream-dependency items beat standalone ones) → effort (cheaper fixes win at all-else-equal). Surface the top 3–5 with one-line "why now" rationales. If you think the user might prefer a lower-ranked item for non-obvious reasons (strategic bet, customer commitment), name the tradeoff explicitly — don't silently substitute.
-- **While working an issue, capture follow-ups as new triaged issues — don't expand scope.** When implementing or investigating issue X you'll often spot side-quests (a related-but-separate bug, a TODO/FIXME in nearby code, a refactor opportunity, an infra-hygiene gap surfaced during repro). File each as a separate GitHub issue and **triage it at creation** with the full label set from `triage.md` §"Default label set"; never silently expand the current PR's scope, drop the observation, or leave a TODO in code as the only record. The context is cold and labelling is cheapest at the moment of discovery — untriaged follow-ups push that cost into the future. Detailed playbook in `triage.md` §"Capturing follow-ups discovered while working an issue". This is a generalisation of `git-workflow.md` §7 — that rule fires at PR-completion time, this one fires the moment you spot the side-quest.
-- **`type/question` items skip the priority rubric** during *triage* — apply `type/question` + `status/needs-info`, post the clarifying question, leave open. They re-enter triage as `type/bug` or `type/feat` once the user confirms what they actually need. During *work selection*, surface questions without `status/needs-info` (they're awaiting a response) so they get answered or closed; don't pre-filter them out.
-- **Proactively close gaps and add learnings** during triage — don't just label-and-move-on. (1) When you can't decide severity / impact / effort because the issue lacks key info, post a *specific* clarifying-question comment and apply `status/needs-info` (don't block the rest of the triage waiting for an answer). (2) When you discover context the asker didn't include (root cause hypothesis, repro steps, related PRs, environment matrix), **edit the issue** to capture it: fix a misleading title via `gh issue edit --title`, or append a clearly-marked *"Triage notes (added by @\<handle\> on YYYY-MM-DD)"* section to the body — never overwrite the asker's words. Comments are not enough — title and body are what the next reader sees first.
-- **End every triage pass** with counts and a focus list. The exact counts depend on pass type: a *regular* triage pass reports open-before / newly-triaged / stale-candidates-flagged / closed-as-duplicate / closed-as-wontdo / closed-as-completed / open-after (it does NOT close stale items — that's the dedicated sweep's job); a *stale-sweep* pass reports stale-candidate-count-before / closed-as-stale-or-wontdo / reactivated / stale-candidate-count-after. Surface hygiene flags worth raising (e.g. "5 P1s are 6+ months old — recalibrate").
-
-The detailed playbook (label rubric, three-pass approach for huge backlogs, parallel-agent farming pattern, stale-sweep procedure, anti-patterns, mechanics, proactive flagging at session start) lives in the reference file.
+Key rules from the reference file: triage tags 5 dimensions plus a derived priority (importance is encoded as `severity/*`); conform to the project's existing scheme (`gh label list` first). Parallelize for ~20+ items (chunks of 10-15, one `Agent` each, cap ~6/wave). Pick work in priority order, not interest order — PRs usually outrank issues; for issues sort by priority -> urgency -> impact -> unblocks-others -> effort, surface top 3-5 with "why now". While working an issue, file follow-ups as separate triaged issues — don't expand scope. Proactively close gaps (clarifying-question comments, edit issues to capture discovered context — never overwrite the asker's words). End every pass with counts + a focus list.
 
 ## Task Management
 
-- Use Claude Code's built-in task system (TaskCreate/TaskList/TaskUpdate)
-- Plan first, verify plan, then track progress through tasks
-- Explain changes with a high-level summary at each step
-- Capture lessons in auto-memory after corrections
+- Use Claude Code's built-in task system (TaskCreate/TaskList/TaskUpdate). Plan first, verify the plan, then track progress through tasks. Explain changes with a high-level summary at each step. Capture lessons in auto-memory after corrections.
 
 ## Git Workflow
 
-Full rules live in `~/.claude/git-workflow.md` — **read it before every commit, PR, or push**. Headline principles:
+Full rules in `~/.claude/git-workflow.md` — **read before every commit, PR, or push**. Headline:
 
-- **Conventional commits**: `type(scope): subject`, imperative mood, ≤72 chars. Never mention Anthropic/Claude. Never use heredoc-based `git commit -m` — `Write` a fresh uniquely-named file under `/tmp/claude/`, commit with `git commit -F`, and delete the file after.
-- **Small atomic commits**: one concern per commit, independently revertable.
-- **⚠️ Mandatory pre-commit review loop — 3 clean passes**: read `git diff --cached` and check Completeness, Correctness, Security, Bugs, and Duplication. Fix in the same changeset, never via follow-up commits. See `git-workflow.md` for the full dimensions and delegation guidance.
-- **Post-push CI watcher**: after every `git push`, enumerate all workflow runs for the pushed commit and launch **one background `Agent` per run** (`run_in_background: true`) named `ci-watch-<short-sha>-<workflow-slug>`. Each watcher monitors its assigned run, fetches failed logs, and **fixes CI failures autonomously** with follow-up commits. Coordinate via the multi-agent comms `git-push` lock before pushing fixes. Only escalate when a decision is required.
-- **PRs**: ≤400 lines, one concern, conventional commits title, feature branch named `type/short-description`. Never skip pre-commit hooks with `--no-verify`.
-- **Post-PR review loop (background agents)**: after `gh pr create`, trigger CodeRabbit (`@coderabbitai review`), spawn `cr-watch-<pr-#>` to wait for the bot review (60–120s polling, soft-handle 429 rate limits), triage suggestions into actionable / dismiss-with-justification / batch-nitpick, push fix commits per the pre-commit review loop, then `merge-watch-<pr-#>` waits for **human merge** (no self-merge by default), then run deploy + verification (Chrome MCP for UI, `curl` for API, `terraform plan` for IaC), then post a recommendation-to-close comment on the originating issue and **file new GitHub issues for any out-of-scope follow-ups surfaced during the loop**. Full lifecycle in `git-workflow.md`.
+- **Conventional commits**: `type(scope): subject`, imperative, ≤72 chars. Never mention Anthropic/Claude. Never use heredoc-based `git commit -m` — `Write` a fresh uniquely-named file under `/tmp/claude/`, commit with `git commit -F`, delete it after.
+- **Small atomic commits**: one concern each, independently revertable.
+- **⚠️ Mandatory pre-commit review loop — 3 clean passes**: read `git diff --cached` and check the five review dimensions (§1). Fix in the same changeset, never via follow-up commits. **Run this review on Opus as comprehensively as possible — CodeRabbit's lens is the floor, not the ceiling** (architecture, type design, silent failures, test coverage, security, comment accuracy, performance, convention fit; fan out the `pr-review-toolkit:*` agents for substantial diffs). Goal: land clean for CR AND humans on the first pass. Catching a finding locally costs one pass; catching it after review costs a push + review wait + fix commit + another round. Shipping it well the first time is much faster.
+- **Post-push CI watcher**: after every `git push`, enumerate all workflow runs for the pushed commit and launch one background `Agent` per run (`run_in_background: true`) named `ci-watch-<short-sha>-<workflow-slug>`. Each fetches failed logs and **fixes failures autonomously**. Coordinate via the `git-push` lock before pushing fixes. Escalate only for decisions.
+- **PRs**: ≤400 lines, one concern, conventional-commit title, feature branch `type/short-description`. Never `--no-verify`.
+- **Post-PR review loop**: after `gh pr create`, trigger CodeRabbit (`@coderabbitai review`) **and spawn `cr-watch-<pr-#>` as ONE atomic action — posting the trigger without arming the watcher is a defect identical in shape to `git push` without a CI watcher; safe ordering is spawn-watcher-then-trigger so a posted trigger always implies a live watcher** (60-120s polling, soft-handle 429s), triage suggestions (actionable / dismiss-with-justification / batch-nitpick), push fixes per the pre-commit loop, then re-ping `@coderabbitai review` and loop until a clean review (**never** `@coderabbitai resolve` or hand-resolving threads to silence the bot), then `merge-watch-<pr-#>` awaits **human merge** (no self-merge by default), then deploy + verify (Chrome MCP for UI, `curl` for API, `terraform plan` for IaC), then post a recommendation-to-close on the originating issue and **file new issues for out-of-scope follow-ups**. **Before declaring PR work done for a session (or any time you spot unaddressed CR comments), run the reconciliation sweep**: every open PR you authored must have a live `cr-watch`, a clean terminal CR state, or be closed — re-arm any that slipped. Full lifecycle in `git-workflow.md`.
 
 ## Session Handoff
 
-When ending a session or running low on context, leave a summary so the next session can pick up without re-reading the conversation. Minimum format:
+When ending a session or running low on context, leave a summary so the next session can continue without re-reading the conversation:
 
 ```
 ## Session Handoff — [date]
 
-**Done**: bullet list of completed work with file paths or commit refs
+**Done**: completed work with file paths or commit refs
 **In progress**: what's partially done and where it was left off
 **Blocked**: anything waiting on the user, an external dep, or a decision
-**Gotchas**: anything surprising discovered that will affect next steps
+**Gotchas**: anything surprising that will affect next steps
 **Next steps**: concrete first action for the next session
 ```

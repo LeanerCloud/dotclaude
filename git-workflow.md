@@ -26,6 +26,19 @@ Conventions for commits, pre-commit review, pull requests, and post-push CI hand
 
 Before every commit, enter a review loop (same discipline as the plan review loop). Do NOT commit after a single pass — iterate until **3 consecutive review passes find zero issues**. Do NOT skip, shortcut, or batch this step. The goal is to land clean commits in the first place, so the history doesn't need fix-up commits.
 
+**Review on Opus, as comprehensively as possible — CodeRabbit's lens is the floor, not the ceiling.** This review is judgement-heavy, so run it at Opus tier (the §1c local review loop and the plan-review gate are its analogues — both Opus per `CLAUDE.md` §2). The five dimensions above are the baseline; then go wider than any single reviewer would. Review as CodeRabbit would (its Actionable / Nitpick categories, the project's CR config, recurring past CR findings) AND as a demanding staff engineer would, across at least:
+
+- **Architecture & design fit** — does the change belong where it landed, follow the module's patterns, and avoid leaking abstractions?
+- **Type design & invariants** — are illegal states unrepresentable, invariants expressed in types rather than asserted at runtime, encapsulation intact?
+- **Silent failures** — swallowed errors, empty catch blocks, fallbacks that mask real problems, `nil`/zero placeholders standing in for absent data (per `CLAUDE.md` §5).
+- **Test coverage & edge cases** — are the new paths actually exercised, including boundaries, error paths, and the contract (not just the happy path)?
+- **Security** — beyond OWASP basics: trust boundaries, authz on every new path, secret handling, injection via every new input.
+- **Comment & doc accuracy** — do comments match the code, or did they rot during edits?
+- **Performance & resources** — N+1s, unbounded growth, leaked handles/goroutines, needless allocation on hot paths.
+- **API, naming & convention consistency** — does it match the surrounding code's idiom, naming, and the project's documented conventions?
+
+For multi-concern or substantial diffs, fan out the specialised review agents in parallel (see Delegation below) so each lens gets a dedicated pass, then compile. The goal is a PR that lands clean for CodeRabbit AND human reviewers on the first pass. The economics strongly favour this: catching a finding here costs one local pass, while catching it after CR (or a human) flags it costs a push, a 60–120s review wait, a fix commit, another CI pass, and another review round. It is much faster to ship it well the first time — every issue you preempt locally is a full round-trip you don't pay for later. This does not replace the CR loop (CodeRabbit still reviews and you still iterate to a clean pass), it shrinks it toward one pass.
+
 ### Each pass
 
 Read the full staged diff (`git diff --cached`) and the relevant unstaged context, and systematically check all five dimensions:
@@ -47,7 +60,15 @@ For a sequence of atomic commits implementing one plan: review each commit's sta
 
 ### Delegation
 
-For staged changes touching multiple concerns (Go + TS + Terraform), launch specialised review agents in parallel (`feature-dev:code-reviewer` works well) and compile findings before committing.
+For staged changes touching multiple concerns (Go + TS + Terraform) or any substantial diff, launch specialised review agents in parallel and compile their findings before committing — each agent is one comprehensive lens, and together they approximate a full review board that no single pass matches. Beyond a general reviewer (`feature-dev:code-reviewer` or `pr-review-toolkit:code-reviewer`), use the focused lenses so nothing slips between them:
+
+- `pr-review-toolkit:silent-failure-hunter` — swallowed errors, inadequate error handling, fallbacks that mask failures.
+- `pr-review-toolkit:type-design-analyzer` — encapsulation, invariant expression, type-design quality.
+- `pr-review-toolkit:pr-test-analyzer` — test coverage and edge-case completeness for the new behaviour.
+- `pr-review-toolkit:comment-analyzer` — comment accuracy and rot, especially after large doc/comment edits.
+- `pr-review-toolkit:code-simplifier` — clarity, dead code, and duplication that can be collapsed.
+
+Spawn each on the appropriate tier (the review judgement itself is Opus-class; mechanical single-file diffs can drop to Sonnet), aggregate the findings, dedupe overlaps, and resolve every actionable item before the commit lands.
 
 ### Fix before committing, never after
 
@@ -57,9 +78,23 @@ If the review finds issues, fix them in the same staged changeset — do not com
 
 After committing, run a quick sanity scan (`git show HEAD`) to catch anything the pre-commit loop missed. If this finds issues, treat it as a process failure (the pre-commit loop should have caught them). Fix-forward in a new commit only when strictly necessary (e.g., pre-commit hook caught a legitimate issue that required the commit to land first).
 
+## Rate-limit handling — always run a retry cron, never stall
+
+This is a global rule (see `CLAUDE.md` Core Principles): on every request, keep a retry cron running so any throttling is caught and retried automatically rather than stalling the work. When an operation is throttled — a `429` / `403 secondary rate limit` / "rate limit" / "usage limit" / "try again later" from the GitHub API, CodeRabbit, the model/API itself, or any CLI reporting a cooldown — do NOT abandon the work and do NOT block the session busy-waiting; let the standing cron catch it and retry.
+
+- **Run a cron on a ~2-minute cadence** (`CronCreate`, e.g. `*/2 * * * *`) whose job is to catch any throttled operation and re-attempt it. Rate-limit cooldowns are typically a few minutes, so a 2-minute tick retries soon after the window clears without hammering the limit.
+- **Each firing checks first, then retries.** If the limit has cleared, run the retry; if still limited, log and wait for the next tick (back the effective retry off toward "a few minutes" by skipping ticks when the provider returns a `Retry-After`).
+- **Self-terminate.** Once the operation succeeds (or hits a terminal non-retryable state), the cron deletes itself (`CronDelete`). A retry cron must never outlive the work it was created for.
+- **Cap and escalate.** Give up after a sensible ceiling (e.g. ~24h for a CR review, much shorter for interactive work) and escalate to the user rather than retrying forever.
+- **One cron per throttled operation**, named so it is identifiable (e.g. `retry-<operation>-<id>`). Don't fold unrelated retries into one cron.
+
+This sits on top of, not instead of, any in-agent soft-retry (e.g. the cr-watch "sleep 120s, retry" in §2): the in-agent sleep handles transient blips within a live agent, while the cron survives the agent or session being reaped mid-cooldown, so progress resumes even if the original process is gone.
+
 ## Post-push CI watcher (background agent)
 
 After every `git push` that publishes new commits, immediately enumerate **all** GitHub Actions workflow runs triggered by the push and launch **one background agent per run** to monitor each independently. A single commit typically triggers multiple workflows (build, lint, test matrix, terraform validate, security scan, deploy) — they run in parallel, fail independently, and need fixes targeted at different parts of the codebase. A single watcher agent serialising across all of them would block on the slowest, miss parallel failures, and conflate diagnoses.
+
+> **CI watchers are NOT CodeRabbit watchers.** A CI watcher's check-list ends when GitHub Actions reports the run conclusion. CodeRabbit's inline review comments are invisible to it - CR's "check" goes green once the review is *submitted*, regardless of findings inside. If this push opened a PR (or is on an open PR branch), spawn a separate `cr-watch-<pr-#>` per §"Post-PR review loop" → §"Immediate PR-creation checklist" alongside the CI watchers. The two agent kinds run in parallel with different terminal conditions and different model tiers.
 
 **Setup**:
 
@@ -90,6 +125,24 @@ Opening a PR is not the end of the agent's work — there's a full lifecycle to 
 
 The loop applies to any project that uses CodeRabbit (or an equivalent automated reviewer). Where projects use a different bot or no bot, skip steps 1–3 and start at §4.
 
+### ⚠️ Immediate PR-creation checklist - every step, every time
+
+Within ~30 seconds of `gh pr create` returning, the main session MUST have done ALL of the following. Skipping any one leaves part of the PR lifecycle unattended; CR findings or CI failures will sit silently and the human reviewer ends up doing the loop manually.
+
+1. **Label mirror**: `gh pr edit <#> --add-label <labels-from-closing-issue>` (priority/severity/urgency/impact/effort/type + `triaged`, per `~/.claude/triage.md`).
+2. **Trigger CodeRabbit** — bound atomically to step §4 (see invariant below): `gh pr comment <#> --body "@coderabbitai review"` (or the project's trigger phrase - check the project `CLAUDE.md` or memory).
+3. **CI watcher(s)**: spawn one background `Agent` per Actions workflow run that fired on the push, named `ci-watch-<short-sha>-<workflow-slug>-<run-id>`. See §"Post-push CI watcher" for the prompt shape. Their job is CI failures only - they do NOT read CodeRabbit's inline comments.
+4. **CR watcher**: spawn ONE background `Agent` named `cr-watch-<pr-#>` whose end-to-end remit is steps §2-§3 of this loop (poll for CR review → triage findings → push fixes → re-ping CR → iterate to silence). This is a SEPARATE agent from the CI watcher; do not conflate them. Its prompt should include the full §3 triage rules + the §3a rebase rules + the obligation to ping `@coderabbitai review` after each fix push. If you only spawn a CI watcher, CodeRabbit findings will sit unread because CI watchers do not poll PR comments.
+5. **Merge watcher**: spawn ONE background `Agent` named `merge-watch-<pr-#>` per §4. It waits for the human merge AND runs the §5 post-merge verification AND files the §7 follow-up issues. Spawn this immediately at PR-creation time even though it has nothing to do until merge - having it pre-armed means the merge → verification → issue-filing chain runs without main-session intervention.
+
+Total: **3+ background agents per PR** (one per CI run + cr-watch + merge-watch). Do not collapse them into one "do everything" agent - they have different polling cadences, different terminal conditions, and different model tiers. Do not omit cr-watch with the rationale that "CodeRabbit is just a bot" - its findings have the same severity weighting as a human reviewer's, and unaddressed CR threads block the human merge in projects that gate on review-bot approval.
+
+**Common failure mode** (the reason this checklist exists in this prominent form): spawning only the CI watcher and walking away. The CI watcher reports "all checks passed" once CodeRabbit's "check" reaches the green "review submitted" state - but its findings inside the review are invisible to that check. The human reviewer notices the unaddressed comments first; main session has already moved on. Always spawn cr-watch alongside ci-watch.
+
+> **⚠️ Atomic-coupling invariant — the trigger and the watcher are ONE action.** Steps §2 (post `@coderabbitai review`) and §4 (spawn `cr-watch-<pr-#>`) are not two checklist items you can do independently — they are a single indivisible action. **Never post `@coderabbitai review` for a PR unless `cr-watch-<pr-#>` for that PR is being spawned in the same response (or is already live).** This is a defect identical in shape to `git push` without a post-push CI watcher: the trigger kicks off work that nothing is then watching, so the findings sit unread until a human notices. The safe ordering is **spawn the watcher first, then post the trigger** — that way a posted trigger always provably implies a live watcher, and you can never end up trigger-without-watcher. When triggering CR across several PRs at once (e.g. after a sweep that opened or pushed to N PRs, or when the parent session opens PRs from N subagent-pushed branches), spawn **N `cr-watch` agents — one per PR — in the same message as the N triggers**. A batch of triggers with no matching batch of watchers is the precise failure that leaves a wall of CR findings unaddressed (and it is the failure this section was extended to prevent).
+
+> **Reconciliation sweep — the backstop that catches whatever slips through.** The atomic-coupling invariant prevents the miss at trigger time, but watchers crash, agents get reaped, and triggers get posted in a prior session that this one never saw. So: **before declaring PR work done for a session, and any time you notice unaddressed CR comments, reconcile.** List every open PR you authored (`gh pr list --author @me --state open` or the session's known PR set) and confirm each is in exactly one of: (a) a live `cr-watch-<pr-#>` is polling it, (b) it has reached a clean terminal CR state (latest CR review = zero Actionable AND every Nitpick fixed-or-justified), or (c) it is closed. Any PR with CR findings (or an un-responded trigger) and no live watcher gets a fresh `cr-watch` spawned immediately. This sweep is cheap (one `gh` list + a per-PR review-state check) and is the only thing that catches drift after the fact — run it as a session-end gate, not an optional nicety.
+
 ### 1. Trigger CodeRabbit immediately after PR creation
 
 - Right after `gh pr create`, post a comment with the literal body `@coderabbitai review` (or whichever trigger phrase the project uses — check the project's `CLAUDE.md` or memory).
@@ -100,7 +153,9 @@ The loop applies to any project that uses CodeRabbit (or an equivalent automated
 Spawn a background `Agent` named `cr-watch-<pr-#>` (`model: haiku` — polling, rate-limit handling, and the §3 triage into Actionable/Stylistic/Nitpick are all rubric-driven; **re-spawn fix commits on Opus** — CR-loop fix commits are an iteration loop per CLAUDE.md §2 and run on Opus regardless of how localised the diff looks, because the triage call about which findings to fix vs. dismiss-with-justification, and whether a "tiny fix" reveals an architectural gap, is the judgement that Sonnet has empirically gotten wrong here. Step down to Haiku/Sonnet only when applying a fully-prescribed diff verbatim with no judgement involved) that:
 
 - Polls `gh api repos/<owner>/<repo>/pulls/<#>/comments` and `gh pr view <#> --json reviews` every **60–120s** (never faster — CodeRabbit's own backend rate-limits review processing and aggressive polling won't make the review come faster).
-- Treats `429`, `403 secondary rate limit`, or any "rate limit" string in the response body as a **soft** error: log, sleep 120s, retry. Do not escalate. Rate-limit responses are normal during high-traffic windows; a watcher that escalates on every 429 wastes user attention.
+- Treats `429`, `403 secondary rate limit`, or any "rate limit" string in the response body as a **soft** error: log, sleep 120s, retry. Do not escalate. Rate-limit responses are normal during high-traffic windows; a watcher that escalates on every 429 wastes user attention. If the cooldown is long or the agent may be reaped before it clears, also schedule a retry cron per §"Rate-limit handling" so progress resumes even if this watcher dies mid-wait.
+- **Detect CodeRabbit's posted rate-limit message and honor its stated cooldown exactly.** CodeRabbit signals throttling not only via HTTP `429` but as a *posted comment/review* whose body reads, e.g.: `Rate limit exceeded` / `@<user> has exceeded the limit for the number of commits that can be reviewed per hour. Please wait 10 minutes and 38 seconds before requesting another review.` When you see this, parse the stated wait (`Xm Ys`) and schedule a retry cron for **that exact duration plus a ~30s buffer** (per §"Rate-limit handling", but use the stated cooldown instead of the default 2-minute tick — the provider told you precisely how long to wait, so honor it rather than polling early and burning more of the quota). When the cron fires, re-post `@coderabbitai review` and confirm a real review actually arrives before proceeding to §3. Do NOT treat the warning comment itself as a review: it carries no findings, so it is not loop-exit and must not be counted as a clean pass.
+- **`out of usage credits` / billing messages → escalate, do not retry.** If the message says credits are exhausted (e.g. `You've run out of usage credits. Purchase more in the billing tab.`), waiting will not help. Escalate to the user with the verbatim message and pause the CR loop; resume only once the user confirms credits are restored. Distinguish this from a plain rate limit: a rate limit clears on its own after the stated wait, a credit exhaustion does not.
 - Stops polling once one of these terminal states is reached:
   - CodeRabbit posts a review (success — proceed to §3).
   - The PR is closed without merging (terminal — clean up, exit).
@@ -114,9 +169,11 @@ When CodeRabbit's review arrives, the watcher reads each suggestion and triages 
 - **Stylistic preference contrary to project conventions** (or a trade-off that was already considered during implementation): reply on the PR comment with a brief justification linking to the convention in `CLAUDE.md` or the relevant code; do NOT commit a change.
 - **Genuine nitpick** (minor, unambiguously safe to apply, not contrary to convention): fix it. **Batch nitpicks into one commit** rather than one-commit-per-nitpick — single-line fix commits create review noise and inflate the history without buying anything.
 
-After the response pass, post one PR comment summarising what was addressed vs. dismissed and why. This avoids leaving CodeRabbit's threads silently unaddressed and gives the human reviewer a clean signal that the bot pass is complete. **End that comment with a fresh `@coderabbitai review` ping** so the bot re-reviews the fix push — without the explicit ping CodeRabbit will sometimes process a re-review automatically and sometimes not, depending on configuration; the explicit ping makes the loop deterministic.
+After the response pass, post one PR comment summarising what was addressed vs. dismissed and why. This avoids leaving CodeRabbit's threads silently unaddressed and gives the human reviewer a clean signal that the bot pass is complete. **End that comment with a fresh `@coderabbitai review` ping** so the bot re-reviews the fix push — without the explicit ping CodeRabbit will sometimes process a re-review automatically and sometimes not, depending on configuration; the explicit ping makes the loop deterministic. This re-ping is the most common trigger for CodeRabbit's "exceeded the limit for the number of commits that can be reviewed per hour. Please wait Xm Ys" message — if you get it, do not abandon the round: parse the stated wait and re-ping after exactly that long per §2's stated-cooldown rule.
 
 **Iterate until CodeRabbit is silent.** Each fresh CR review starts a new triage round — read every Actionable / Nitpick / Outside-diff finding, apply the bucket rules, push a fix commit (or post a justification reply), and ping `@coderabbitai review` again. CR commonly produces 3–6 review passes on a substantive PR before reaching all-clear; "I addressed pass 1" is **not** loop-exit. The loop only exits when the most recent CR review contains zero **Actionable** items AND every **Nitpick** is either fixed or has a justification reply on the inline thread. Dismissing nitpicks silently by ignoring them is not loop-exit — it leaves the threads unresolved and the human reviewer has to re-triage them. If after a fix push CR returns the SAME finding (i.e., the fix didn't actually address the concern), do not just push another best-effort attempt — read the original finding more carefully and either (a) push a real fix that genuinely closes the gap or (b) reply on the inline thread explaining why the fix as-pushed addresses the concern and that CR's re-flag is a duplicate; never let the same finding ping-pong more than 2 rounds without explicit user direction.
+
+**Never use `@coderabbitai resolve` — and never click "Resolve conversation" to quiet a thread.** The only sanctioned way through the loop is to genuinely address every finding (a real fix commit, or a justification reply on the inline thread) and then ping `@coderabbitai review` for a fresh pass. `@coderabbitai resolve` marks CodeRabbit's threads resolved *without the underlying findings being addressed*: it fakes loop-exit by clearing the comments from the UI while the actual bugs, smells, and missing tests stay in the diff, and it strips the human reviewer of any signal that something was outstanding. Manually resolving threads to silence the bot is the same anti-pattern. Address-then-re-review is the loop; resolve-to-silence is forbidden. The loop is never "done" because the threads were resolved — it is done only when a fresh CR review comes back clean per the exit condition above.
 
 **Rate-limit etiquette during the loop.** CodeRabbit's review processing is rate-limited per repo. Do not push faster than CR can review — let each `@coderabbitai review` ping settle to a posted review before pushing the next fix commit. Pushing 4 fix commits in 60 seconds is wasted effort: CR will batch them under one review pass and your fine-grained commit history won't help anyone read the conversation back later.
 
