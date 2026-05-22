@@ -48,6 +48,9 @@ Read the full staged diff (`git diff --cached`) and the relevant unstaged contex
 - **Security**: Any injection vectors, auth bypasses, secrets exposure, missing input validation, OWASP top 10 violations?
 - **Bugs**: Race conditions, null derefs, edge cases, resource leaks, error handling gaps, broken tests, stale mocks?
 - **Duplication**: Does any new function/type/helper in this diff replicate logic that already exists in the project? Grep for distinctive identifiers, constants, or phrases from the new code to catch near-duplicates. If a duplicate is found, stop and either reuse the existing code or refactor it to cover both cases (per `CLAUDE.md` step 1a) — do NOT commit parallel copies.
+- **Memory garden match**: Scan the per-project memory at `~/.claude/projects/<project-slug>/memory/feedback_*.md` (and any matching `project_*.md`) and apply every entry whose `**How to apply:**` line matches the changeset. This is the **highest-leverage step** because the entries encode patterns CR already taught us on this project — finding a match here means CR will NOT raise the same nit again. If a finding from the current review surfaces a pattern that's NOT in memory but is generalisable, file the new `feedback_<slug>.md` after the commit lands per §"Per-project feedback memory".
+
+**If CR later finds something this review missed, treat it as a §1 process failure** — not just "CR is a useful second pair of eyes." Either the dimension wasn't checked, the memory-garden scan was skipped, or the specialised reviewer fan-out wasn't dispatched on a substantial diff. Save the lesson (new `feedback_*.md` entry) and tighten the next §1 pass.
 
 ### Each iteration
 
