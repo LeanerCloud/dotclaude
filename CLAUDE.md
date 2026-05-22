@@ -157,6 +157,7 @@ Full rules in `~/.claude/tool-usage.md` — **read before any Bash call or scrip
 - After ANY correction: save the lesson to auto-memory (`~/.claude/projects/<project>/memory/`) as a rule that prevents the same mistake.
 - **Memory entry structure**: lead with the rule or fact, then a **Why:** line (reason or past incident) and a **How to apply:** line (when it triggers). Knowing *why* lets you judge edge cases.
 - **Before creating an entry, search existing memories** — prefer updating over duplicating. **Remove stale entries promptly.** Review lessons at session start for the relevant project.
+- **Apply per-project memory at write time and review gates, not only after CR.** Project `feedback_*.md` entries (`~/.claude/projects/<project-slug>/memory/`) encode agreed patterns from prior CR rounds. Read them in four contexts, highest-leverage first: while writing new code; during the §1 pre-commit and post-impl 3-pass review gates; and before pushing CR-fix commits. Write-side schema + quality bar live in `git-workflow.md`'s "Per-project feedback memory" section.
 - **Workflow improvements**: when you notice a rule in `CLAUDE.md` or any linked file could be improved (missing guidance, ambiguous wording, outdated advice, a gap that just caused a problem), **proactively propose the change** and wait for approval before editing. Applies equally to project-level `CLAUDE.md` files.
 
 ### 4. Verification Before Done
