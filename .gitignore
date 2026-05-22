@@ -8,8 +8,10 @@ file-history/
 shell-snapshots/
 session-env/
 agent-comms/
+teams/
 telemetry/
 statsig/
+.last-cleanup
 
 # Per-session caches and logs
 cache/
