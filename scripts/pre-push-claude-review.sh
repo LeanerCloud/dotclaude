@@ -109,7 +109,7 @@ EOF
 
 REVIEW_OUTPUT="$(claude -p --model "$MODEL" < "$PROMPT_FILE" 2>&1 || true)"
 
-if [[ -z "${REVIEW_OUTPUT// /}" ]]; then
+if [[ -z "$(printf '%s' "$REVIEW_OUTPUT" | tr -d '[:space:]')" ]]; then
   echo "[pre-push-claude-review] Claude returned empty output -> letting push through."
   exit 0
 fi

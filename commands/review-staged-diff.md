@@ -2,7 +2,7 @@ Run a CR-style review of the staged diff against `git-workflow.md` §1's six dim
 
 **Inputs to gather first** (in this order):
 
-1. `git diff --cached` — the staged changeset under review. If empty, also try `git diff HEAD..HEAD~1` to review the most recent commit instead and tell the user that's what you're doing.
+1. `git diff --cached` — the staged changeset under review. If empty, also try `git diff HEAD~1..HEAD` to review the most recent commit instead and tell the user that's what you're doing.
 2. `ls ~/.claude/projects/<project-slug>/memory/feedback_*.md` — the per-project memory garden. Resolve `<project-slug>` from the working directory + the format in `~/.claude/CLAUDE.md` §3. Read the entries whose names hint at relevance to the diff (e.g. if the diff is Go code, read the `feedback_*go*` and any concurrency/context entries; if Terraform, read the `feedback_tf_*` entries).
 3. The project's `CLAUDE.md` (root or `~/.claude/projects/<slug>/CLAUDE.md`) — for project-specific overrides.
 
