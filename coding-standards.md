@@ -82,6 +82,13 @@ Ensure `.github/workflows/` (or equivalent) has at minimum:
 - Never log PII, secrets, or tokens — scrub before logging
 - Fail fast at startup for missing required config; don't discover it at runtime
 
+## Fallbacks, Magic Values & Enums
+
+- **No silent fallbacks — fail loud.** If something required is missing, wrong, or unavailable (a config value, an upstream/API response, a looked-up record, a price/amount), return an explicit error rather than substituting a fabricated, default, or degraded value to "keep going." This matters most on irreversible or money-affecting paths (payments, purchases, billing, data mutations) — a loud, visible failure beats a silent wrong result. Keep a fallback only with deliberate sign-off, and even then log it loudly.
+- **No hardcoded magic values or fixed ratios.** Derive values from the source data, config, or named constants — don't bake in financial assumptions (discount %, term lengths), unit ratios (e.g. memory-per-vCPU), or environment specifics (region/account/endpoint). Name any genuinely-constant value; on unrecognized or absent input, error — don't default.
+- **Prefer typed enums/constants over bare string values.** Represent enumerable concepts (status, type, payment option, term, provider) as a typed enum/const set, or the SDK's own enum — never scatter raw string literals. Parse external input into the typed value at the boundary and error on unknown. For outbound SDK/API fields use the SDK's enum constants verbatim (a wrong literal that "looks right" fails silently).
+- Address such instances proactively when reading or modifying code, each with a regression test asserting the error path.
+
 ## Security
 
 - Never hardcode credentials, secrets, or API keys — use environment variables or a secret manager
