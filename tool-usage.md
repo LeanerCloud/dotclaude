@@ -59,6 +59,19 @@ Each pass checks the same four dimensions:
 
 Fix every issue found and reset the clean-pass counter — you need 3 clean passes *after* the last fix. The cost of a 30-second review is far less than the cost of a destructive bug.
 
+## Auto-fixing formatters/linters: match the CI-pinned version, or don't run them
+
+Auto-fixing hooks (`gofmt`/`gofumpt`, `prettier`, `black`, `ruff format`, `terraform fmt`, `rubocop -a`) produce *different output across tool versions*. Running one whose version differs from CI's pinned version is actively harmful, not merely useless:
+
+- Running it with `--all-files` (or letting an agent do so) **rewrites CI-clean files across the whole repo**, producing a large spurious diff that looks like a fix but is contamination. If committed (especially via `git add -A`), it pollutes the PR with unrelated reformats and still won't match CI.
+- A check-only hook on the wrong version reports false failures on files CI considers clean, sending you chasing phantom problems.
+
+Rules:
+- Before trusting or committing any local formatter result, confirm your tool version matches CI's pinned version (CI workflow `setup-go`/`setup-node`/etc., or the repo's `.tool-versions`/`go.mod toolchain`/`.nvmrc`). If it doesn't match, treat the local result as unreliable.
+- Pin the hook to the repo's version source (e.g. Go: run `gofmt` from the `go.mod` `toolchain` via explicit `GOTOOLCHAIN=go1.xx.y`; JS: the repo's pinned `prettier`). Language-specific recipe for Go is in `conventions.md` ("Code Style").
+- When a CI format check fails on a stale branch, the fix is usually to **rebase onto the cleaned-up base** (which already carries CI-formatted files), NOT to hand-run a local formatter and commit its whole-repo output. Let CI confirm the format hook; never commit an auto-fixer's repo-wide reformat to "make CI green."
+- Never stage an auto-fixer's output with `git add -A`/`git add .` — stage only the specific files your change owns.
+
 ## Why this matters
 
 The cost of approval prompts is real: each one breaks flow, requires user attention, and slows the loop. Choosing the right tool the first time keeps iteration fast and the user uninterrupted.

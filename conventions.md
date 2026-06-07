@@ -14,6 +14,11 @@ Language- and technology-specific conventions. Read the relevant sections when w
 ### Code Style
 - Run `golangci-lint run` (all checks enabled) before every commit via pre-commit hook (`govet` is included by default — no need to run `go vet` separately)
 - Format with `gofumpt` (stricter than `gofmt`)
+- **Pin the formatter to the repo's CI Go version — a version-skewed `gofmt`/`gofumpt` is worse than none.** gofmt's output changes between Go minor versions (e.g. const-block alignment shifted in 1.26). A pre-commit hook that runs the developer's *ambient* `gofmt` (the default for `dnephin/pre-commit-golang`'s `go-fmt`, and any `language: system` hook) silently diverges from CI when the dev's Go is newer than CI's: it flags or rewrites files CI considers clean. Running such a hook with `--all-files` then **reformats CI-clean files across the whole repo**, producing spurious diffs that masquerade as fixes. Make local == CI by pinning one source of truth (`go.mod`):
+  - Replace the ambient `go-fmt` hook with a local script that forces the `go.mod` `toolchain` regardless of the dev's installed Go. `GOTOOLCHAIN=auto` is NOT enough — it only *upgrades* to meet `go.mod`'s minimum, never downgrades a newer dev Go — so pin explicitly: `TOOLCHAIN=$(awk '/^toolchain /{print $2}' go.mod); GOROOT="$(GOTOOLCHAIN="$TOOLCHAIN" go env GOROOT)"; "$GOROOT/bin/gofmt" -l $(git ls-files '*.go' | grep -v /vendor/)` (fail if non-empty).
+  - In CI, use `actions/setup-go` with `go-version-file: go.mod` (not a hardcoded `go-version`), so the runner tracks the same pinned toolchain and can't drift.
+  - Add `default_install_hook_types: [pre-commit, pre-push]` to `.pre-commit-config.yaml` so a plain `pre-commit install` arms the commit-stage format check.
+  - Corollary when consuming a local format/lint result: if your tool version doesn't match CI's pinned version, treat the local result as unreliable — never commit an auto-fixer's whole-repo reformat to "fix CI"; rebase onto the cleaned-up base (which already carries CI-formatted files) and let CI confirm.
 - Follow Go naming idioms: exported names in `CamelCase`, unexported in `camelCase`, acronyms consistent (`userID` not `userId`, `HTTPServer` not `HttpServer`)
 - Receiver names: short, consistent, never `self` or `this`
 - Error variables: `ErrFoo` for sentinel errors, `FooError` for types
