@@ -18,6 +18,16 @@ The standard pattern (plan + 3-pass review + worktree + implement + test + push 
 - **Carve-out boundary.** A single mechanical step within an iteration loop (apply a one-line CR-suggested diff verbatim, push) is still Haiku/Sonnet-able. Escalate to Opus when the loop step requires judgement about *what* to do, not just executing a decided fix. (Same rule of thumb as §1b's "skip the worktree only for trivially mechanical edits".)
 - **Scope.** This split applies to PR-shipping. Other workflows have their own rubrics: backlog triage uses `triage.md`; routine watchers (`ci-watch-*`, `cr-watch-*`, `merge-watch-*`) use polling-on-Haiku, escalate-on-Opus per `git-workflow.md`.
 
+## Background-first execution (don't block the main chat)
+
+The main session is the user's interactive channel; blocking it on work that could run detached wastes their time. Default to background for anything that does not gate the immediate next step.
+
+- **Background by default.** Subagent work that is long-running or independent - builds, full test/lint suites, CI/deploy/CR/merge watchers, rebases, migrations, codebase-wide sweeps, research fan-outs - is spawned with `run_in_background: true`. The harness notifies you on completion; **never poll** (`TaskOutput` / status loops just re-block the main session). Long shell commands (builds, test suites, `terraform plan`, large downloads) use Bash `run_in_background: true` the same way.
+- **Parallelize independent work.** When several tasks do not depend on each other, dispatch them in a single message (parallel `Agent` calls / one batch) rather than serially.
+- **Foreground only when** the very next action consumes the result and you cannot proceed without it, it is a tight debugging loop where each step informs the next, or it is interactive refinement with the user. When unsure whether the result gates the next step, background it and move other work forward.
+- **Hand control back while work runs.** After dispatching background work, return to the user or pick up the next independent task instead of idling - summarize what is running and what you will do when it lands.
+- **Keep verification honest.** Backgrounding must not skip the post-implementation review or end-to-end verification (CLAUDE.md section 4). Collect and check each background result before reporting it done: a launched agent is not a completed one.
+
 ## Model rubric — match tier to task complexity
 
 - **Haiku / gpt-5.4-mini / Gemini 3.1 Flash-Lite** (default for most delegations): file renames, typo fixes, mechanical edits with a clear spec, simple lookups (grep for a symbol, find where X is called), reading one file to answer a factual question, formatting/style fixes, running a single command (or routine `gh`/`git` op) and reporting output, implementing a tightly-specified function, writing a test from a tight spec, code review of a small single-file diff, mechanical API/SDK migration with a documented mapping, classifying/labelling against a clear rubric (e.g. triage chunks), summarising one file or short diff. Cheap, fast, good enough when the answer is mostly mechanical or rubric-driven.
