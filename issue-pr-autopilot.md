@@ -82,15 +82,14 @@ across the hour so a plan from `:00` can be implemented at `:15`, and a plan fro
 
 | Routine | Cron (UTC) | Model | Prompt | Role |
 |---|---|---|---|---|
-| `cudly-autopilot-plan-a` | `0 * * * *` | `claude-opus-4-6` | `issue-pr-autopilot.plan.prompt.md` | plan top eligible issue(s) |
-| `cudly-autopilot-work-a` | `15 * * * *` | `claude-sonnet-4-6` | `issue-pr-autopilot.worker.prompt.md` | reconcile + conflict-resolve + CR-advance + implement |
-| `cudly-autopilot-plan-b` | `30 * * * *` | `claude-opus-4-6` | `issue-pr-autopilot.plan.prompt.md` | plan top eligible issue(s) |
-| `cudly-autopilot-work-b` | `45 * * * *` | `claude-sonnet-4-6` | `issue-pr-autopilot.worker.prompt.md` | reconcile + conflict-resolve + CR-advance + implement |
+| `cudly-autopilot-plan-a` | `0 * * * *` | latest available Opus model | `issue-pr-autopilot.plan.prompt.md` | plan top eligible issue(s) |
+| `cudly-autopilot-work-a` | `15 * * * *` | latest available Sonnet model | `issue-pr-autopilot.worker.prompt.md` | reconcile + conflict-resolve + CR-advance + implement |
+| `cudly-autopilot-plan-b` | `30 * * * *` | latest available Opus model | `issue-pr-autopilot.plan.prompt.md` | plan top eligible issue(s) |
+| `cudly-autopilot-work-b` | `45 * * * *` | latest available Sonnet model | `issue-pr-autopilot.worker.prompt.md` | reconcile + conflict-resolve + CR-advance + implement |
 
-> Pin the planner model to the **repo's current Opus id** and the worker to the
-> current Sonnet id, keeping the two on the **same generation** (here
-> `claude-opus-4-6` / `claude-sonnet-4-6`). Bump both together when the generation
-> rolls.
+> Set the planner model to the **current latest Opus model id** and the worker to
+> the **current latest Sonnet model id** at routine-creation time. Refresh both
+> together when a newer generation ships so they stay on the same generation.
 
 ### RemoteTrigger create-bodies
 
@@ -109,7 +108,7 @@ git sources let the cold agent read this repo's guidelines plus the target repo.
     "ccr": {
       "environment_id": "env_01DCb7bHtxWMDQZ8MBr67maL",
       "session_context": {
-        "model": "claude-opus-4-6",
+        "model": "<current latest Opus model id>",
         "sources": [
           {"git_repository": {"url": "https://github.com/LeanerCloud/CUDly"}},
           {"git_repository": {"url": "https://github.com/LeanerCloud/dotclaude"}}
@@ -131,9 +130,9 @@ git sources let the cold agent read this repo's guidelines plus the target repo.
 ```
 
 - `cudly-autopilot-plan-b`: identical except `name`, `cron_expression: "30 * * * *"`,
-  and a fresh `uuid`. Same Opus model and plan prompt.
+  and a fresh `uuid`. Same (latest available Opus) model and plan prompt.
 - `cudly-autopilot-work-a`: same shape with `name: "cudly-autopilot-work-a"`,
-  `cron_expression: "15 * * * *"`, `model: "claude-sonnet-4-6"`,
+  `cron_expression: "15 * * * *"`, `model: "<current latest Sonnet model id>"`,
   `message.content` = full text of `issue-pr-autopilot.worker.prompt.md`, and a
   fresh `uuid`.
 - `cudly-autopilot-work-b`: same as work-a except `name` and
