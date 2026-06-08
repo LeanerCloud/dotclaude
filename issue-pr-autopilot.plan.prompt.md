@@ -18,7 +18,7 @@ Precedence: dotclaude global rules + the GLOBAL HARD CONSTRAINTS below are non-n
 - Repo: LeanerCloud/CUDly
 - Base branch (branch all plan branches OFF this; NEVER target main or any shared branch): feat/multicloud-web-frontend
 - Plan cap per fire: select at most 2 eligible issues this run (HARD cap)
-- Eligibility (plan): open issues that are `triaged` and DO NOT carry `plan-ready`, `pr-created`, `needs-human`, `type/question`, `status/blocked`, or `status/needs-info`
+- Eligibility (plan): open issues that are `triaged` and DO NOT carry `plan-ready`, `pr-created`, `pr-merged`, `needs-human`, `type/question`, `status/blocked`, or `status/needs-info`
 
 ## First: load the target repo's conventions
 Read these from the CUDly checkout and obey them as the primary authority for repo-specific code style and build/test commands: CLAUDE.md (repo root), CONTRIBUTING.md, and any docs/ standards they point to. Your plan must be implementable to these standards by a cold worker.
@@ -35,11 +35,11 @@ Create the labels if missing:
 ## Phase 0 - Preflight (cheap; bail early)
 1. gh api user --jq .login ; confirm repo access.
 2. Ensure the four labels exist.
-3. Count eligible issues: gh issue list --repo LeanerCloud/CUDly --state open --search 'label:triaged -label:plan-ready -label:pr-created -label:needs-human -label:type/question -label:status/blocked -label:status/needs-info' --limit 200 --json number --jq length
+3. Count eligible issues: gh issue list --repo LeanerCloud/CUDly --state open --search 'label:triaged -label:plan-ready -label:pr-created -label:pr-merged -label:needs-human -label:type/question -label:status/blocked -label:status/needs-info' --limit 200 --json number --jq length
 4. If 0 eligible -> write a one-line 'nothing to plan' summary and STOP.
 
 ## Phase 1 - Select (rank by triage.md)
-1. Candidates: gh issue list --repo LeanerCloud/CUDly --state open --search 'label:triaged -label:plan-ready -label:pr-created -label:needs-human -label:type/question -label:status/blocked -label:status/needs-info' --limit 200 --json number,title,labels
+1. Candidates: gh issue list --repo LeanerCloud/CUDly --state open --search 'label:triaged -label:plan-ready -label:pr-created -label:pr-merged -label:needs-human -label:type/question -label:status/blocked -label:status/needs-info' --limit 200 --json number,title,labels
 2. Rank highest-priority first per triage.md: priority band (p0->p3) -> urgency -> impact -> unblocks-others -> effort (cheapest first).
 3. Take the top 2. Log the ranked shortlist and which (<=2) you chose.
 

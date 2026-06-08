@@ -32,7 +32,7 @@ Read these from the CUDly checkout and obey them as the primary authority for re
 - `plan-ready` (set by the planner) = a plan branch + an `autopilot-branch:` marker exist; you implement it, then add `pr-created`. plan-ready is never removed; pr-created layers on top.
 - `pr-created` = a PR exists for this issue (dedup guard; never open a second PR for a pr-created issue).
 - `pr-merged` = the issue's PR has been merged.
-- `needs-human` = give up: after N consecutive autopilot failures on an issue, add it so the item stops retrying every 4 hours; a human takes over. Skip needs-human issues entirely.
+- `needs-human` = give up: after 3 consecutive autopilot failures on an issue, add it so the item stops retrying every 4 hours; a human takes over. Skip needs-human issues entirely.
 Create the labels if missing:
   gh label create plan-ready  --color FBCA04 --description "A plan branch exists for this issue; awaiting implementation" || true
   gh label create pr-created  --color 1D76DB --description "A PR has been opened for this issue" || true
