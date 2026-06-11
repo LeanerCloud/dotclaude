@@ -1,6 +1,6 @@
 # Subagent Strategy — Detailed Rubric
 
-Detail extracted from `CLAUDE.md` §2. The headline triggers stay in `CLAUDE.md`; the rationale, the model rubric, and the PR-shipping tier split live here. Read this when deciding how to delegate work or which model tier to spawn a subagent on.
+Detail extracted from `CLAUDE.md` §2. The headline triggers stay in `CLAUDE.md`; the rationale, the model rubric, and the PR-shipping tier split live here. Read this when deciding how to delegate work, which model tier to spawn a subagent on, or whether to continue an existing agent instead of spawning a new one.
 
 ## Delegate to the cheapest sufficient tier — actively
 
@@ -27,6 +27,33 @@ The main session is the user's interactive channel; blocking it on work that cou
 - **Foreground only when** the very next action consumes the result and you cannot proceed without it, it is a tight debugging loop where each step informs the next, or it is interactive refinement with the user. When unsure whether the result gates the next step, background it and move other work forward.
 - **Hand control back while work runs.** After dispatching background work, return to the user or pick up the next independent task instead of idling - summarize what is running and what you will do when it lands.
 - **Keep verification honest.** Backgrounding must not skip the post-implementation review or end-to-end verification (CLAUDE.md section 4). Collect and check each background result before reporting it done: a launched agent is not a completed one.
+
+## Reuse agents before spawning new ones (context economy)
+
+Every fresh `Agent` spawn starts cold: it re-reads the project docs, re-greps, and re-loads every file it needs before doing anything useful. When an agent from earlier in the session already holds that context, continuing it via `SendMessage` (by agent ID or name) makes the follow-up cost only the delta. This is the agent-level analog of §1a "reuse before writing": check what already exists before creating something new.
+
+**The check, before any spawn**: does a running or recently finished agent already have the relevant files, diff, or investigation thread in context? Signals that it does:
+
+- The follow-up touches the **same files or module** the agent just read or edited (fix findings in code it wrote, extend a change it made, answer another question about the area it explored).
+- It is the **next round of the same loop**: §1c re-review of an updated diff, a CR-fix push to the same branch, a watcher follow-up on the same PR/run.
+- It is a **follow-up question** to a research/Explore/triage agent about material it already surveyed.
+
+In all of these, send the agent the new instruction with just the delta ("review the updated diff; previous findings 1 and 3 were fixed in <files>") instead of a full cold briefing.
+
+**When NOT to reuse** (spawn fresh instead):
+
+- **Independence is the point.** Adversarial verification (CLAUDE.md §4), fresh-eyes review, refute-style judging: a verifier that shares the implementer's context inherits its blind spots. Reviewer and implementer stay distinct agents; but the same reviewer SHOULD persist across rounds of its own loop.
+- **Wrong tier.** An agent's model is fixed at spawn. If the follow-up needs Opus judgement and the warm agent is Haiku/Sonnet (or the follow-up is mechanical and the warm agent is Opus, where each continued turn re-reads its whole accumulated context at Opus prices), a fresh right-tier spawn is cheaper than a wrong-tier continuation.
+- **Polluted or bloated context.** The agent went down failed paths, accumulated huge tool output, or is near its context limit. A fresh agent with a tight briefing beats a confused warm one.
+- **Unrelated task.** Overlap in time is not overlap in context; don't funnel misc work through one long-lived agent.
+
+**Tie-breaker**: when the follow-up reads the same >2-3 files the agent already loaded, reuse usually wins; when the briefing is two sentences and the files are small, a cold spawn at a cheaper tier may still be cheaper. Decide by which context is larger: the files to re-read, or the delta message.
+
+**`Workflow` scripts have no SendMessage**: each `agent()` call is a cold start. Get the same economy structurally:
+
+- **Partition by file/module, not by step.** One agent owns each file or cluster and performs ALL steps on it (read, fix, test, verify) in a single `agent()` call, instead of a per-step pipeline where stage 2's agent re-reads everything stage 1's agent just read.
+- Multi-stage pipelines are still right when stages genuinely need different perspectives (find -> adversarially verify) or different tiers; accept the re-read there, it buys independence.
+- When stages must stay separate but stage 2 only needs stage 1's *conclusions*, pass them in the prompt (file paths, line numbers, findings) so stage 2 reads only the cited spans, not the whole surface again.
 
 ## Model rubric — match tier to task complexity
 
