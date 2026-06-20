@@ -5,8 +5,9 @@ description: Drive a PR (or list of PRs, or all eligible open PRs in the current
 
 <!-- NOTE: reconstructed copy committed to dotclaude so the scheduled issue-pr-autopilot
      remote agent (which clones dotclaude) can read the CR-iteration flow. The original
-     local copy was lost; the per-pr-agent-prompt.template.md is intentionally absent and
-     the skill's documented fallback (Phase 0) covers that case. -->
+     local copy was lost and has been reconstructed here, including
+     per-pr-agent-prompt.template.md. Phase 0 still documents a fallback for environments
+     where that template happens to be unavailable. -->
 
 # pr-iterate - automate the recurring PR-iteration loop
 
