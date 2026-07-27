@@ -26,6 +26,16 @@ mcp-needs-auth-cache.json
 
 # Per-run security warning state
 security_warnings_state_*.json
+security_warnings_state_*.lock
+
+# Daemon / scheduler runtime state (control key, auth state, logs, job + security state) — never track
+daemon/
+jobs/
+security/
+daemon.log
+daemon-auth-status.json
+daemon-auth-cooldown
+scheduled_tasks.lock
 
 # Per-project memory (persisted per working directory)
 projects/
