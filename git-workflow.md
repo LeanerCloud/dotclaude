@@ -222,6 +222,8 @@ Once merged, the `merge-watch-<pr-#>` agent waits for the deploy pipeline (`gh r
 
 When verification can't be done remotely (sandboxed env, gated credentials, change requires a real customer scenario): say so explicitly in the comment in §6 — never silently skip and claim done.
 
+**Reclaim the worktree once merged.** The `merge-watch-<pr-#>` agent is the one that observes the merge, so it owns cleanup: after the §5 verification, run the worktree sweep from `~/.claude/worktrees.md` ("Reclaiming worktrees after the PR merges or closes") for this PR's branch: safety-gate it (clean tree, nothing unpushed; recover stranded work per `feedback_recover_stranded_fix_work` if not), then `git worktree remove` it, delete **both** the local branch (`git branch -D`) **and the remote branch** (`git push origin --delete <branch>` — a merged/wontfix head branch is dead; leaving it accumulates hundreds of stale remote refs), and archive/delete the plan file. If this PR was closed as wontfix instead of merged, the same sweep applies. This is what keeps `git worktree list` and `git branch -r` from silently accumulating dozens of merged-branch worktrees and refs; pair it with the periodic no-worktree **branch sweep** in `~/.claude/worktrees.md` ("Sweep merged/closed branches that have NO worktree") for branch refs left behind after their worktree is already gone.
+
 ### 6. Comment on the originating issue with the verification outcome
 
 Post a structured comment to the GitHub issue that the PR was solving:
