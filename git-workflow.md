@@ -2,6 +2,17 @@
 
 Conventions for commits, pre-commit review, pull requests, and post-push CI handling. Applies to every project unless the project's `CLAUDE.md` overrides a specific rule.
 
+## ⚠️ Initialize a repo BEFORE any non-trivial work — never build in an unversioned tree
+
+This is the first thing to check, because everything else here is worthless without a repo to commit to. **The trigger is task start, not commit time** — if you only notice there's no repo when you finally go to commit, the per-step history is already gone.
+
+- **If you're working in a PROJECT directory that is not a git repo, `git init` it immediately** — at the very start of the task, before the first file change. "Not a repo" = the environment reports `Is a git repository: false`, `git rev-parse --git-dir` fails, or there's no `.git`. Fold this check into the `CLAUDE.md` §0 "understand the codebase first" bootstrap so it fires at session start on any project. A "project directory" is any codebase/deliverable you're building or modifying — the thing that would eventually have a repo, a README, a build.
+- **Location exceptions — do NOT `git init` these, even for multi-file work**: the home directory itself (`~`), system temp / the session scratchpad (`/tmp`, `/private/tmp/...`, `$TMPDIR`), and ad-hoc non-project dirs like `~/Downloads`, `~/Desktop`, `~/.config`-style dotdirs. These are scratch/staging space, not projects — versioning them is noise. The test: *"am I building a project/deliverable here?"* → repo required. *"Is this a home/temp/downloads scratch location?"* → no repo. When in doubt about whether a dir is a project, it is (init it) — the false-negative (unversioned real work) is far more costly than a stray `.git` in a scratch dir.
+- **Creating a repo is safe and purely additive — it is the OPPOSITE of the "never destroy `.git`" rule (`CLAUDE.md` §9).** Do not let caution about *deleting* `.git` bleed into reluctance to *create* one. `git init` on a non-repo cannot lose data.
+- **Never do multi-step or multi-phase work in an unversioned tree.** Without a repo you cannot make the small atomic commits this document requires, and — worse — intermediate states are unrecoverable: editing files in place destroys the per-step history you were supposed to commit. A crash, a bad edit, or a botched mid-way refactor then has no fallback, and there is no honest way to reconstruct the per-phase commits after the fact.
+- **After `git init`**: add/confirm a `.gitignore`, make an initial commit of the starting scaffold, then commit atomically as each phase/task/change lands (per Atomic commits below). For a long autonomous build this means **a commit per phase**, landed as you go — NOT one giant commit at the end. If you catch yourself many edits deep with zero commits, stop and fix it: `git init` now, commit the current verified state as a baseline (honestly labelled — you can split it into coarse logical commits for navigability but don't fabricate per-phase history that no longer exists), and commit atomically from that point on.
+- Exempt only genuinely trivial one-shot actions (answer a question, read/inspect a file). The moment you're about to make more than a couple of related edits, the repo must exist first.
+
 ## Commit messages
 
 - Use **conventional commits** format: `type(scope): subject` — e.g. `feat(auth): add OAuth2 login`, `fix(api): handle nil pointer on empty response`.
@@ -26,7 +37,7 @@ Conventions for commits, pre-commit review, pull requests, and post-push CI hand
 
 Before every commit, enter a review loop (same discipline as the plan review loop). Do NOT commit after a single pass — iterate until **3 consecutive review passes find zero issues**. Do NOT skip, shortcut, or batch this step. The goal is to land clean commits in the first place, so the history doesn't need fix-up commits.
 
-**Review on Opus, as comprehensively as possible — CodeRabbit's lens is the floor, not the ceiling.** This review is judgement-heavy, so run it at Opus tier (the §1c local review loop and the plan-review gate are its analogues — both Opus per `CLAUDE.md` §2). The five dimensions above are the baseline; then go wider than any single reviewer would. Review as CodeRabbit would (its Actionable / Nitpick categories, the project's CR config, recurring past CR findings) AND as a demanding staff engineer would, across at least:
+**Review on Opus, as comprehensively as possible — CodeRabbit's lens is the floor, not the ceiling.** This review is judgement-heavy, so run it at Opus tier (the §1c local review loop and the plan-review gate are its analogues — both Opus per `CLAUDE.md` §2); escalate to the Fable reserve only for the hardest / highest-stakes money-path diffs. The five dimensions above are the baseline; then go wider than any single reviewer would. Review as CodeRabbit would (its Actionable / Nitpick categories, the project's CR config, recurring past CR findings) AND as a demanding staff engineer would, across at least:
 
 - **Architecture & design fit** — does the change belong where it landed, follow the module's patterns, and avoid leaking abstractions?
 - **Type design & invariants** — are illegal states unrepresentable, invariants expressed in types rather than asserted at runtime, encapsulation intact?
@@ -71,7 +82,7 @@ For staged changes touching multiple concerns (Go + TS + Terraform) or any subst
 - `pr-review-toolkit:comment-analyzer` — comment accuracy and rot, especially after large doc/comment edits.
 - `pr-review-toolkit:code-simplifier` — clarity, dead code, and duplication that can be collapsed.
 
-Spawn each on the appropriate tier (the review judgement itself is Opus-class; mechanical single-file diffs can drop to Sonnet), aggregate the findings, dedupe overlaps, and resolve every actionable item before the commit lands.
+Spawn each on the appropriate tier (the review judgement itself is Opus-class, with Fable held in reserve for the hardest money-path diffs; mechanical single-file diffs can drop to Sonnet), aggregate the findings, dedupe overlaps, and resolve every actionable item before the commit lands.
 
 ### Fix before committing, never after
 
@@ -221,6 +232,8 @@ Once merged, the `merge-watch-<pr-#>` agent waits for the deploy pipeline (`gh r
 - **Infrastructure**: `terraform plan` (expect "no changes" if the apply already happened, or expect the now-applied diff to be gone) on the affected environment.
 
 When verification can't be done remotely (sandboxed env, gated credentials, change requires a real customer scenario): say so explicitly in the comment in §6 — never silently skip and claim done.
+
+**Reclaim the worktree once merged.** The `merge-watch-<pr-#>` agent is the one that observes the merge, so it owns cleanup: after the §5 verification, run the worktree sweep from `~/.claude/worktrees.md` ("Reclaiming worktrees after the PR merges or closes") for this PR's branch: safety-gate it (clean tree, nothing unpushed; recover stranded work per `feedback_recover_stranded_fix_work` if not), then `git worktree remove` it, delete **both** the local branch (`git branch -D`) **and the remote branch** (`git push origin --delete <branch>` — a merged/wontfix head branch is dead; leaving it accumulates hundreds of stale remote refs), and archive/delete the plan file. If this PR was closed as wontfix instead of merged, the same sweep applies. This is what keeps `git worktree list` and `git branch -r` from silently accumulating dozens of merged-branch worktrees and refs; pair it with the periodic no-worktree **branch sweep** in `~/.claude/worktrees.md` ("Sweep merged/closed branches that have NO worktree") for branch refs left behind after their worktree is already gone.
 
 ### 6. Comment on the originating issue with the verification outcome
 
