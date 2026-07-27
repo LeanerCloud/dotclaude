@@ -94,6 +94,31 @@ Both are currently **disabled** (pending validation).
 > the **current latest Sonnet model id** at routine-creation time. Refresh both
 > together when a newer generation ships so they stay on the same generation.
 
+> **Server-pinned minute (observed 2026-07-27):** the `RemoteTrigger` API pins the
+> cron **minute** server-side for load-spreading, so a submitted `0 */4 * * *` is
+> rewritten to a stable server-chosen minute (the planner has landed at `:44` and
+> `:55` on successive writes, not `:00`; resubmitting `0` does not stick). The `:00`/`:30` values below are
+> therefore **nominal**. This is a latency detail only: correctness comes from the
+> `plan-ready`/`pr-created` labels, not the clock (see "Correctness is from labels,
+> not the clock"), so an inverted plan/worker order within a slot just defers the
+> pickup to the next worker fire. At enable-time, read the actual `next_run_at` /
+> `cron_expression` of both routines; if you want strict plan-before-work ordering,
+> set the worker's nominal minute later than the planner's server-assigned minute
+> (accepting the server may re-pin it too).
+
+> **Frontier-judgement escalation is manual.** The planner runs on Opus (the default
+> top tier, ~Opus-5-class): it cannot escalate to the Fable peak reserve mid-run,
+> because a routine is pinned to a single model for the whole fire and has no
+> Agent/Task tool. Opus 5 lands within ~0.5% of Fable 5's peak at roughly half the
+> cost, so Opus is the right default here and Fable is not worth a permanent second
+> routine. If a specific issue genuinely needs frontier judgement (a gnarly
+> architecture call or a high-stakes money-path plan), a **human** re-plans it
+> out-of-band on Fable — e.g. do one manual `run` of the planner with its model
+> temporarily set to the latest Fable id, or draft the plan branch by hand — then
+> let the normal worker fire pick it up via the `plan-ready` label. Do NOT add a
+> standing Fable planner routine for this; it would burn run-budget (see
+> "Run-budget") for the rare case.
+
 > **Earlier exploration routines:** `cudly-autopilot-plan-30` and
 > `cudly-autopilot-worker-45` were created during design exploration and are no
 > longer part of the active design. Delete them via the routines UI at
