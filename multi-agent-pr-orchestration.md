@@ -408,6 +408,39 @@ nothing" with the same output.** Any gate that treats an absence as a pass
 must first establish that it *looked successfully*. When a query returns
 nothing, verify the query was well-formed before believing the answer.
 
+A fourth instance, and the most embarrassing, because the gate itself was
+broken rather than the data: GitHub's `statusCheckRollup` returns **two
+different shapes**. A `CheckRun` carries `.conclusion` and `.status`; a
+`StatusContext` (what a bot publishing a commit status produces) carries
+`.state` and neither of the others. A rollup query written as
+`.conclusion // .status // "PENDING"` therefore reports every
+`StatusContext` as `PENDING` forever - including one whose `state` is
+`SUCCESS`. That misreading was repeated across six PRs, produced a public
+comment on one of them asserting something false, and delayed a merge that
+had been ready for hours.
+
+The lesson generalises past this one API: **a `//` fallback chain over
+fields that may not exist on the object you were handed will silently
+manufacture the default.** When a status query returns a suspiciously
+uniform answer across many subjects, dump one raw object and look at what
+fields it actually has before trusting the derived value. Handle both
+shapes:
+`(.conclusion // .state // .status // "PENDING")`.
+
+### A bot's green check is not evidence a review happened
+Related but distinct, and it cuts the other way. A review bot may publish a
+commit status that reads `state: success` **while it is rate-limited and has
+reviewed nothing** - the truth living only in the status *description*
+("Review rate limited"). A gate keyed on the check being green therefore
+passes a PR that was never reviewed, and unlike the traps above this one
+fails **open**.
+
+So a green bot check is necessary, not sufficient. Pair it with an actual
+verdict that names the reviewed SHA (see the channels trap above). This is
+also a strong argument against adding such a status to required checks: the
+checkbox goes green either way, so branch protection would enforce nothing
+while appearing to enforce everything.
+
 ### A push and its PR are not atomic
 A branch can be pushed and its PR never opened - the authoring session dies in
 the gap - leaving complete, reviewed-quality work on origin that is invisible
