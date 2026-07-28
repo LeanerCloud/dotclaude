@@ -485,6 +485,18 @@ What running this at multi-PR scale adds:
   in a review-fix commit, and never suppress it. Some autofixes are actively
   unsafe - a blanket misspell rewrite once renamed a real DB column
   (`cancelled_by`) and broke integration tests.
+- **Check the new code is REACHABLE from a production entry point.** Trace
+  from a real entry point (handler, scheduler, CLI command, message consumer)
+  to the new component and confirm something actually constructs and calls
+  it. A feature can be fully implemented, fully tested, and **never wired
+  up** - and that state passes every gate, because CI is green, the review
+  bot sees clean code, and an adversarial reviewer finds no bugs in code that
+  never runs. Observed: a PR whose headline feature was an org-wide
+  multi-subscription collector, where every production construction site
+  pinned a single subscription, so the new client was constructed only by its
+  own tests. The feature shipped dark and the tests proved only that it
+  *would* work if anything called it. Ask "what would have to happen at
+  runtime for this line to execute?" and answer it concretely.
 - **Ask which layer the test exercises.** The sharpest instance of "tests
   that cannot fail" seen so far: a PR's own test fired 50 direct calls at a
   service function and asserted 50. It genuinely proved the accumulator
