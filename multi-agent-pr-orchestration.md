@@ -409,6 +409,33 @@ A `sed`-built script can silently produce a 0-byte file. `bash -n` any
 generated script before arming it as a watcher (script review rules:
 `tool-usage.md`).
 
+### The remediation path can defeat the remediation
+A cleanup routine that scans for the thing it is cleaning up must not scope
+its scan by a value the fix itself tells the operator to change.
+
+Observed: a script closing an over-broad grant also scanned for and removed
+the legacy grant left by earlier runs - but scoped that scan to the
+*current* pool ID. The same script recommends migrating to a dedicated pool,
+and doing so rebuilt the search string for the NEW pool, so the original
+wildcard grant went unseen and the script exited 0 reporting success. **The
+vulnerability survived via the upgrade path the fix itself recommended.**
+
+Generalise: when a fix has a "now do X" recommendation, walk the remediation
+end-to-end WITH X applied, not only in place. The interesting failure is
+rarely "the fix doesn't work" - it is "the fix doesn't work for people who
+followed the advice".
+
+### Detection scope and removal scope must match
+Scanning broadly while removing narrowly leaves the defect *detected and
+surviving*, which is worse than not scanning: the check reports it looked.
+Observed in the same script - detection walked the whole IAM policy, removal
+was hardcoded to one role, so an equivalent-power grant under a sibling role
+(`serviceAccountTokenCreator` rather than `workloadIdentityUser`, both
+yielding impersonation) matched the check and survived the removal, with
+nothing re-reading the policy afterwards. Guards: derive both from one list,
+and **re-read the state after mutating it** rather than assuming the write
+did what the read implied.
+
 ### A control the code REFERENCES may not EXIST
 Code that names a protection mechanism reads as protected. Whether the
 mechanism is configured is a fact about the live system, not about the
