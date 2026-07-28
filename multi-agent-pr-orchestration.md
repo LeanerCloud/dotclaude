@@ -274,6 +274,45 @@ wrong verdict rather than a leaked background agent. Guards:
   either concrete findings or an explicit "NO CONFIRMED FINDINGS" plus what
   it attacked (§5, adversarial gate; §10, item 6).
 
+### A clean review must be reported, not merely finish
+The hardest state to detect is a reviewer that found nothing, because
+"nothing found" and "nothing done" produce identical silence. Every other
+outcome announces itself; this one has to be made to.
+
+Require reviewers to bracket the work explicitly:
+
+- **Start**: one line on beginning, naming the PR and the **SHA** being
+  reviewed. This alone separates "running" from "never started", which no
+  amount of waiting otherwise distinguishes, and pins what the eventual
+  verdict covers.
+- **Progress**: a brief line if the review runs long, rather than silence.
+- **Stop**: a final message stating the outcome. When that outcome is
+  nothing, it must say so *explicitly* - "NO CONFIRMED FINDINGS" - and list
+  **what was attacked and why each attack failed**.
+
+The attacked-and-failed list is what makes a clean verdict auditable. Without
+it, "no findings" is indistinguishable from "did not look", and the
+orchestrator has no basis to decide whether the gate was really satisfied.
+With it, a clean review is often *more* informative than a noisy one: the
+strongest verdict in one batch listed the delimiter-injection, scope-
+divergence, gate-bypass and region-collapse attacks it had mounted and
+refuted, which told the orchestrator far more about the code's safety than
+a list of nitpicks would have.
+
+State plainly in the brief that **finding nothing is a complete and
+acceptable result**, and that inventing findings to appear useful is worse
+than finding none. Without that permission, agents pad reports with style
+nitpicks to look diligent, which buries any real finding and trains the
+orchestrator to skim.
+
+Two failure modes this closes, both observed:
+
+- A reviewer finishing silently and its clean result being read as a dead
+  agent - so the PR gets re-reviewed from scratch, wasting the work.
+- A dead agent being read as a clean result - so a PR is recorded as having
+  passed adversarial review that never reported at all. That direction is
+  the dangerous one.
+
 **A diagnosis that looked right and was wrong**, recorded because it cost a
 working agent: the first explanation for the silence was that the briefs
 lacked a "your final message is the deliverable" clause, and the proposed fix
@@ -494,7 +533,15 @@ spawn and when to reuse a warm agent instead; this is what every brief must
    each attack failed is a valuable result; going idle without returning one
    is not a result at all (§7). Without this, agents either invent findings
    to appear useful or stop without reporting.
-7. **Output shape** and whether it may modify code.
+7. **The start/progress/stop protocol**, stated as three numbered steps so
+   it is hard to skip: send a one-line message on **starting** that names the
+   SHA under review; a brief **progress** line rather than silence if the
+   work runs long; and a **final** message carrying the verdict. Tell it
+   plainly never to end a turn holding an unsent verdict, and that a partial
+   report naming what it did not reach beats silence. A clean review is the
+   only outcome that does not announce itself (§7), so the brief has to make
+   it announce itself.
+8. **Output shape** and whether it may modify code.
 
 ---
 
