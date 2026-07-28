@@ -462,6 +462,45 @@ injection half was closed and provable; the gate half was asserted and
 false. A PR that claims both, with only one true, closes an issue that is
 still half open.
 
+### The orchestrator's own status read has a shelf life
+In a fast-moving fan-out, a state read goes stale in minutes, and the
+orchestrator is structurally the LAST to know: each agent holds fresher
+state about its own PR than the orchestrator ever can, because it is the
+thing changing it.
+
+Observed: the orchestrator queried a PR head, composed an instruction, and
+told the agent that a fix "has not landed" - a push had arrived in the gap.
+The agent had to spend a round correcting it. Harmless once; corrosive if
+repeated, because an agent that receives confidently wrong state starts
+double-checking everything the orchestrator says.
+
+Two habits:
+- **Re-verify immediately before ASSERTING a state to someone else**, not
+  merely before deciding. Deciding on a 3-minute-old read is usually fine;
+  telling an agent its work is missing is not.
+- **Phrase instructions conditionally when the agent owns the state**:
+  "if the README fix has not landed yet, fold it in" rather than "the README
+  fix has not landed". The conditional is correct under both readings and
+  costs nothing.
+
+### Classify bot output, do not count it
+The strongest watcher seen in practice does not ask "did the bot respond?"
+It sorts each response into one of three buckets and acts differently on
+each:
+
+- **action-performed wrapper** ("Review finished", "Review triggered") ->
+  keep waiting, log as acknowledgement
+- **rate-limit notice** -> wait out the window, then re-trigger with a FULL
+  review (an incremental pass silently skips the commits the throttled pass
+  dropped)
+- **formal review OR a comment carrying findings** (an "Actionable comments
+  posted" / walkthrough / review-details block) -> report as a verdict
+
+And on timeout it prints "no verdict - do NOT read this as clean" rather
+than exiting quietly, because a watcher that ends silently is itself an
+absence-read-as-success. Adopt this shape rather than any timestamp- or
+count-based test.
+
 ### Put the guard in the command, not in the memory
 A documented trap only helps if it is recalled at the instant the command is
 written, and that is exactly when it is not. The short-SHA trap above
