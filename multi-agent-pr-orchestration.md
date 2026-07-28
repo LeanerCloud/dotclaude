@@ -451,6 +451,24 @@ also a strong argument against adding such a status to required checks: the
 checkbox goes green either way, so branch protection would enforce nothing
 while appearing to enforce everything.
 
+**And the mirror holds too, which is the part that costs quota.** On one
+commit the status read `state: success` with
+`description: "Review rate limited"` - and its timestamp was **five seconds
+after** the same bot posted a genuine, full-range verdict. So on a single
+commit the check was simultaneously wrong in both directions: `success` did
+not mean a review had run, and "rate limited" did not mean one had not.
+
+The practical rule: **"rate limited" on the check is not grounds to
+re-trigger a review.** Check the comment stream for a verdict first. Firing
+a `full review` off the check alone re-reviews already-reviewed code and
+burns a shared, adaptive quota that every other PR in the batch is queued
+behind - so the cost of misreading it lands on work that has nothing to do
+with this PR.
+
+The general form, worth carrying to any bot-published status: **a status
+field and the work it purports to describe are two different facts.** Treat
+the status as a hint about where to look, never as the answer.
+
 ### A push and its PR are not atomic
 A branch can be pushed and its PR never opened - the authoring session dies in
 the gap - leaving complete, reviewed-quality work on origin that is invisible
