@@ -353,6 +353,19 @@ HEAD" - which was false, wasted a review cycle on an already-throttled bot,
 and put an incorrect claim on the PR. The verdict was there; it was a
 comment, not a review object.
 
+**A bodyless review object is not a verdict either.** The bot can emit a
+formal review with a fresh `submittedAt` and an EMPTY body. A gate keyed on
+"newest review is newer than HEAD" passes on it while nothing was said. So
+the freshness test must be paired with a substance test: a verdict has a
+non-empty body that names findings or their absence.
+
+Observed on one PR simultaneously: a stale formal review two commits old, an
+acknowledgement comment with a newer timestamp, an in-place edit of the
+walkthrough comment (`created_at` unchanged, `updated_at` bumped), and a
+commit status that is unreliable in both directions. **Four decoys, one
+verdict, and the verdict was the only one absent.** Enumerate all of them
+before concluding a review happened.
+
 **Acknowledgements are not verdicts.** "Understood - reviewing the current
 HEAD", "Acknowledged", "I'll review the unresolved threads" are all replies
 to a trigger, not outcomes, and they carry a *newer* timestamp than the
@@ -395,6 +408,28 @@ it, is not coverage. See §8.
 A `sed`-built script can silently produce a 0-byte file. `bash -n` any
 generated script before arming it as a watcher (script review rules:
 `tool-usage.md`).
+
+### Put the guard in the command, not in the memory
+A documented trap only helps if it is recalled at the instant the command is
+written, and that is exactly when it is not. The short-SHA trap above
+(`gh run list --commit <short-sha>` returning empty) fired **three times in
+one day, across different agents**, despite being written down - each time
+because the note was read at session start and the command was composed an
+hour later.
+
+The durable fix is to make the mistake impossible to express rather than
+memorable to avoid. Ship the assertion inline in the template:
+
+```bash
+[ ${#SHA} -eq 40 ] || { echo "need full 40-char SHA"; exit 1; }
+```
+
+Generalise it: when the same trap recurs across agents, stop strengthening
+the documentation and start encoding the constraint where the mistake is
+made - a precondition in the script, a required argument, a wrapper that
+rejects the bad shape. **Recurrence across independent agents is evidence
+that a documentation-based mitigation has failed**, not evidence that the
+documentation needs to be louder.
 
 ### Empty result vs negative result
 The session's most repeated defect, in three costumes: a throttled bot showing
