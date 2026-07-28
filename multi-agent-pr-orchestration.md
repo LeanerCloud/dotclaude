@@ -767,6 +767,20 @@ What running this at multi-PR scale adds:
   fabrication effortful and makes a vague report visible as vague - but it is
   a deterrent, not a check.
 
+  **A test can fail pre-fix for the WRONG REASON, which defeats this whole
+  rule.** Observed: a guard asserting a scopeless row must buy nothing
+  passed its pre-fix check - but only because the test left the provider
+  chain unwired, so the fan-out panicked on an unexpected mock call, the
+  runner recovered the panic into an error, and `require.Error` was
+  satisfied by that incidental failure rather than by the defect. The author
+  caught it only by re-running the pre-fix repro AFTER adding the test.
+  Guards: assert the **specific** observable (a count of purchases that
+  reached the provider, the exact derived token) rather than "an error
+  occurred"; and wire the happy path fully enough that the code under test
+  could actually SUCCEED, so the only way to fail is the defect. A test whose
+  dependencies are too incomplete to run is indistinguishable from one that
+  caught something.
+
   The actual check is cheap and has been done in practice: **the round-2
   reviewer re-derives the pre-fix failure itself.** Concretely -
   `git checkout <fix-commit>^ -- <changed-file>`, run the guard, confirm it
