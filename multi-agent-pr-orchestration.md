@@ -409,6 +409,32 @@ A `sed`-built script can silently produce a 0-byte file. `bash -n` any
 generated script before arming it as a watcher (script review rules:
 `tool-usage.md`).
 
+### A control the code REFERENCES may not EXIST
+Code that names a protection mechanism reads as protected. Whether the
+mechanism is configured is a fact about the live system, not about the
+source, and the two are checked in completely different places.
+
+Observed: a security fix narrowed a credential to jobs bound to a deployment
+environment, and the PR claimed the approval gate as one of its two
+controls. Querying the live API showed the repo's environments **all had
+`protection_rules: []`**, and the specific environments those jobs named
+**did not exist at all** - and the platform auto-creates a referenced
+environment BARE on first use, so the credentialed jobs would have run with
+no approval whatsoever. The YAML was correct; the control was vacuous. Two
+junk environments already present in the repo, minted by an earlier empty
+interpolation, proved the auto-create path had fired before.
+
+So: when a fix rests on an external control - a deployment environment, a
+branch protection rule, a trust policy, an IAM condition, a required check -
+**verify the control's live configuration, not its reference in code.** And
+prefer controls declared in IaC over ones that can be conjured empty by
+being mentioned.
+
+Corollary for reporting: state which half of a claim you verified. Here the
+injection half was closed and provable; the gate half was asserted and
+false. A PR that claims both, with only one true, closes an issue that is
+still half open.
+
 ### Put the guard in the command, not in the memory
 A documented trap only helps if it is recalled at the instant the command is
 written, and that is exactly when it is not. The short-SHA trap above
