@@ -483,6 +483,33 @@ Two habits:
   fix has not landed". The conditional is correct under both readings and
   costs nothing.
 
+### A shared adaptive quota makes parallel retry self-defeating
+The obvious design - each PR's watcher re-triggers its own review on
+throttle - is actively wrong when the quota is shared, and catastrophically
+wrong when it is also adaptive.
+
+Established in practice: the review bot's limit is **per-developer, per-
+organization, not per-PR**, and it tightens at the 95th percentile of recent
+volume. So N watchers retrying independently do not merely compete for one
+allowance, they *ratchet the ceiling down* for everything queued behind
+them. A fan-out that looks like N independent loops is one shared resource
+being contended by N clients that cannot see each other.
+
+The correct shape:
+- **One trigger in flight globally.** Serialise re-triggers across the whole
+  batch, highest-stakes PR first. Every other watcher is **observe-only** -
+  it classifies and reports, and never posts.
+- When the owner lands a verdict, the next PR takes the budget.
+- On throttle, wait the window out rather than retrying sooner; a retry
+  before the window both fails and counts.
+
+Generalise beyond review bots: **before giving each agent its own retry
+loop, ask whether the resource is per-agent or shared.** If shared, retry
+logic belongs at the orchestrator, not in the workers - each worker
+observing and reporting, with one of them holding the token. Independent
+backoff across N clients on one adaptive limit is a thundering herd with
+extra steps.
+
 ### Classify bot output, do not count it
 The strongest watcher seen in practice does not ask "did the bot respond?"
 It sorts each response into one of three buckets and acts differently on
