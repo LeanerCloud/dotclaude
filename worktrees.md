@@ -88,6 +88,19 @@ The next session enumerates `~/.claude/projects/<project>/plans/` and reads each
 - `host:` differs → can't verify PID across machines; treat as orphaned only if `pid_updated:` is older than 24h (stale heartbeat). Otherwise leave alone and coordinate via the multi-agent comms bus.
 - After adoption, `cd` to the `worktree:` path, re-read the embedded workflow, run `git status` and `git log <base_branch>..HEAD` to see progress, and resume from the first unchecked task.
 
+## Staleness and disappearance
+
+A worktree that has been around a while is not necessarily current, and is not necessarily still there. Both failure modes let you verify code that isn't the code under review, so check before doing any work in a pre-existing worktree.
+
+- **Stale = a pre-rebase copy.** After the branch is rebased (by you elsewhere, by another session, or by a CR-loop force-push), a long-lived worktree still holds the *old* commits: same commit subjects, different SHAs. Tests there pass against code that is not on the branch, and the push fails as non-fast-forward at the very end, after all the work. Detect it with the ahead/behind count, never by eyeballing:
+  ```bash
+  git fetch origin <branch>
+  git rev-list --left-right --count origin/<branch>...HEAD   # left = origin-only
+  ```
+  If behind: branch from the origin tip, cherry-pick your commits across, and **re-run every gate** — the base changed, so earlier verification no longer applies. Never resolve this with `--force` (`--force-with-lease` only, per `~/.claude/git-workflow.md`).
+  What does *not* detect staleness: file mtimes merely look "old", and externally-visible artifacts (generated schemas, build outputs) can be byte-identical across versions. Only the ahead/behind count is conclusive.
+- **Gone entirely.** Worktrees get pruned mid-session (`git worktree prune`, a cleanup sweep, a reboot clearing `$TMPDIR`). The symptom is `fatal: not a git repository` from a directory that worked minutes ago. Recreate it at the origin tip and re-run the gates; do not assume the prior run's verification still stands. This is distinct from the plan-file orphan detection above: the plan can be perfectly intact while the tree it described is gone.
+
 ## Subagent worktrees
 
 Prefer the `Agent` tool's `isolation: "worktree"` parameter when delegating the implementation to a subagent — it creates and cleans up the worktree automatically. For subagent worktrees, still persist the plan to `~/.claude/projects/<project>/plans/` with the subagent's PID in the header so the parent session can recover if the subagent crashes.

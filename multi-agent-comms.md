@@ -2,6 +2,8 @@
 
 Claude instances and agents working on the same project coordinate through a shared filesystem-based message bus at `~/.claude/agent-comms/`. This avoids conflicts, duplicated work, and broken commits when multiple sessions run concurrently.
 
+This file is the protocol between **peer** sessions that happen to share a repo. For the *hierarchical* case — one orchestrator directing implementer and reviewer agents through a queue of PRs, and coordinating via durable GitHub state rather than this bus — see `~/.claude/multi-agent-pr-orchestration.md`. The two compose: agents in that model still take the `git-commit` / `git-push` / `test-runner` locks below.
+
 ## Directory Layout
 
 ```

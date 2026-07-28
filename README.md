@@ -23,6 +23,10 @@ That work shapes the opinions in here: heavy use of multi-cloud Terraform, suppl
 | [`project-docs.md`](project-docs.md) | Project knowledge-base layout, ADR template, runbook template, `known-issues.md` convention. |
 | [`multi-agent-comms.md`](multi-agent-comms.md) | Protocol for multiple Claude instances / agents coordinating on the same project. |
 | [`triage.md`](triage.md) | Backlog triage + work selection: 5-dimension labelling (priority/severity/urgency/impact/effort), parallel-agent fan-out, three-pass approach for large backlogs, stale-sweep procedure. |
+| [`worktrees.md`](worktrees.md) | Worktree isolation per change: creation, plan persistence, PID lifecycle, crash recovery, staleness detection, merge gate, post-merge reclaim. |
+| [`subagent-strategy.md`](subagent-strategy.md) | Delegation rubric: model tiers, the PR-shipping tier split, background-first execution, agent reuse, and reviewer independence. |
+| [`multi-agent-pr-orchestration.md`](multi-agent-pr-orchestration.md) | Driving issues to merged PRs with many agents at once: orchestrator/implementer/reviewer roles, coordination between actors that share no memory, the four-gate merge check, and the traps that produce a wrong "done". |
+| [`issue-pr-autopilot.md`](issue-pr-autopilot.md) | The scheduled (cron routine) variant of the above: routine creation, the label state machine, run budget, and scheduled-context quirks. |
 | [`commands/`](commands/) | Custom slash commands. |
 | [`scripts/setup-agent-symlinks.sh`](scripts/setup-agent-symlinks.sh) | Recreate or update the symlinked guidance files inside `~/.codex` and `~/.gemini` so each file points back to the shared guidance files. |
 | [`agents/`](agents/) | Submodule pointing to [`contains-studio/agents`](https://github.com/contains-studio/agents) — a curated agent library. |

@@ -63,6 +63,7 @@ Ensure `.github/workflows/` (or equivalent) has at minimum:
 - Prefer real implementations over mocks where fast enough (in-memory DB, temp files, `httptest` servers)
 - Use mocks/stubs only at true boundaries (external APIs, email services, payment processors)
 - Every bug fix should start with a failing test that captures the bug; the fix makes it pass
+- **Assert the defect, not a proxy**: the assertion must be on the thing that was actually wrong. If the bug is "two identical purchases derive different idempotency tokens", assert on the *tokens*, not on a field that happens to feed them — a proxy assertion stays green while the defect comes back through another path
 - Test names should read as sentences: `TestUserService_CreateUser_ReturnsErrorWhenEmailTaken`
 - Don't test the framework or language — test your code
 

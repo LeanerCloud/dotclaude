@@ -8,7 +8,8 @@ A second repo LeanerCloud/dotclaude is cloned into your workspace. Locate it (e.
 - coding-standards.md, conventions.md - code style (Go/TS/Terraform)
 - worktrees.md, tool-usage.md - process rules
 - commands/ and skills - including the pr-iterate flow for driving PRs to merge-ready
-- issue-pr-autopilot.md (this same dotclaude repo) - the full multi-routine design, label state machine, concurrency model, and watcher model you are the load-bearing half of
+- multi-agent-pr-orchestration.md - the orchestration model this autopilot implements: roles, the handoff contract, the concurrency model (claims are not atomic locks), the merge gate, the loops, and the traps (false-clean review bot, stale worktree, stale plan)
+- issue-pr-autopilot.md (this same dotclaude repo) - the scheduled-variant specifics: the multi-routine design, label state machine, and watcher model you are the load-bearing half of
 Precedence: dotclaude global rules + the GLOBAL HARD CONSTRAINTS below are non-negotiable; the target repo's own CLAUDE.md/CONTRIBUTING.md win only for repo-specific code style and build/test commands.
 
 ## Runtime model for THIS scheduled agent (read carefully - it differs from a local session)

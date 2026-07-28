@@ -35,8 +35,8 @@ Detailed guidance lives in dedicated files. **Always read** the ones marked as s
 | `~/.claude/git-workflow.md` | **Always** — before staging a commit, writing a commit message, opening a PR, or after `git push` (CI watcher rules) |
 | `~/.claude/worktrees.md` | When starting any non-trivial change (§1b) |
 | `~/.claude/triage.md` | When triaging/prioritizing, before sprint planning, after a major merge, or when starting in an unfamiliar repo with an overwhelming open count (§7) |
-| `~/.claude/harness.md` | When orchestrating multiple PRs/agents concurrently — role split, independence rule, merge gates, adversarial-review loop |
-| `~/.claude/issue-pr-autopilot.md` | When setting up or operating the scheduled (cron routine) issue→PR autopilot — the unattended counterpart to `harness.md` |
+| `~/.claude/multi-agent-pr-orchestration.md` | When orchestrating multiple PRs/agents concurrently — role split, independence rule, merge gates, adversarial-review loop |
+| `~/.claude/issue-pr-autopilot.md` | When setting up or operating the scheduled (cron routine) issue→PR autopilot — the unattended variant of `multi-agent-pr-orchestration.md` |
 
 ## Projects
 
@@ -130,7 +130,7 @@ Rules: reviewer and implementer are distinct roles, ideally distinct agents (rev
 
 ### 2. Subagent Strategy
 
-Full rubric, PR-shipping tier split, and rationale in `~/.claude/subagent-strategy.md`. When the session is orchestrating **several PRs/agents at once**, read `~/.claude/harness.md` as well — it owns the orchestrator/implementer/reviewer role split, the independence rule, and the agent briefing template. Headline rules:
+Full rubric, PR-shipping tier split, and rationale in `~/.claude/subagent-strategy.md`. When the session is orchestrating **several PRs/agents at once**, read `~/.claude/multi-agent-pr-orchestration.md` as well — it owns the orchestrator/implementer/reviewer role split, the coordination model, the merge gates, and the agent briefing template. Headline rules:
 
 - Use subagents liberally to keep the main context clean; one focused task per subagent. **Brief them fully** — they start cold: goal, relevant context (what you tried/ruled out), expected output format, length cap.
 - **Reuse a live agent before spawning a new one.** Before any `Agent` spawn, check whether an agent from earlier in the session already holds the relevant context: same files, same diff, same investigation thread. If so, continue it via `SendMessage` instead of starting fresh; the files it read stay loaded, so nothing is re-read and the briefing shrinks to just the delta. Prime cases: re-review rounds on an updated diff (§1c), an implementer fixing findings in files it just wrote, follow-up questions to a research/Explore agent. Do NOT reuse when independence is the point (adversarial verification per §4, fresh-eyes review where reviewer must not trust the implementer), when the agent needs a different model tier, or when its context is bloated or polluted by failed attempts. Detail in `subagent-strategy.md` ("Reuse agents before spawning new ones").

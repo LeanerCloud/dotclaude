@@ -143,6 +143,8 @@ Opening a PR is not the end of the agent's work — there's a full lifecycle to 
 
 The loop applies to any project that uses CodeRabbit (or an equivalent automated reviewer). Where projects use a different bot or no bot, skip steps 1–3 and start at §4.
 
+> When this loop runs on **several PRs at once**, the orchestration layer on top of it — the agent role split, coordination between actors that share no memory, the four-gate merge check (of which this loop is one gate), and the false-clean traps — is in `~/.claude/multi-agent-pr-orchestration.md`.
+
 ### ⚠️ Immediate PR-creation checklist - every step, every time
 
 Within ~30 seconds of `gh pr create` returning, the main session MUST have done ALL of the following. Skipping any one leaves part of the PR lifecycle unattended; CR findings or CI failures will sit silently and the human reviewer ends up doing the loop manually.
