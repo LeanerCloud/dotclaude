@@ -555,6 +555,35 @@ What running this at multi-PR scale adds:
   into a measurement and takes minutes. Same technique settles "is this test
   failure mine?" (run the suite on the base commit) and "is this flaky or
   broken?".
+- **"Make it required" is not a fix when the VALUE can be permissive.**
+  Turning an optional security parameter into a mandatory one closes the
+  omission case and leaves the substitution case wide open. Observed: a flag
+  taking a raw CEL expression, where making it mandatory would still have
+  admitted `--subject-condition true` - satisfying every non-empty check
+  while matching every identity, i.e. the mandatory version reproducing the
+  exact bug it was added to close. The fix was to remove the raw-expression
+  flag entirely and construct the condition from a pinned, validated value.
+  Ask: *what is the most permissive value that satisfies my new
+  requirement?* If that value is as bad as omission, requiring it achieves
+  nothing.
+
+  This is one family with the policy-variable trap. Any parameter
+  interpolated into an expression or policy language admits two escapes:
+  **variable expansion** (AWS IAM `${aws:...}` inside a Condition value, so
+  the value becomes a tautology) and **expression break-out** (a quote
+  closing the literal, e.g. `x' || true || '` rendering
+  `google.subject == 'x' || true || ''`). Check for both, per language -
+  they are not the same defect and rejecting one does not reject the other.
+  Worth knowing that GCP IAM principal identifiers and CEL conditions have
+  **no** policy-variable expansion, so `$` there is literal - the languages
+  differ, and assuming they behave alike in either direction is wrong.
+- **Prove nothing happened before validation, don't argue it.** To show a
+  script cannot create anything until its guards pass, stub the external
+  command so that **any** invocation exits nonzero and loudly, then run every
+  rejection path and confirm the stub was never reached. That converts "the
+  validation runs first" from a claim about control flow into an observation.
+  Cheaper and stronger than reading the script, and it catches an early
+  invocation hiding in an unexpected branch.
 - **A fail-loud fix must enumerate every legitimate input first.** Replacing
   a silent default with an explicit error is usually right - but it converts
   "wrong behaviour" into "refused outright" for any input the new mapping
