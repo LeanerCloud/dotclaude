@@ -16,6 +16,9 @@ machinery, it does not duplicate it:
   `coding-standards.md`, `conventions.md`
 - Commit/PR hygiene + post-PR CR loop -> `git-workflow.md`
 - Driving an opened PR to merge-ready -> the `pr-iterate` flow (`commands/` / skills)
+- The **interactive** counterpart of this same loop (local session, subagents,
+  live tier split) -> `harness.md`, which has a comparison table for choosing
+  between the two
 
 ## Why multiple routines (the load-bearing constraint)
 
