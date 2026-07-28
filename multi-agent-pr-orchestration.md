@@ -546,6 +546,26 @@ What running this at multi-PR scale adds:
   in a review-fix commit, and never suppress it. Some autofixes are actively
   unsafe - a blanket misspell rewrite once renamed a real DB column
   (`cancelled_by`) and broke integration tests.
+- **Prove "pre-existing" instead of asserting it.** A linter exiting nonzero
+  on a branch is not evidence the failures are yours, and "they were already
+  there" is the easiest claim in code review to make and the hardest to
+  check. The cheap proof: run the linter on the branch, run it again against
+  a reverted baseline, normalise both finding sets, and diff. One implementer
+  reported "684 before, 684 after, zero new" - which converts an assertion
+  into a measurement and takes minutes. Same technique settles "is this test
+  failure mine?" (run the suite on the base commit) and "is this flaky or
+  broken?".
+- **A fail-loud fix must enumerate every legitimate input first.** Replacing
+  a silent default with an explicit error is usually right - but it converts
+  "wrong behaviour" into "refused outright" for any input the new mapping
+  does not know about, and a refusal on a previously-working path is a
+  regression wearing the costume of correctness. Observed: a fix mapping
+  machine families onto commitment types would have started REFUSING legacy
+  `custom-<vCPUs>-<MB>` machine types, which have no family segment at all -
+  the fail-loud branch firing on input that used to work. Before shipping a
+  fail-loud change, list the inputs reaching it in production and confirm
+  each one still resolves. The narrower the new mapping, the more important
+  this is.
 - **Check the new code is REACHABLE from a production entry point.** Trace
   from a real entry point (handler, scheduler, CLI command, message consumer)
   to the new component and confirm something actually constructs and calls
