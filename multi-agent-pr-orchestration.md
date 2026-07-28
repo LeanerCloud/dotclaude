@@ -445,6 +445,19 @@ sitting *only in the orchestrator's context*. Guards:
 - **Resume from the patch, never re-implement.** Re-implementing discards
   work that already exists and reintroduces every decision the dead agent had
   already made correctly.
+- **But assess the recovered work's COMPLETENESS before trusting it.** An
+  agent dies mid-task, so what it leaves is a *snapshot of unfinished work* -
+  and unfinished work does not announce itself. A recovered fix for a
+  double-spend bug turned out to be half done: the first half was implemented
+  with a well-argued rationale comment, the second half was missing, and
+  there were no tests at all. Committing that worktree as-is would have
+  shipped a plausible-looking fix that still double-spends. **A partial fix
+  is more dangerous than no fix, because it looks finished** - it has a
+  commit-worthy diff and confident comments, and the missing half is
+  invisible unless someone checks the original issue's full fix direction.
+  The resuming agent's first task is therefore to state what it found, what
+  it kept, and what was still missing - not to pick up typing where the
+  previous one stopped.
 
 ---
 
