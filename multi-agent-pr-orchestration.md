@@ -419,6 +419,16 @@ different shapes**. A `CheckRun` carries `.conclusion` and `.status`; a
 comment on one of them asserting something false, and delayed a merge that
 had been ready for hours.
 
+A fifth, in the test runner itself: a test file carrying a build tag such as
+`//go:build integration` is **skipped silently** when the tag is absent.
+`go test ./pkg/...` prints "no tests to run" and **exits 0** - the same exit
+code as a passing run. An implementer reporting "integration test passes,
+exit 0" may have run nothing at all, and a reviewer re-verifying without the
+tag gets the same empty green. Whenever a guard lives behind a build tag,
+the exact command including the tag belongs in the PR body, and the reviewer
+must confirm the test actually *ran* (a count of tests executed, not just an
+exit code).
+
 The lesson generalises past this one API: **a `//` fallback chain over
 fields that may not exist on the object you were handed will silently
 manufacture the default.** When a status query returns a suspiciously
