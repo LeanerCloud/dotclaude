@@ -577,6 +577,17 @@ What running this at multi-PR scale adds:
   Worth knowing that GCP IAM principal identifiers and CEL conditions have
   **no** policy-variable expansion, so `$` there is literal - the languages
   differ, and assuming they behave alike in either direction is wrong.
+- **Applying one change to N parallel sites: verify each site by running it,
+  not by reading the diff.** Reading N near-identical blocks is precisely
+  where the eye supplies what it expects. Observed: an author tightening a
+  validation pattern applied it to the *subject* parameter and left the
+  *audience* parameter on the old pattern - and neither inspection nor its
+  own diff review caught it. A `terraform plan` against each value did, in
+  seconds. The author's summary of the episode is the rule: *exercising the
+  gate found what reading it did not.* This is the same lesson as probing a
+  predicate against a real database, one level down: wherever a change is
+  replicated, the replication itself is the thing most likely to be
+  incomplete, and it is invisible to the person who made it.
 - **Prove nothing happened before validation, don't argue it.** To show a
   script cannot create anything until its guards pass, stub the external
   command so that **any** invocation exits nonzero and loudly, then run every
