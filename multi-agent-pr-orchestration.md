@@ -555,13 +555,29 @@ What running this at multi-PR scale adds:
   database returns, so it cannot prove the fix. Use the real dependency
   (e.g. a container-backed database). A mock is right when the defect is in
   *your* logic, wrong when it is in what the dependency does with it.
-- **Verification is self-reported, and that is a real hole.** The orchestrator
-  cannot confirm that an implementer actually reverted the fix and watched the
-  guard fail, nor that quoted exit codes are real. Mitigation: require the
-  pre-fix failure output **verbatim** rather than summarised, which makes
-  fabrication effortful and makes a vague report visible as vague. Stronger,
-  when affordable: have the *reviewer* re-run the guard against reverted code,
-  so the claim is checked by someone other than the claimant (§11).
+- **Verification is self-reported unless the reviewer re-runs it.** The
+  orchestrator cannot confirm that an implementer actually reverted the fix
+  and watched the guard fail, nor that quoted exit codes are real. Requiring
+  the pre-fix failure output **verbatim** rather than summarised makes
+  fabrication effortful and makes a vague report visible as vague - but it is
+  a deterrent, not a check.
+
+  The actual check is cheap and has been done in practice: **the round-2
+  reviewer re-derives the pre-fix failure itself.** Concretely -
+  `git checkout <fix-commit>^ -- <changed-file>`, run the guard, confirm it
+  fails on the specific assertions claimed, restore, confirm clean. One
+  reviewer did exactly this and reproduced the failure on the same three
+  assertions plus a row-count mismatch, which converted the implementer's
+  claim from asserted to verified. Make it a standing part of the round-2
+  brief; it costs the reviewer minutes and it is the only thing that closes
+  the loop.
+
+  The same reviewer went further and **empirically probed** the changed
+  behaviour rather than only reading it - seeding a throwaway matrix of rows
+  against a real database and recording what actually survived a retention
+  sweep, cell by cell. That caught a sibling defect one status over that
+  reading alone had missed. Where a defect lives in what a dependency *does*,
+  reading the code proves less than exercising it.
 
 ---
 
