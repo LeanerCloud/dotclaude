@@ -288,12 +288,45 @@ simply not what was causing the silence.
 ### False-clean review bot
 Zero unresolved threads can mean the bot is **paused or throttled**, or that
 the previous round's threads were resolved while the newest commit was never
-reviewed. **Always compare the latest review's `submittedAt` against the
-HEAD push time.** An older review does not cover the newer commit.
-CodeRabbit also edits its walkthrough comment *in place* (`created_at`
-unchanged, `updated_at` bumped), so watchers keyed on comment creation miss
-reviews entirely - key on review `submittedAt`. Throttle detection and the
+reviewed. **Always compare the latest review against the HEAD commit time.**
+An older review does not cover the newer commit. Throttle detection and the
 `full review` recovery are in `git-workflow.md` §"Post-PR review loop" §2.
+
+### The bot delivers verdicts through more than one channel
+This one cuts **both ways**, and the second direction is easy to miss.
+
+CodeRabbit emits outcomes as at least three different objects: a formal
+review (`.reviews[]`, has `submittedAt`), a plain issue comment
+(`.comments[]`, has `createdAt`), and an *in-place edit* of its existing
+walkthrough comment (`created_at` unchanged, `updated_at` bumped). A gate
+that reads only one of these is wrong in a way that depends on which one it
+missed:
+
+- **False clean** - keying on comment creation misses reviews delivered by
+  in-place edit, so an unreviewed commit looks reviewed.
+- **False stale** - keying only on `.reviews[]` misses a verdict delivered as
+  a comment, so a commit that *was* reviewed clean looks unreviewed.
+
+The false-stale direction cost a real error: a PR whose HEAD had been
+reviewed clean 3 minutes after it was pushed was re-pinged two hours later
+with a public comment asserting "that review does not cover the current
+HEAD" - which was false, wasted a review cycle on an already-throttled bot,
+and put an incorrect claim on the PR. The verdict was there; it was a
+comment, not a review object.
+
+**Acknowledgements are not verdicts.** "Understood - reviewing the current
+HEAD", "Acknowledged", "I'll review the unresolved threads" are all replies
+to a trigger, not outcomes, and they carry a *newer* timestamp than the
+verdict you are looking for. Timestamp alone therefore cannot distinguish
+"reviewed" from "about to review" - and treating an ack as a verdict is a
+false clean.
+
+The check that works: take the newest CR object of **either** kind, and
+classify it by **content** - a verdict names the reviewed SHA and states
+findings or their absence; an ack does neither. Then require that verdict's
+timestamp to postdate HEAD's `committedDate`. Where the bot names the SHA it
+reviewed, compare SHAs directly and skip the timestamp reasoning entirely
+(§11: SHA-bound attestation would remove this whole class).
 
 ### Stale adversarial review
 An adversarial-review comment on a PR proves nothing unless it postdates
