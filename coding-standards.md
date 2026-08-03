@@ -44,9 +44,12 @@ Ensure `.github/workflows/` (or equivalent) has at minimum:
 
 Sophistication is a cost, not a virtue. The simplest thing that works wins: fewer lines, fewer concepts, fewer names. When a reviewer says a change was hard to get through, the cause is usually machinery nobody asked for rather than logic that was genuinely hard.
 
+**The test is not "is this correct?" or "could this ever happen?" but "does a current caller need this, and can this state be reached given the callers that exist?"** Correct, well-reasoned, well-tested code guarding an unreachable state is still waste, and it is the hardest kind to spot because every local justification for it holds up. Find out what the calling system actually does before building for the general case.
+
 - **YAGNI.** Build only what a current caller needs. No parameters, flags, hooks, or abstraction layers for a future that hasn't arrived. If there is exactly one consumer, write it for that consumer.
 - **DRY, but rule-of-three.** Two similar pieces of code are usually fine; abstract at the third. Premature abstraction is over-engineering too, and it is harder to undo than duplication. (Complements `CLAUDE.md` §1a: reuse what already exists, but don't invent an abstraction for a second case that doesn't exist yet.)
-- **Don't validate the impossible.** Validate at trust boundaries: external input, config, API payloads. Inside the module, trust your own callers instead of re-checking what the type system or the single call site already guarantees. Defensive handling of unreachable states is dead code that reads as complexity.
+- **Don't validate the impossible.** Validate at trust boundaries: external input, config, API payloads. Inside the module, trust your own callers instead of re-checking what the type system or the single call site already guarantees. Don't double up either (a type constraint *and* a runtime assert for the same value).
+- **Prefer removing the hazard to defending against it.** If a value needs validating because it reaches a shell, first check whether it needs to reach a shell at all. Deleting the interpolation removes the injection path and the validation with it.
 - **Elegance means fewer moving parts**, never more sophisticated ones (`CLAUDE.md` §5). If the "more elegant" version is longer or introduces a new concept, it isn't the more elegant one.
 
 **Self-check before opening a PR:**
@@ -54,6 +57,8 @@ Sophistication is a cost, not a virtue. The simplest thing that works wins: fewe
 - Does every abstraction have more than one implementation or consumer?
 - Does every validation guard a state that can actually occur?
 - Could a competent colleague have written this in half the lines? If yes, cut.
+
+Cut speculation, not behaviour. A parameter a real caller sets, a timeout the platform's default gets wrong, the auth config a private dependency needs: all load-bearing, however many lines they add. "Shorter" is the usual symptom of getting this right, not the goal.
 
 ## Preferred Stack
 
