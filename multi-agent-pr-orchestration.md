@@ -188,7 +188,7 @@ authorization to bypass one.
 |------|-------|----------|
 | CI green | every workflow run `success` for the exact HEAD SHA | merging broken code |
 | Review bot clean | 0 unresolved threads **AND** latest review newer than the HEAD push | the false-clean trap (§7) |
-| Adversarial clean | an independent agent **returned** either concrete findings that are now fixed, or an explicit "NO CONFIRMED FINDINGS" plus what it attacked, verified against current HEAD | green-CI-but-still-broken, and the idle-is-not-a-verdict trap (§7) |
+| Adversarial clean | an independent agent **returned** either concrete findings that are now fixed, or an explicit "NO CONFIRMED FINDINGS" plus what it attacked, verified against current HEAD, **and posted that verdict on the PR** (`git-workflow.md` §3b) | green-CI-but-still-broken, the idle-is-not-a-verdict trap (§7), and a verdict that dies with the session |
 | Mergeable | `MERGEABLE` + `CLEAN`; no `--admin`, no `--no-verify` | merging past a pending check |
 
 The mergeable gate is `git-workflow.md` §4 ("never bypass required checks");
@@ -872,6 +872,12 @@ spawn and when to reuse a warm agent instead; this is what every brief must
    only outcome that does not announce itself (§7), so the brief has to make
    it announce itself.
 8. **Output shape** and whether it may modify code.
+9. **What it must post on the PR before reporting done**, per
+   `git-workflow.md` §3b: a reviewer posts its verdict and the evidence
+   under it, an implementer posts what its fix commit changed and how it
+   was verified. A result that exists only in the reply to the
+   orchestrator is gone the moment the session ends, and the next reader
+   of that PR has no way to tell the review happened at all.
 
 ---
 
