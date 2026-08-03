@@ -170,7 +170,7 @@ authorization to bypass one.
 |------|-------|----------|
 | CI green | every workflow run `success` for the exact HEAD SHA | merging broken code |
 | Review bot clean | 0 unresolved threads **AND** latest review newer than the HEAD push | the false-clean trap (§7) |
-| Adversarial clean | an independent agent **returned** either concrete findings that are now fixed, or an explicit "NO CONFIRMED FINDINGS" plus what it attacked, verified against current HEAD, **and posted that verdict on the PR** (`git-workflow.md` §3b) | green-CI-but-still-broken, the idle-is-not-a-verdict trap (§7), and a verdict that dies with the session |
+| Adversarial clean | an independent agent **returned** a verdict against current HEAD - findings now fixed, or "NO CONFIRMED FINDINGS" plus what it attacked - **and posted it on the PR** (`git-workflow.md` §3b) | green-CI-but-still-broken, §7, and a verdict that dies with the session |
 | Mergeable | `MERGEABLE` + `CLEAN`; no `--admin`, no `--no-verify` | merging past a pending check |
 
 The mergeable gate is `git-workflow.md` §4 ("never bypass required checks");
@@ -229,6 +229,12 @@ gate that treats an absence as a pass must first establish that it *looked
 successfully*. Every other outcome announces itself; this one has to be made
 to.
 
+**Compare SHAs, not timestamps, wherever you can.** Where a bot names the SHA
+it reviewed, compare it to HEAD directly and skip the timestamp reasoning
+entirely: a timestamp is an inference about coverage, a SHA is an identity.
+Everything below is the fallback for actors that do not name one (§11:
+SHA-bound attestation would remove this whole class).
+
 | Instance | The tell |
 |---|---|
 | Adversarial reviewer goes idle | no verdict at all, and it cuts both ways: a dead agent reads as clean, a clean one reads as dead |
@@ -249,19 +255,21 @@ Guards:
   out, then re-trigger a **full** review, since an incremental pass silently
   skips the commits the throttled one dropped), or a verdict naming findings or
   their absence. Timestamp- and count-based tests all fail here.
-- **Treat an idle agent as *ready to report*.** Request the verdict once;
-  replace on a second silent idle. Briefing does not fix this - a reviewer
-  respawned with "your final message is the deliverable" at the top of its
-  brief idled without reporting anyway - so the guard is orchestrator-side.
-  Replacing costs everything that agent knew, so carry its known leads into the
-  new brief, and do not replace a non-blocking agent while higher-priority work
-  is queued.
-- **Require reviewers to bracket the work**: a start line naming the SHA under
-  review, a progress line rather than silence if it runs long, and a final
-  verdict that when clean says "NO CONFIRMED FINDINGS" and lists what was
-  attacked and why each attack failed (§10, items 6-7). That list is what makes
-  a clean verdict auditable; without it, "no findings" is indistinguishable
-  from "did not look".
+- **Treat an idle agent as *ready to report*.** An idling agent is saying
+  "finished this turn, available for more", never "done forever" - the same
+  root cause as the watcher-teardown leak in `git-workflow.md` §"Post-PR review
+  loop", but yielding a wrong verdict rather than a leaked background agent.
+  Request the verdict once; replace on a second silent idle. Briefing does not
+  fix this - a reviewer respawned with "your final message is the deliverable"
+  at the top of its brief idled without reporting anyway - so the guard is
+  orchestrator-side. Replacing costs everything that agent knew, so carry its
+  known leads into the new brief, and do not replace a non-blocking agent while
+  higher-priority work is queued.
+- **Require reviewers to bracket the work** with a start line, a progress line
+  and a final verdict, per §10 items 6-7, which is where the clause that goes
+  into the brief lives. The attacked-and-failed list is what makes a clean
+  verdict auditable; without it, "no findings" is indistinguishable from "did
+  not look".
 
 Detection mechanics - which API objects carry a verdict, throttle detection,
 the `full review` recovery - are owned by `git-workflow.md` §"Post-PR review
@@ -318,15 +326,9 @@ Three shapes, two of them from one script closing an over-broad IAM grant:
 In a fast-moving fan-out, a state read goes stale in minutes, and the
 orchestrator is structurally the LAST to know: each agent holds fresher
 state about its own PR than the orchestrator ever can, because it is the
-thing changing it.
-
-Observed: the orchestrator queried a PR head, composed an instruction, and
-told the agent that a fix "has not landed" - a push had arrived in the gap.
-The agent had to spend a round correcting it. Harmless once; corrosive if
-repeated, because an agent that receives confidently wrong state starts
-double-checking everything the orchestrator says.
-
-Two habits:
+thing changing it. Asserting a stale read is harmless once and corrosive if
+repeated: an agent that receives confidently wrong state starts double-checking
+everything the orchestrator says. Two habits:
 - **Re-verify immediately before ASSERTING a state to someone else**, not
   merely before deciding. Deciding on a 3-minute-old read is usually fine;
   telling an agent its work is missing is not.
@@ -338,14 +340,16 @@ Two habits:
 ### A shared adaptive quota makes parallel retry self-defeating
 The obvious design - each PR's watcher re-triggers its own review on
 throttle - is actively wrong when the quota is shared, and catastrophically
-wrong when it is also adaptive.
+wrong when it is also adaptive. **Before giving each agent its own retry loop,
+ask whether the resource is per-agent or shared**; if shared, retry logic
+belongs at the orchestrator, not in the workers.
 
 Established in practice: the review bot's limit is **per-developer, per-
 organization, not per-PR**, and it tightens at the 95th percentile of recent
 volume. So N watchers retrying independently do not merely compete for one
-allowance, they *ratchet the ceiling down* for everything queued behind
-them. A fan-out that looks like N independent loops is one shared resource
-being contended by N clients that cannot see each other.
+allowance, they *ratchet the ceiling down* for everything queued behind them.
+Independent backoff across N clients on one adaptive limit is a thundering
+herd with extra steps.
 
 The correct shape:
 - **One trigger in flight globally.** Serialise re-triggers across the whole
@@ -354,13 +358,6 @@ The correct shape:
 - When the owner lands a verdict, the next PR takes the budget.
 - On throttle, wait the window out rather than retrying sooner; a retry
   before the window both fails and counts.
-
-Generalise beyond review bots: **before giving each agent its own retry
-loop, ask whether the resource is per-agent or shared.** If shared, retry
-logic belongs at the orchestrator, not in the workers - each worker
-observing and reporting, with one of them holding the token. Independent
-backoff across N clients on one adaptive limit is a thundering herd with
-extra steps.
 
 ### Put the guard in the command, not in the memory
 A documented trap only helps if it is recalled at the instant the command is
@@ -447,6 +444,10 @@ What running this at multi-PR scale adds:
   diff. Minutes, and it turns the easiest claim in code review to make and the
   hardest to check into a measurement. Same technique settles "is this test
   failure mine?".
+- **When adding a requirement, ask what the most permissive value that
+  satisfies it is.** If that value is as bad as omission, requiring it achieves
+  nothing: a non-empty check is not a restriction, and a shape regex admits
+  every value of that shape.
 - **Applying one change to N parallel sites: verify each site by running it,
   not by reading the diff.** Reading N near-identical blocks is where the eye
   supplies what it expects, so the replication is the part most likely to be
