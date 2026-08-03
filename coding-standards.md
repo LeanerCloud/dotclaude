@@ -40,6 +40,26 @@ Ensure `.github/workflows/` (or equivalent) has at minimum:
 
 ---
 
+## Simplicity & Scope (YAGNI)
+
+Sophistication is a cost, not a virtue. The simplest thing that works wins: fewer lines, fewer concepts, fewer names. When a reviewer says a change was hard to get through, the cause is usually machinery nobody asked for rather than logic that was genuinely hard.
+
+**The test is not "is this correct?" or "could this ever happen?" but "does a current caller need this, and can this state be reached given the callers that exist?"** Correct, well-reasoned, well-tested code guarding an unreachable state is still waste, and it is the hardest kind to spot because every local justification for it holds up. Find out what the calling system actually does before building for the general case.
+
+- **YAGNI.** Build only what a current caller needs. No parameters, flags, hooks, or abstraction layers for a future that hasn't arrived. If there is exactly one consumer, write it for that consumer.
+- **DRY, but rule-of-three.** Two similar pieces of code are usually fine; abstract at the third. Premature abstraction is over-engineering too, and it is harder to undo than duplication. (Complements `CLAUDE.md` §1a: reuse what already exists, but don't invent an abstraction for a second case that doesn't exist yet.)
+- **Don't validate the impossible.** Validate at trust boundaries: external input, config, API payloads. Inside the module, trust your own callers instead of re-checking what the type system or the single call site already guarantees. Don't double up either (a type constraint *and* a runtime assert for the same value).
+- **Prefer removing the hazard to defending against it.** If a value needs validating because it reaches a shell, first check whether it needs to reach a shell at all. Deleting the interpolation removes the injection path and the validation with it.
+- **Elegance means fewer moving parts**, never more sophisticated ones (`CLAUDE.md` §5). If the "more elegant" version is longer or introduces a new concept, it isn't the more elegant one.
+
+**Self-check before opening a PR:**
+- Does every parameter have a caller that sets it?
+- Does every abstraction have more than one implementation or consumer?
+- Does every validation guard a state that can actually occur?
+- Could a competent colleague have written this in half the lines? If yes, cut.
+
+Cut speculation, not behaviour. A parameter a real caller sets, a timeout the platform's default gets wrong, the auth config a private dependency needs: all load-bearing, however many lines they add. "Shorter" is the usual symptom of getting this right, not the goal.
+
 ## Preferred Stack
 
 - **Language**: Go for new backend/CLI projects; TypeScript/Node for frontend, lightweight CLIs, or when the ecosystem fit is strong; match the existing language for additions to existing projects
@@ -141,10 +161,36 @@ Ensure `.github/workflows/` (or equivalent) has at minimum:
 - For async operations (queues, webhooks), use idempotency keys to deduplicate retries
 - Make deletes safe to repeat — return success if already deleted
 
+## Comments
+
+Rationale belongs in the PR description; the source carries only what a future editor needs in order not to break something. Prose that reads as thorough to the author reads as noise to the reviewer, and buries the few comments that actually matter.
+
+- **Default to no comment.** Naming and structure carry the meaning; reach for a comment only where they can't.
+- **Comment only where the WHY isn't deducible from the code**: a deliberate choice a reader would otherwise "fix", a constraint that isn't visible at this spot, a workaround for an external bug (link the upstream issue or CVE), a deviation from the obvious approach.
+- **Keep it terse: 1-2 lines.** Never paragraphs, never half a page. If it needs more than that, it belongs in the PR description or the commit message.
+- **Rough budget: under ~15% comment-to-code on added lines.** A guideline for self-checking, not a hard gate; config files and public API surfaces legitimately run higher.
+- **Delete on sight**: restatements of the next line; multi-paragraph rationale essays; what-was-considered-and-rejected narrative; references to review rounds, our own past bugs, or `"as of <date>"`; JSDoc/docstrings restating types the signature already gives; long preambles on tests (the test name carries the meaning).
+
+```go
+// Bad: six lines restating the code and narrating the decision
+// We use a 30 second timeout here. This value was chosen after considering
+// 10s (too aggressive, caused flakes in CI) and 60s (too slow to fail).
+// 30s is a good middle ground balancing responsiveness against reliability.
+// Note: raised from 10s in review round 2.
+// See PR #412 for the full discussion.
+ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+defer cancel()
+
+// Good: one line, and only because the number is otherwise unexplainable
+// Upstream's p99 is 25s; anything tighter flakes.
+ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+defer cancel()
+```
+
 ## Documentation
 
 - Update READMEs when adding features, changing setup steps, or altering project structure
-- Inline comments only for non-obvious logic — document the *why*, not the *what*
+- Inline comments: see **Comments** above; default to none, and document the *why* only where it isn't deducible from the code
 - Maintain a CHANGELOG if one already exists; add one for projects with releases or external users (skip for small internal tools — scale to context)
 - Keep API docs (OpenAPI, docstrings) in sync with implementation — stale docs are harmful
 - Use ADRs for significant decisions — see `~/.claude/project-docs.md` for the ADR template and format
