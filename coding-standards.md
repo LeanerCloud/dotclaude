@@ -169,7 +169,7 @@ Rationale belongs in the PR description; the source carries only what a future e
 - **Comment only where the WHY isn't deducible from the code**: a deliberate choice a reader would otherwise "fix", a constraint that isn't visible at this spot, a workaround for an external bug (link the upstream issue or CVE), a deviation from the obvious approach.
 - **Keep it terse: 1-2 lines.** Never paragraphs, never half a page. If it needs more than that, it belongs in the PR description or the commit message.
 - **Rough budget: under ~15% comment-to-code on added lines.** A guideline for self-checking, not a hard gate; config files and public API surfaces legitimately run higher.
-- **Delete on sight**: restatements of the next line; multi-paragraph rationale essays; what-was-considered-and-rejected narrative; references to review rounds, our own past bugs, or "as of <date>"; JSDoc/docstrings restating types the signature already gives; long preambles on tests (the test name carries the meaning).
+- **Delete on sight**: restatements of the next line; multi-paragraph rationale essays; what-was-considered-and-rejected narrative; references to review rounds, our own past bugs, or `"as of <date>"`; JSDoc/docstrings restating types the signature already gives; long preambles on tests (the test name carries the meaning).
 
 ```go
 // Bad: six lines restating the code and narrating the decision
