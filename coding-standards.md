@@ -166,10 +166,10 @@ Cut speculation, not behaviour. A parameter a real caller sets, a timeout the pl
 Rationale belongs in the PR description; the source carries only what a future editor needs in order not to break something. Prose that reads as thorough to the author reads as noise to the reviewer, and buries the few comments that actually matter.
 
 - **Default to no comment.** Naming and structure carry the meaning; reach for a comment only where they can't.
-- **Comment only where the WHY isn't deducible from the code**: a deliberate choice a reader would otherwise "fix", a constraint that isn't visible at this spot, a workaround for an external bug, a deviation from the obvious approach.
+- **Comment only where the WHY isn't deducible from the code**: a deliberate choice a reader would otherwise "fix", a constraint that isn't visible at this spot, a workaround for an external bug (link the upstream issue or CVE), a deviation from the obvious approach.
 - **Keep it terse: 1-2 lines.** Never paragraphs, never half a page. If it needs more than that, it belongs in the PR description or the commit message.
 - **Rough budget: under ~15% comment-to-code on added lines.** A guideline for self-checking, not a hard gate; config files and public API surfaces legitimately run higher.
-- **Delete on sight**: restatements of the next line; multi-paragraph rationale essays; what-was-considered-and-rejected narrative; references to review rounds, past bugs, or "as of <date>"; JSDoc/docstrings restating types the signature already gives; long preambles on tests (the test name carries the meaning).
+- **Delete on sight**: restatements of the next line; multi-paragraph rationale essays; what-was-considered-and-rejected narrative; references to review rounds, our own past bugs, or "as of <date>"; JSDoc/docstrings restating types the signature already gives; long preambles on tests (the test name carries the meaning).
 
 ```go
 // Bad: six lines restating the code and narrating the decision
@@ -179,10 +179,12 @@ Rationale belongs in the PR description; the source carries only what a future e
 // Note: raised from 10s in review round 2.
 // See PR #412 for the full discussion.
 ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+defer cancel()
 
 // Good: one line, and only because the number is otherwise unexplainable
 // Upstream's p99 is 25s; anything tighter flakes.
 ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+defer cancel()
 ```
 
 ## Documentation
