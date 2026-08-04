@@ -60,6 +60,19 @@ Sophistication is a cost, not a virtue. The simplest thing that works wins: fewe
 
 Cut speculation, not behaviour. A parameter a real caller sets, a timeout the platform's default gets wrong, the auth config a private dependency needs: all load-bearing, however many lines they add. "Shorter" is the usual symptom of getting this right, not the goal.
 
+## Verifying a Refactor
+
+A cleanup that changes behaviour is a bug wearing a tidy diff. "Delete aggressively" is only safe paired with proof you deleted nothing that mattered, so cutting and proving are one task, not two.
+
+- **Subtractive only.** Delete and inline; never introduce an abstraction to "simplify". A clever restructure is a behaviour change you haven't tested yet.
+- **Compare the generated output, not just the tests.** Where code emits an artifact (IaC plans/synth, migrations, codegen, bundles, snapshots), byte-compare it before and after and require it identical. Green tests routinely coexist with a changed artifact: in IaC a renamed logical id silently destroys and recreates live infrastructure, and no unit test sees it. Compare *every* emitted file, not just the obvious one.
+- **Carry a protected list into the work.** Name the decisions that must survive (with the one-line reason) before starting. Hard-won constraints look exactly like cruft to a reader who wasn't there, and get "cleaned up" first.
+- **Never delete a security assertion on your own judgement.** Tests pinning authorization, resource scoping, or privilege boundaries come out only with the owner's explicit sign-off, however redundant they look.
+- **"Nothing here is worth removing" is a complete answer.** Manufacturing changes to show effort is how a safe refactor becomes a risky one.
+- **Report what you left.** The candidates you considered and rejected, and why, are as useful to the reviewer as the diff.
+
+If you can't prove an edit is behaviour-preserving, don't make it. A small confident diff beats a large clever one.
+
 ## Preferred Stack
 
 - **Language**: Go for new backend/CLI projects; TypeScript/Node for frontend, lightweight CLIs, or when the ecosystem fit is strong; match the existing language for additions to existing projects

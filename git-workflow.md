@@ -93,6 +93,8 @@ If the review finds issues, fix them in the same staged changeset — do not com
 
 After committing, run a quick sanity scan (`git show HEAD`) to catch anything the pre-commit loop missed. If this finds issues, treat it as a process failure (the pre-commit loop should have caught them). Fix-forward in a new commit only when strictly necessary (e.g., pre-commit hook caught a legitimate issue that required the commit to land first).
 
+**Hooks may silently not run in a worktree.** When a repo sets `core.hooksPath` to a gitignored, install-generated directory (husky's `.husky/_` is the common case), that path exists only where the install ran — usually the main checkout. Git skips hooks with no warning when it doesn't resolve, so commits from a worktree can quietly bypass lint, formatting and generated-artifact rebuilds. Since §1b puts non-trivial work in worktrees, check once per worktree (`git config core.hooksPath`, then confirm the directory exists) and run the checks by hand if it doesn't. Never paper over it with `--no-verify`.
+
 ## Rate-limit handling — always run a retry cron, never stall
 
 This is a global rule (see `CLAUDE.md` Core Principles): on every request, keep a retry cron running so any throttling is caught and retried automatically rather than stalling the work. When an operation is throttled — a `429` / `403 secondary rate limit` / "rate limit" / "usage limit" / "try again later" from the GitHub API, CodeRabbit, the model/API itself, or any CLI reporting a cooldown — do NOT abandon the work and do NOT block the session busy-waiting; let the standing cron catch it and retry.
