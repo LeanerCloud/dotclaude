@@ -6,7 +6,8 @@ A second repo LeanerCloud/dotclaude is cloned into your workspace. Locate it (e.
 - triage.md - the full label rubric and the work-selection ordering you rank by
 - coding-standards.md, conventions.md - so your plan targets the right idioms
 - worktrees.md - plan structure (atomic tasks, explicit file paths, verifiable)
-- issue-pr-autopilot.md (this same dotclaude repo) - the full multi-routine design, label state machine, and concurrency model you are one half of
+- multi-agent-pr-orchestration.md - the orchestration model this autopilot implements: roles, the handoff contract you fulfil, the concurrency model (claims are not atomic locks), and the traps
+- issue-pr-autopilot.md (this same dotclaude repo) - the scheduled-variant specifics: the multi-routine design and label state machine you are one half of
 Precedence: dotclaude global rules + the GLOBAL HARD CONSTRAINTS below are non-negotiable; the target repo's own CLAUDE.md/CONTRIBUTING.md win only for repo-specific code style and build/test commands.
 
 ## Runtime model for THIS scheduled agent (read carefully - it differs from a local session)

@@ -1,5 +1,11 @@
 # Issue -> PR Autopilot (scheduled, multi-routine, multi-tier)
 
+> **This is the scheduled variant of the model documented in
+> `multi-agent-pr-orchestration.md`. Read that first**; this file covers only
+> what differs when the trigger is a cron routine rather than an interactive
+> session. The roles, the handoff contract, the concurrency model, the merge
+> gate, the loops, and the traps are defined there and are not repeated here.
+
 A continuous delivery loop driven by GitHub issue labels. **Two** scheduled
 **remote** Claude Code agents (created via the `schedule` skill / `RemoteTrigger`)
 fire on staggered 4-hourly crons, plan and open PRs for eligible issues, and stamp
@@ -11,10 +17,13 @@ prompts (`issue-pr-autopilot.plan.prompt.md` and
 `issue-pr-autopilot.worker.prompt.md`, same directory). It composes existing
 machinery, it does not duplicate it:
 
+- The orchestration model this implements (roles, concurrency, merge gate,
+  loops, traps) -> `multi-agent-pr-orchestration.md`
 - Selection / triage rubric -> `triage.md` (work selection + label rubric)
 - Plan -> worktree -> implement -> review -> PR -> `CLAUDE.md`, `worktrees.md`,
   `coding-standards.md`, `conventions.md`
 - Commit/PR hygiene + post-PR CR loop -> `git-workflow.md`
+- Model-tier selection -> `subagent-strategy.md`
 - Driving an opened PR to merge-ready -> the `pr-iterate` flow (`commands/` / skills)
 
 ## Why multiple routines (the load-bearing constraint)
@@ -175,20 +184,25 @@ You **cannot delete** via API; use https://claude.ai/code/routines.
 
 ## Watcher model (scheduled context differs from a local session)
 
-Neither routine can spawn `cr-watch`/`ci-watch` background agents (no Agent/Task
-tool; background processes die when the bounded run ends). The local
-git-workflow.md "spawn a watcher" steps do not apply literally. The
-atomic-coupling invariant (never request a CR review without a watcher that acts
-on the response) is satisfied **structurally and cross-routine**: every PR the
+The generalised rule - every trigger needs something durable that will act on
+the response - is in `multi-agent-pr-orchestration.md` §"The loops". What
+differs here: neither routine can spawn `cr-watch`/`ci-watch` background agents
+(no Agent/Task tool; background processes die when the bounded run ends), so the
+local git-workflow.md "spawn a watcher" steps do not apply literally. The
+invariant is satisfied **structurally and cross-routine** instead: every PR the
 worker triggers/re-pings stays in the in-flight set (`pr-created`, not
 `pr-merged`, PR open) and is therefore guaranteed to be re-examined by the next
 worker fire. **The worker cron is the durable watcher** for both planner-spawned
-and human-spawned PRs. CR rate-limit recovery uses `@coderabbitai full review`
-(not the incremental form), per git-workflow.md.
+and human-spawned PRs, which is why **disabling the worker routine orphans every
+triggered PR**. CR rate-limit recovery uses `@coderabbitai full review` (not the
+incremental form), per git-workflow.md.
 
 ## Plan handoff (the durable contract between the two tiers)
 
-The planner and the worker never run in the same process. They communicate only
+The planner and the worker never run in the same process, so they are bound by
+the handoff contract in `multi-agent-pr-orchestration.md` §"The handoff
+contract" (plan committed not remembered, claim as the first durable action,
+parseable marker). This is its concrete instance - they communicate only
 through GitHub state:
 
 1. **Plan branch**: `auto/<issue#>-<slug>`, branched off the repo base.
@@ -255,37 +269,36 @@ through GitHub state:
 > previous offset must have finished". The minute offsets are latency tuning only;
 > a plan that is not yet `plan-ready` is simply picked up by a later worker fire.
 
-## Concurrency model (labels are the lock - with caveats)
+## Concurrency model (how the generic model maps onto labels)
 
-- **Coordination substrate.** GitHub issue labels plus the `autopilot-branch:`
-  issue comment are the ONLY shared state between isolated routine fires (no shared
-  memory; see "no subagents / no shared memory" above). Each phase acts on a
-  **disjoint slice** of issues/PRs so phases never fight over the same item:
-  unlabelled -> plan; `plan-ready` (no `pr-created`) -> implement;
-  `pr-created` + open + `CONFLICTING` -> rebase; `pr-created` + open + clean ->
-  CR-advance; merged -> stamp `pr-merged`.
-- **Labels are NOT atomic locks (the load-bearing caveat).** GitHub has no
-  compare-and-swap on labels, so there is a TOCTOU window: two routines firing AT
-  THE SAME TIME can both read an item as unclaimed before either writes the claim
-  label, and both act on it (double plan / double PR). This is the one real
-  concurrency hazard, and the root of the "rare double-plan race" caveat above.
-- **Mitigations (all three required):**
-  (a) **Stagger offsets so no two routines fire simultaneously** and each fire
-  finishes within its slot - never schedule two routines at the same minute-offset
-  (planner at `:00`, worker at `:30` of each 4-hour window, zero simultaneous fires).
-  (b) **Claim as the FIRST durable action**: the planner pushes the plan commit,
-  posts the `autopilot-branch:` marker, and adds `plan-ready` immediately on
-  selection; the worker adds `pr-created` at PR-open. This shrinks the TOCTOU
-  window to that tight sequence.
-  (c) **Every downstream gate is idempotent** so a lost race degrades gracefully:
-  worst case is a duplicate `auto/<issue>` branch, caught at the `pr-created` gate
-  and cleaned up (close the orphan), per the double-plan caveat above.
+The model - durable state as the coordination substrate, disjoint slices per
+phase, claims are not atomic locks, the three required mitigations, and
+correctness-from-state-not-the-clock - is in
+`multi-agent-pr-orchestration.md` §"Coordination and concurrency". This is how
+it instantiates here:
+
+- **The substrate** is GitHub issue labels plus the `autopilot-branch:` issue
+  comment: the ONLY shared state between isolated routine fires (no shared
+  memory; see "no subagents / no shared memory" below).
+- **The disjoint slices** are: unlabelled -> plan; `plan-ready` (no
+  `pr-created`) -> implement; `pr-created` + open + `CONFLICTING` -> rebase;
+  `pr-created` + open + clean -> CR-advance; merged -> stamp `pr-merged`.
+- **Mitigation (a), no simultaneous actors**, is implemented as cron staggering:
+  never schedule two routines at the same minute-offset (planner at `:00`,
+  worker at `:30` of each 4-hour window, zero simultaneous fires), and each fire
+  must finish within its slot.
+- **Mitigation (b), claim-first**, is: the planner pushes the plan commit, posts
+  the `autopilot-branch:` marker, and adds `plan-ready` immediately on selection;
+  the worker adds `pr-created` at PR-open.
+- **Mitigation (c), idempotent gates**, means the worst case of a lost race is a
+  duplicate `auto/<issue>` branch, caught at the `pr-created` gate and cleaned up
+  (close the orphan), per the double-plan caveat below.
 - **Throughput vs the 1h floor and run-budget.** With two routines at 4-hour
   cadence, something happens every 30 minutes within each 4-hour window with
   ZERO simultaneous fires. To go faster, **prefer raising the per-fire cap or
   adding target repos** over adding more routines: each extra routine costs 6+
   fires/day against the ~15/day account-wide cap (see "Run-budget" below).
-  Simultaneous fires also trade the correctness margin above for throughput.
+  Simultaneous fires also trade mitigation (a) for throughput.
 
 ## Per-repo config
 
@@ -297,12 +310,16 @@ through GitHub state:
 
 ## Cost controls
 
-- Cheap preflight gate in both routines so quiet backlogs cost ~nothing.
+The three generic controls (cheap preflight gate, top-tier reasoning only on the
+bounded planning/review phases, per-pass caps) are in
+`multi-agent-pr-orchestration.md` §"Cost control", and tier selection itself is
+owned by `subagent-strategy.md`. Their concrete values here:
+
+- Preflight gates in both routines, so quiet backlogs cost ~nothing.
 - Opus runs **only** the bounded planning phase (cap 2 issues/fire); the long
-  implement and CR-advance loops run on Sonnet. This is the whole point of the
-  split: top-tier reasoning only where judgement is the hard part.
-- Per-fire plan and implement caps bound new branches and PRs (and downstream CR
-  loops) per run.
+  implement and CR-advance loops run on Sonnet.
+- Per-fire plan and implement caps of 2 bound new branches and PRs (and
+  downstream CR loops) per run.
 - The `schedule` API floor is **1 hour** (`*/30` is rejected). Staggered offsets x
   caps is the spend lever; raising cadence means more routines, not finer crons.
 
@@ -424,17 +441,22 @@ Delete these paused exploration routines via the routines UI (no API delete):
 Navigate to https://claude.ai/code/routines, locate each by name or ID, and
 delete.
 
-## Caveats and gotchas (load-bearing)
+## Caveats and gotchas (scheduled-specific)
+
+The variant-independent ones - correctness from state rather than the clock,
+rebase before advancing a review, plan staleness, and the poison-item guard -
+are in `multi-agent-pr-orchestration.md` §§"Coordination and concurrency", "The
+loops", "Traps". What is specific to running this on a cron:
 
 - **Correctness is from labels, not the clock.** Restated because it is the
-  crux: offsets are latency tuning; the worker only ever acts on durable labels.
-- **Conflict-resolve before CR-advance.** Never address findings on a
-  conflicting/stale tree; CR-advance skips `CONFLICTING` PRs, which
-  conflict-resolve has already rebased in the same fire.
+  crux *here*: cron offsets are latency tuning; the worker only ever acts on
+  durable labels, never on "the planner offset must have finished".
+- **Conflict-resolve runs as its own phase, before CR-advance**, so every PR
+  reaching CR-advance is already non-conflicting.
 - **Cross-routine atomic-coupling.** The worker routine is the durable watcher for
   every CR trigger (the PR stays in the in-flight set and the next worker fire WILL
   re-examine it). **Disabling the worker routine orphans every triggered PR.**
-- **Plan staleness.** A `plan-ready` branch can rot if the base advances; the
+- **Plan staleness has a wide window here** (up to a full cron gap), so the
   worker rebases the `auto/<issue>` branch onto base and re-validates `plan.md`
   before implementing, re-planning inline or deferring if the plan has diverged.
 - **Rare double-plan race.** With a single planner routine, a concurrent double-plan
@@ -444,11 +466,10 @@ delete.
   markers exist it takes the newest and logs the duplicate), the issue gets
   `pr-created` once, and the worker closes the orphan `auto/<issue>` branch as
   cleanup.
-- **Poison-item guard.** After **3 consecutive autopilot failures** on the same
-  issue (plan-or-implement), add `needs-human` so a bad item does not retry every
-  4 hours forever. (N=3 for CUDly; adjust per repo in the per-repo config table
-  based on tolerance for retry cost.) Eligibility excludes `needs-human`. A human
-  clears it once handled.
+- **Poison-item guard**, instantiated: N=3 consecutive autopilot failures on the
+  same issue (plan-or-implement) adds `needs-human`. (N=3 for CUDly; adjust per
+  repo in the per-repo config table based on tolerance for retry cost.)
+  Eligibility excludes `needs-human`. A human clears it once handled.
 - **No subagents / no shared memory** in the cloud env. This is the reason the
   whole design is split into separate single-model routines instead of one
   routine that spawns tier-matched subagents.
