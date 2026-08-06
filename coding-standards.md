@@ -73,6 +73,21 @@ A cleanup that changes behaviour is a bug wearing a tidy diff. "Delete aggressiv
 
 If you can't prove an edit is behaviour-preserving, don't make it. A small confident diff beats a large clever one.
 
+### Deletion probes — test necessity, don't argue it
+
+Whether a piece of machinery is needed is an empirical question, so answer it empirically instead of by reasoning about the code. For each candidate: **delete it, run the full verification, and read the result.**
+
+- **Something fails** → it is load-bearing. Restore it, and record *what* failed: that failure is the evidence it earns its place, and it belongs in the PR description or the protected list.
+- **Nothing fails** → exactly one of two things is true, and you must say which:
+  1. the code was genuinely unnecessary — delete it for real; or
+  2. **the verification is too weak to notice** — restore the code and report a coverage gap.
+
+**Never read "nothing broke" as automatic permission to delete.** If removing a guard that protects a real invariant breaks no test, the honest finding is "this guard is untested", not "this guard is unnecessary". Those cases are usually worth more than the deletions, because they point at the hole that let the risk in.
+
+Restore between probes so they can't interact, and probe one thing at a time — two simultaneous deletions that cancel out will read as a clean run.
+
+This is the cheap way to settle the arguments that stall a cleanup, and it cuts both directions: it deletes machinery whose justification was only ever theoretical, and it produces hard evidence for the pieces that survive. A parameter proven necessary by a failing build is no longer a matter of opinion.
+
 ## Preferred Stack
 
 - **Language**: Go for new backend/CLI projects; TypeScript/Node for frontend, lightweight CLIs, or when the ecosystem fit is strong; match the existing language for additions to existing projects
