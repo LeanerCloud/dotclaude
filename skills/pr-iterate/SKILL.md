@@ -296,6 +296,10 @@ issues, skip the rest with a brief reason.
 
 ## Phase 5b - CR rate-limit handling
 
+The general rules (detection wordings, cooldown parsing, `full review` on recovery) belong to the
+`cr-loop` and `rate-limit-retry` skills; what follows is only what this fan-out adds on top - the
+wave-level marker file that stops N parallel agents from each re-tripping an org-level limit.
+
 After every `@coderabbitai review` ping, CR may respond with a rate-limit message instead of a
 review. Two asymmetric cases:
 

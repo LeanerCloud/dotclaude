@@ -1,4 +1,13 @@
-Run a CR-style review of the staged diff against `git-workflow.md` §1's six dimensions PLUS this project's `feedback_*.md` memory garden. Goal: catch what CodeRabbit would catch, BEFORE the commit lands, so the post-push CR loop converges in one pass.
+---
+name: review-staged-diff
+description: Run a CodeRabbit-style review of the staged diff across the six review dimensions plus
+  the project's feedback memory, and report findings as a table. Invoke before committing, to catch
+  locally what CR would otherwise catch after the push.
+---
+
+# Review the staged diff
+
+Run a CR-style review of the staged diff against the six review dimensions PLUS this project's `feedback_*.md` memory garden (the `feedback-memory` skill). Goal: catch what CodeRabbit would catch, BEFORE the commit lands, so the post-push CR loop converges in one pass.
 
 **Inputs to gather first** (in this order):
 
