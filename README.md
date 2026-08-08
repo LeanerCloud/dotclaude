@@ -10,25 +10,50 @@ I'm [Cristian Magherusan-Stanciu](https://www.linkedin.com/in/cristim/), founder
 
 That work shapes the opinions in here: heavy use of multi-cloud Terraform, supply-chain-hardening reflexes, post-push CI watchers, CodeRabbit-loop iteration, and a strong preference for landing security and cost-optimization fixes through small atomic PRs against shared feature branches rather than direct pushes. If your day looks similar — multi-cloud infra, security-first reviews, CR-driven feedback loops — these rules will probably feel natural. If it doesn't, fork freely.
 
-## What's in here
+## How it's organised
 
-| File | Purpose |
+[`CLAUDE.md`](CLAUDE.md) is the always-on core: the nine core tenets, the principles, the six review
+dimensions, the model-tier table, and a routing table. Everything with a specific trigger lives in a
+[**skill**](skills/) whose body loads only when that trigger fires, so a session no longer starts by
+reading ~130 KB of guidance it mostly won't use.
+
+Skills follow the [Agent Skills](https://agentskills.io) open standard, so **the same files drive
+Claude Code, Codex CLI and Gemini CLI**. See [`skills/README.md`](skills/README.md) for the
+portability contract and the per-tool discovery paths.
+
+| Skill | Invoke when |
+|-------|-------------|
+| [`coding-standards`](skills/coding-standards/) | writing or reviewing code; first visit to any project |
+| [`conventions`](skills/conventions/) | Go, TypeScript, Python, Shell, Docker, Terraform, databases |
+| [`tool-usage`](skills/tool-usage/) | before any Bash call or shell script |
+| [`git-commit`](skills/git-commit/) | before staging a commit or writing a message |
+| [`ci-watch`](skills/ci-watch/) | immediately after any `git push` |
+| [`pr-lifecycle`](skills/pr-lifecycle/) | opening a PR, or driving one to merge |
+| [`cr-loop`](skills/cr-loop/) | a CodeRabbit review is pending or has arrived |
+| [`pr-iterate`](skills/pr-iterate/) | driving one or many existing PRs to merge-ready |
+| [`rate-limit-retry`](skills/rate-limit-retry/) | any 429 / usage limit / "try again later" |
+| [`feedback-memory`](skills/feedback-memory/) | the per-project `feedback_*.md` memory garden |
+| [`review-staged-diff`](skills/review-staged-diff/) | reviewing a staged changeset before it lands |
+| [`review-and-implement`](skills/review-and-implement/) | hardening a plan, then building it |
+| [`worktrees`](skills/worktrees/) | starting any non-trivial change |
+| [`subagent-strategy`](skills/subagent-strategy/) | deciding how to delegate, or which tier |
+| [`multi-agent-comms`](skills/multi-agent-comms/) | several agents share one project |
+| [`pr-orchestration`](skills/pr-orchestration/) | orchestrating several PRs/agents at once |
+| [`orchestration-traps`](skills/orchestration-traps/) | before declaring multi-agent work done |
+| [`issue-pr-autopilot`](skills/issue-pr-autopilot/) | the scheduled issue→PR autopilot |
+| [`triage-labels`](skills/triage-labels/) | any untriaged issue or PR you touch |
+| [`triage-pass`](skills/triage-pass/) | "triage", "prioritize the backlog" |
+| [`work-selection`](skills/work-selection/) | "what should I work on next?" |
+| [`infra-ops`](skills/infra-ops/) | infrastructure, deployments, cloud resources, ops |
+| [`project-docs`](skills/project-docs/) | project documentation, ADRs, `known-issues.md` |
+
+The former flat topic docs (`git-workflow.md`, `triage.md`, …) remain as pointer stubs naming their
+successor skills, so older references keep resolving.
+
+| Other files | Purpose |
 |------|---------|
-| [`CLAUDE.md`](CLAUDE.md) | Root config. Loaded at the start of every session. Points at the topic files below. |
-| [`coding-standards.md`](coding-standards.md) | Stack preferences, testing philosophy, error handling, security, API design. |
-| [`conventions.md`](conventions.md) | Language- and tool-specific conventions: Go, TypeScript, Python, Shell, Docker, Terraform, databases. |
-| [`git-workflow.md`](git-workflow.md) | Conventional commits, pre-commit review loop, atomic commits, PR rules, post-push CI watcher, post-PR CodeRabbit + human-merge loop with iterate-to-silence and merge-conflict resolution. |
-| [`tool-usage.md`](tool-usage.md) | When to use native tools vs. Bash, how to avoid approval prompts, script review loop. |
-| [`infra-ops.md`](infra-ops.md) | Rollback awareness, secrets, monitoring, timeouts, CI/CD, Terraform ops. |
-| [`project-docs.md`](project-docs.md) | Project knowledge-base layout, ADR template, runbook template, `known-issues.md` convention. |
-| [`multi-agent-comms.md`](multi-agent-comms.md) | Protocol for multiple Claude instances / agents coordinating on the same project. |
-| [`triage.md`](triage.md) | Backlog triage + work selection: 5-dimension labelling (priority/severity/urgency/impact/effort), parallel-agent fan-out, three-pass approach for large backlogs, stale-sweep procedure. |
-| [`worktrees.md`](worktrees.md) | Worktree isolation per change: creation, plan persistence, PID lifecycle, crash recovery, staleness detection, merge gate, post-merge reclaim. |
-| [`subagent-strategy.md`](subagent-strategy.md) | Delegation rubric: model tiers, the PR-shipping tier split, background-first execution, agent reuse, and reviewer independence. |
-| [`multi-agent-pr-orchestration.md`](multi-agent-pr-orchestration.md) | Driving issues to merged PRs with many agents at once: orchestrator/implementer/reviewer roles, coordination between actors that share no memory, the four-gate merge check, and the traps that produce a wrong "done". |
-| [`issue-pr-autopilot.md`](issue-pr-autopilot.md) | The scheduled (cron routine) variant of the above: routine creation, the label state machine, run budget, and scheduled-context quirks. |
-| [`commands/`](commands/) | Custom slash commands. |
-| [`scripts/setup-agent-symlinks.sh`](scripts/setup-agent-symlinks.sh) | Recreate or update the symlinked guidance files inside `~/.codex` and `~/.gemini` so each file points back to the shared guidance files. |
+| [`scripts/setup-agent-symlinks.sh`](scripts/setup-agent-symlinks.sh) | Link each skill into `~/.agents/skills/` (read by Codex and Gemini) and the root config into `~/.codex` and `~/.gemini`. |
+| [`scripts/validate-skills.sh`](scripts/validate-skills.sh) | Pre-commit check that every skill stays discoverable by all three tools. |
 | [`agents/`](agents/) | Submodule pointing to [`contains-studio/agents`](https://github.com/contains-studio/agents) — a curated agent library. |
 | [`local-paths.md.example`](local-paths.md.example) | Template for `local-paths.md`, per-machine paths and tool locations referenced from the rule files (e.g. graphify CLI / venv). |
 | [`projects.md.example`](projects.md.example) | Template for `projects.md`, the personal index of projects Claude should know about. |
@@ -67,6 +92,10 @@ That work shapes the opinions in here: heavy use of multi-cloud Terraform, suppl
    ```bash
    ~/.claude/scripts/setup-agent-symlinks.sh
    ```
+   This symlinks every skill into `~/.agents/skills/`, which Codex reads as its user scope and
+   Gemini reads as an alias of `~/.gemini/skills/`. Claude Code reads `~/.claude/skills/` directly,
+   so there is one canonical copy and no duplication. Verify with `gemini skills list` and
+   `codex debug prompt-input`.
 
 ## Customizing
 
@@ -75,9 +104,12 @@ Everything here is opinion, not gospel. The rules in `CLAUDE.md` and its referen
 - Change the preferred stack in `coding-standards.md`.
 - Adjust the commit conventions in `git-workflow.md`.
 - Swap out the agent submodule in `.gitmodules` for a different library, or vendor your own agents into `agents/`.
-- Add your own slash commands under `commands/`.
+- Add your own skills under `skills/<name>/SKILL.md` — they become `/name` in Claude, `$name` in
+  Codex, and implicitly activatable in Gemini. Run `scripts/validate-skills.sh` before committing.
 
-The topic-file layout (root `CLAUDE.md` pointing at focused sub-docs) keeps each file small enough to read in full during a session. If a file grows past ~300 lines, consider splitting it further.
+Split a skill when its body serves more than one trigger: a skill you invoke for one reason but which
+loads instructions for three is the flat-file problem again, one level down. If a `SKILL.md` grows
+past ~300 lines, that is usually the sign.
 
 ## Contributing
 

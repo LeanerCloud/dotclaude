@@ -5,7 +5,18 @@ usage() {
   cat <<'USAGE'
 Usage: setup-agent-symlinks.sh [--home DIR] [--claude-dir DIR]
 
-Create or update Codex and Gemini symlinks to the shared Claude guidance files.
+Expose the shared Claude guidance to Codex CLI and Gemini CLI.
+
+Two mechanisms:
+
+  1. Skills -> HOME/.agents/skills/<name>, one symlink per skill directory.
+     Codex reads $HOME/.agents/skills (user scope) and Gemini reads
+     ~/.agents/skills as an alias of ~/.gemini/skills, so a single tree serves
+     both. Claude Code reads CLAUDE_DIR/skills directly - the canonical copy.
+
+  2. Root config + the legacy topic-doc paths -> HOME/.codex and HOME/.gemini.
+     The topic docs are now pointer stubs naming their successor skills; the
+     links are kept so any reference to the old paths still resolves.
 
 Options:
   --home DIR        Home directory containing .codex and .gemini (default: $HOME)
@@ -108,6 +119,26 @@ link_shared_docs() {
   link_one "$claude_dir/triage.md" "$agent_dir/triage.md"
 }
 
+link_skills() {
+  agents_skills_dir="$home_dir/.agents/skills"
+  mkdir -p "$agents_skills_dir"
+
+  found=0
+  for skill_path in "$claude_dir"/skills/*/; do
+    [ -f "$skill_path/SKILL.md" ] || continue
+    skill_name="$(basename "$skill_path")"
+    link_one "${skill_path%/}" "$agents_skills_dir/$skill_name"
+    found=$((found + 1))
+  done
+
+  if [ "$found" -eq 0 ]; then
+    echo "error: no skills found under $claude_dir/skills" >&2
+    return 1
+  fi
+  echo "linked $found skill(s) into $agents_skills_dir"
+}
+
 link_shared_docs "$codex_dir"
 link_shared_docs "$gemini_dir"
 link_one "$claude_dir/CLAUDE.md" "$gemini_dir/GEMINI.md"
+link_skills
