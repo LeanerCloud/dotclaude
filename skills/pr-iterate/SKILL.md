@@ -279,7 +279,7 @@ issues, skip the rest with a brief reason.
    PR in the last 5 minutes. The trailing `@coderabbitai review` triggers the next CR pass -
    never the `resolve` shortcut. Echo `pinged #<N>` after a successful post so broken-iterator
    bugs are visible in transcript output.
-5. Arm the CI watcher per git-workflow.md's post-push rule (launch one background `Agent` per
+5. Arm the CI watcher per the `ci-watch` skill (launch one background `Agent` per
    workflow run, named `ci-watch-<short-sha>-<workflow-slug>`, that fixes CI failures
    autonomously via follow-up commits coordinated through the same push lock).
 

@@ -14,7 +14,7 @@ This file is the full worktree-isolation protocol: when to create one, how to pe
 ## Preconditions and creation
 
 - **Precondition — plan has passed the §1 three-pass review gate.** The worktree is the commitment to implement. Don't create one while the plan is still being iterated on, or it becomes a dumping ground for exploratory edits made on an unverified plan (and once commits start landing, reviewing the plan becomes fighting the code's momentum instead of shaping its design). If the plan needs more revision, stay on the base branch, revise, re-review, then come back.
-- **Record the base branch** (the branch checked out when the task starts — e.g., `feat/multicloud-web-frontend`, `main`) in the plan. That's what you'll rebase/merge onto at the end. If the base branch is `main` or another protected branch, still use a worktree — PR discipline from `~/.claude/git-workflow.md` applies on top.
+- **Record the base branch** (the branch checked out when the task starts — e.g., `feat/multicloud-web-frontend`, `main`) in the plan. That's what you'll rebase/merge onto at the end. If the base branch is `main` or another protected branch, still use a worktree — PR discipline from the `git-commit` skill applies on top.
 - **Create the worktree after the plan review gate passes**, before the first commit:
   ```bash
   git worktree add ../<repo>-<slug> -b <type>/<slug> <base-branch>
@@ -45,11 +45,11 @@ pid_updated: <ISO-8601 timestamp of the last pid write>
 Paste verbatim below the header — copy-paste, don't paraphrase, so every plan carries the same rules:
 
 ```markdown
-## Workflow (embedded from ~/.claude/worktrees.md — DO NOT SKIP)
+## Workflow (embedded from ~/.claude/skills/worktrees/SKILL.md — DO NOT SKIP)
 
 **Before touching any file in the worktree, resolve ownership**:
 1. Read `pid:`, `host:`, and `pid_updated:` from the header.
-2. If `host:` equals the current hostname, run `kill -0 <pid> 2>/dev/null`. Exit code 0 → another session owns this plan. STOP and coordinate via `~/.claude/agent-comms/` (see `~/.claude/multi-agent-comms.md`) — do not adopt.
+2. If `host:` equals the current hostname, run `kill -0 <pid> 2>/dev/null`. Exit code 0 → another session owns this plan. STOP and coordinate via `~/.claude/agent-comms/` (see the `multi-agent-comms` skill) — do not adopt.
 3. If `host:` differs OR `kill -0` fails OR `pid_updated:` is older than 24h, the plan is orphaned. Adopt it: overwrite `pid:` with your own PID, `host:` with your hostname, `pid_updated:` with now (ISO-8601). Save the header BEFORE any code edit. The adoption write is the lock — whichever session writes last wins; the other must abandon if it discovers the change.
 4. Re-read the header after a short delay (~2s) to detect a competing adopter. If your PID is still there, you own the plan; otherwise back off.
 
@@ -60,7 +60,7 @@ Paste verbatim below the header — copy-paste, don't paraphrase, so every plan 
 - The CLAUDE.md §1 post-implementation review is clean.
 - **Three consecutive verification passes find no gaps.** A pass covers tests, lint/typecheck, the §4 per-change-type verification (UI smoke, API curl, etc.), and a re-read of the diff against the plan. Any finding → fix and restart the count at zero. Partial credit does not exist.
 
-**On completion**: rebase onto `base_branch:`, push, `git worktree remove` the worktree, flip `status:` to `merged`, then delete (or archive) this plan file. If the PR merges out-of-band (a human or another agent's `merge-watch` merges it after this session is gone), any later session reclaims this worktree via the sweep in `~/.claude/worktrees.md` ("Reclaiming worktrees after the PR merges or closes").
+**On completion**: rebase onto `base_branch:`, push, `git worktree remove` the worktree, flip `status:` to `merged`, then delete (or archive) this plan file. If the PR merges out-of-band (a human or another agent's `merge-watch` merges it after this session is gone), any later session reclaims this worktree via the sweep in the `worktrees` skill ("Reclaiming worktrees after the PR merges or closes").
 
 **On abandonment**: flip `status:` to `abandoned`, clear `pid:`, then remove the worktree and delete the plan file.
 ```
@@ -104,7 +104,7 @@ A worktree that has been around a while is not necessarily current, and is not n
   git fetch origin <branch>
   git rev-list --left-right --count origin/<branch>...HEAD   # left = origin-only
   ```
-  If behind: branch from the origin tip, cherry-pick your commits across, and **re-run every gate** — the base changed, so earlier verification no longer applies. Never resolve this with `--force` (`--force-with-lease` only, per `~/.claude/git-workflow.md`).
+  If behind: branch from the origin tip, cherry-pick your commits across, and **re-run every gate** — the base changed, so earlier verification no longer applies. Never resolve this with `--force` (`--force-with-lease` only, per the `git-commit` skill).
   What does *not* detect staleness: file mtimes merely look "old", and externally-visible artifacts (generated schemas, build outputs) can be byte-identical across versions. Only the ahead/behind count is conclusive.
 - **Gone entirely.** Worktrees get pruned mid-session (`git worktree prune`, a cleanup sweep, a reboot clearing `$TMPDIR`). The symptom is `fatal: not a git repository` from a directory that worked minutes ago. Recreate it at the origin tip and re-run the gates; do not assume the prior run's verification still stands. This is distinct from the plan-file orphan detection above: the plan can be perfectly intact while the tree it described is gone.
 
@@ -123,12 +123,12 @@ ALL of these must hold before rebasing/merging back onto the base branch:
 ## Rebase and cleanup
 
 - **Rebase, don't merge, by default**: `git rebase <base-branch>` inside the worktree to keep history linear, then fast-forward the base branch. Use a merge commit only if the base branch protects against force-pushes or the team convention demands it.
-- **After the merge**: push the base branch (triggering the post-push CI watcher per `~/.claude/git-workflow.md`), then `git worktree remove ../<repo>-<slug>`, delete the feature branch if it's no longer needed, and delete the plan file at `~/.claude/projects/<project>/plans/<slug>.md` (or flip its `status:` header to `merged` and move it to a `plans/archive/` subdir if you want an audit trail). Crash-recovery enumeration should only surface active work — stale plan files and worktrees confuse future sessions.
+- **After the merge**: push the base branch (triggering the post-push CI watcher per the `ci-watch` skill), then `git worktree remove ../<repo>-<slug>`, delete the feature branch if it's no longer needed, and delete the plan file at `~/.claude/projects/<project>/plans/<slug>.md` (or flip its `status:` header to `merged` and move it to a `plans/archive/` subdir if you want an audit trail). Crash-recovery enumeration should only surface active work — stale plan files and worktrees confuse future sessions.
 - **If a worktree is abandoned** (idea didn't pan out, approach superseded): flip the plan's `status:` to `abandoned` before removing the worktree, so recovery doesn't try to resume dead work. Then delete the plan file and worktree as above.
 
 ## Reclaiming worktrees after the PR merges or closes (run the sweep)
 
-The creating session is usually **not** the one that observes its PR reach a terminal state: in a PR-based repo, merges happen through GitHub (a human clicking merge, or another agent's `merge-watch`, see `~/.claude/git-workflow.md`), and the creating session may be long dead by then. Likewise a PR can be closed as wontfix/superseded by someone else entirely. So worktree cleanup **cannot** rely only on the creating session's "on completion" step above, or worktrees pile up (a stale `git worktree list` full of merged branches poisons crash-recovery enumeration and wastes disk). Every session treats a worktree whose PR has merged or closed as reclaimable, and sweeps proactively.
+The creating session is usually **not** the one that observes its PR reach a terminal state: in a PR-based repo, merges happen through GitHub (a human clicking merge, or another agent's `merge-watch`, see the `git-commit` skill), and the creating session may be long dead by then. Likewise a PR can be closed as wontfix/superseded by someone else entirely. So worktree cleanup **cannot** rely only on the creating session's "on completion" step above, or worktrees pile up (a stale `git worktree list` full of merged branches poisons crash-recovery enumeration and wastes disk). Every session treats a worktree whose PR has merged or closed as reclaimable, and sweeps proactively.
 
 **When to sweep** (cheap, so run it liberally):
 - At session start and before ending a session.

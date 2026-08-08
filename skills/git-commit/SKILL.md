@@ -27,12 +27,12 @@ This is the first thing to check, because everything else here is worthless with
 - Use **conventional commits** format: `type(scope): subject` — e.g. `feat(auth): add OAuth2 login`, `fix(api): handle nil pointer on empty response`.
   - Common types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf`, `ci`, `build`.
   - `scope` is optional but useful for larger repos; omit when the repo is small.
-  - This enables automated changelog and release notes generation (see `infra-ops.md` CI/CD).
+  - This enables automated changelog and release notes generation (see the `infra-ops` skill CI/CD).
 - Subject line: imperative mood, lowercase, no trailing period, ≤72 chars.
 - Body (when needed): bullet points explaining the *why*, not the *what*; wrap at 72 chars.
 - **NEVER** mention Anthropic or Claude in commit messages (no Co-Authored-By lines).
 - **Avoid heredocs for `git commit -m`**: patterns like `git commit -m "$(cat <<'EOF' ... EOF)"` are fragile — the `$(...)` command substitution can trigger approval prompts, the heredoc-inside-substitution interacts badly with pre-commit hooks that stash unstaged changes (the stash/restore cycle has been observed to fail repeatedly), and quoting/escaping bugs are easy to introduce. Instead, for each commit **`Write` a fresh file** to `/tmp/claude/` with a unique name, commit via `git commit -F <path>`, and delete the file once the commit has landed.
-  - **Why `/tmp/claude/`**: see `tool-usage.md` § "Two script locations by lifetime" for the rationale. Create the directory lazily with `mkdir -p /tmp/claude` before the first write if it doesn't exist.
+  - **Why `/tmp/claude/`**: see the `tool-usage` skill § "Two script locations by lifetime" for the rationale. Create the directory lazily with `mkdir -p /tmp/claude` before the first write if it doesn't exist.
   - **One file per commit, always created fresh with `Write`**: use a unique name like `/tmp/claude/commit-<short-subject>.txt` or include a timestamp so consecutive commits never collide. Because `Write` echoes the full file content back on creation, the final message is visible in full before the commit lands — no separate `Read` pass is needed. Do NOT `Edit` an existing commit-msg file in place; always `Write` a fresh one.
   - **Clean up after every commit**: once `git commit -F` has succeeded, `rm` the file. Single-file deletion on an explicit path is safe and avoids leaving stale buffers behind.
 
@@ -53,8 +53,8 @@ Before every commit, enter a review loop (same discipline as the plan review loo
 - **Silent failures** — swallowed errors, empty catch blocks, fallbacks that mask real problems, `nil`/zero placeholders standing in for absent data (per `CLAUDE.md` §5).
 - **Test coverage & edge cases** — are the new paths actually exercised, including boundaries, error paths, and the contract (not just the happy path)?
 - **Security** — beyond OWASP basics: trust boundaries, authz on every new path, secret handling, injection via every new input.
-- **Over-engineering & scope** — parameters with no caller, abstractions with one consumer, validation of unreachable states, machinery the current requirement doesn't need. Could a competent colleague have written this in half the lines? See `coding-standards.md` ("Simplicity & Scope (YAGNI)").
-- **Comment accuracy & density** — do comments match the code, or did they rot during edits? Is the diff over-commented (restatements of the next line, rationale essays, review-round references)? See `coding-standards.md` ("Comments").
+- **Over-engineering & scope** — parameters with no caller, abstractions with one consumer, validation of unreachable states, machinery the current requirement doesn't need. Could a competent colleague have written this in half the lines? See the `coding-standards` skill ("Simplicity & Scope (YAGNI)").
+- **Comment accuracy & density** — do comments match the code, or did they rot during edits? Is the diff over-commented (restatements of the next line, rationale essays, review-round references)? See the `coding-standards` skill ("Comments").
 - **Performance & resources** — N+1s, unbounded growth, leaked handles/goroutines, needless allocation on hot paths.
 - **API, naming & convention consistency** — does it match the surrounding code's idiom, naming, and the project's documented conventions?
 

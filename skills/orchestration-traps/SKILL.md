@@ -50,8 +50,7 @@ Guards:
   their absence. Timestamp- and count-based tests all fail here.
 - **Treat an idle agent as *ready to report*.** An idling agent is saying
   "finished this turn, available for more", never "done forever" - the same
-  root cause as the watcher-teardown leak in `git-workflow.md` §"Post-PR review
-  loop", but yielding a wrong verdict rather than a leaked background agent.
+  root cause as the watcher-teardown leak in the `pr-lifecycle` skill, but yielding a wrong verdict rather than a leaked background agent.
   Request the verdict once; replace on a second silent idle. Briefing does not
   fix this - a reviewer respawned with "your final message is the deliverable"
   at the top of its brief idled without reporting anyway - so the guard is
@@ -65,8 +64,7 @@ Guards:
   not look".
 
 Detection mechanics - which API objects carry a verdict, throttle detection,
-the `full review` recovery - are owned by `git-workflow.md` §"Post-PR review
-loop". Enumerate every channel before concluding a review happened.
+the `full review` recovery - are owned by the `cr-loop` skill. Enumerate every channel before concluding a review happened.
 
 ### Stale adversarial review
 An adversarial-review comment on a PR proves nothing unless it postdates
@@ -75,7 +73,7 @@ the current HEAD commit. Compare timestamps; re-review the delta otherwise.
 ### Stale worktree, or no worktree
 A long-lived worktree is often a *pre-rebase copy* - same commit subjects,
 different SHAs - so tests there verify code that is not on the branch.
-Detection and recovery are in `worktrees.md` §"Staleness and disappearance".
+Detection and recovery are in the `worktrees` skill §"Staleness and disappearance".
 The orchestration-level rule: a worktree that turns out stale or missing
 invalidates **every gate already run in it**.
 
@@ -92,7 +90,7 @@ it, is not coverage. See §8.
 ### Generated scripts
 A `sed`-built script can silently produce a 0-byte file. `bash -n` any
 generated script before arming it as a watcher (script review rules:
-`tool-usage.md`).
+the `tool-usage` skill).
 
 ### A fix can be defeated by its own remediation path
 Three shapes, two of them from one script closing an over-broad IAM grant:
@@ -173,7 +171,7 @@ script, a required argument, a wrapper that rejects the bad shape.
 A branch can be pushed and its PR never opened - the authoring session dies in
 the gap - leaving complete, reviewed-quality work on origin that is invisible
 to every priority query and every reviewer. This is distinct from the
-merged-branch stranding case in `git-workflow.md`: the branch is live, the
+merged-branch stranding case in the `pr-lifecycle` skill: the branch is live, the
 work is finished, and nothing points at it.
 
 Recovery: for each branch you pushed, confirm a PR exists. Before
@@ -219,9 +217,9 @@ code, green tests are not proof the feature works, trace the real
 end-to-end path, re-check live state before asserting status. Procedure for
 the load-bearing one: revert the fix, run the new test, confirm it FAILS,
 restore, confirm it PASSES, and state both outcomes when reporting. The
-"assert the defect, not a proxy" rule is in `coding-standards.md`
+"assert the defect, not a proxy" rule is in the `coding-standards` skill
 §"Testing Philosophy"; matching the CI-pinned tool version before trusting
-a local lint or format result is in `tool-usage.md`.
+a local lint or format result is in the `tool-usage` skill.
 
 What running this at multi-PR scale adds:
 

@@ -28,7 +28,7 @@ Set up [`pre-commit`](https://pre-commit.com/) (or Husky for Node projects) if n
 - Language type checker where applicable (`tsc --noEmit`, `mypy`)
 - Run affected tests (at minimum, tests touching changed files)
 
-Hooks must pass cleanly on all existing code before being introduced — fix violations first, then add the hook. Never skip hooks with `--no-verify` (see `git-workflow.md`).
+Hooks must pass cleanly on all existing code before being introduced — fix violations first, then add the hook. Never skip hooks with `--no-verify` (see the `git-commit` skill).
 
 ### CI Pipeline
 Ensure `.github/workflows/` (or equivalent) has at minimum:
@@ -36,14 +36,14 @@ Ensure `.github/workflows/` (or equivalent) has at minimum:
 - Full test suite with coverage threshold enforcement (see coverage target in Preferred Stack below)
 - Security scan (`govulncheck`, `npm audit --audit-level=high`, `trivy`)
 - Build verification
-- Branch protection (see `~/.claude/infra-ops.md` CI/CD section for the full policy)
+- Branch protection (see the `infra-ops` skill CI/CD section for the full policy)
 
 ### Other Baseline Files
 - `.editorconfig` — consistent whitespace/encoding across editors
 - `.gitignore` — appropriate for the language/framework; never commit build artifacts, secrets, or IDE files
 - `.env.example` — commit this with all required variable names and placeholder/example values but **no real secrets**; it serves as living documentation of what config the project needs; keep it in sync with the actual required variables
 - `Makefile` or `Taskfile` with `make lint`, `make test`, `make build` targets
-- `known-issues.md` — track known bugs and tech debt; see `~/.claude/project-docs.md`
+- `known-issues.md` — track known bugs and tech debt; see the `project-docs` skill
 
 ---
 
@@ -214,4 +214,4 @@ defer cancel()
 - Inline comments: see **Comments** above; default to none, and document the *why* only where it isn't deducible from the code
 - Maintain a CHANGELOG if one already exists; add one for projects with releases or external users (skip for small internal tools — scale to context)
 - Keep API docs (OpenAPI, docstrings) in sync with implementation — stale docs are harmful
-- Use ADRs for significant decisions — see `~/.claude/project-docs.md` for the ADR template and format
+- Use ADRs for significant decisions — see the `project-docs` skill for the ADR template and format

@@ -42,7 +42,7 @@ This rule has no exemptions — even "just this once" multiline commands count. 
   - Use a descriptive, unique filename per script (e.g. `/tmp/claude/inspect-<topic>.sh`) so concurrent tasks don't collide.
   - **Why `/tmp/claude/` and not inside the project**: an in-project scratch path (e.g. `.claude/scripts/tmp/`) sits under every repo's sensitive-file radar — writing to it triggers per-project approval prompts. `/tmp/claude/` is outside any project, so writes don't trip that gating. Create the directory lazily with `mkdir -p /tmp/claude` before the first write if it doesn't exist. The OS clears `/tmp/` on reboot, so no long-term cleanup is needed.
   - **Clean up after each use**: `rm` the script with `Bash` on the explicit path once the task is done — single-file deletes are safe and keep `/tmp/claude/` tidy within the session.
-  - **Commit-message files also live here** — see `git-workflow.md` for the full protocol. The same cleanup rule applies: delete after `git commit -F` succeeds.
+  - **Commit-message files also live here** — see the `git-commit` skill for the full protocol. The same cleanup rule applies: delete after `git commit -F` succeeds.
 - **Persistent scripts** (reusable across sessions, but still session-tooling not project code) → `.claude/scripts/`
   - Examples: a recurring environment diagnostic, a helper that wraps a long `aws cli` command you keep needing, a deployment sanity check.
   - **Don't auto-delete** — these accumulate intentionally as a personal toolbox. Review periodically and prune unused ones.
@@ -75,7 +75,7 @@ Auto-fixing hooks (`gofmt`/`gofumpt`, `prettier`, `black`, `ruff format`, `terra
 
 Rules:
 - Before trusting or committing any local formatter result, confirm your tool version matches CI's pinned version (CI workflow `setup-go`/`setup-node`/etc., or the repo's `.tool-versions`/`go.mod toolchain`/`.nvmrc`). If it doesn't match, treat the local result as unreliable.
-- Pin the hook to the repo's version source (e.g. Go: run `gofmt` from the `go.mod` `toolchain` via explicit `GOTOOLCHAIN=go1.xx.y`; JS: the repo's pinned `prettier`). Language-specific recipe for Go is in `conventions.md` ("Code Style").
+- Pin the hook to the repo's version source (e.g. Go: run `gofmt` from the `go.mod` `toolchain` via explicit `GOTOOLCHAIN=go1.xx.y`; JS: the repo's pinned `prettier`). Language-specific recipe for Go is in the `conventions` skill ("Code Style").
 - When a CI format check fails on a stale branch, the fix is usually to **rebase onto the cleaned-up base** (which already carries CI-formatted files), NOT to hand-run a local formatter and commit its whole-repo output. Let CI confirm the format hook; never commit an auto-fixer's repo-wide reformat to "make CI green."
 - Never stage an auto-fixer's output with `git add -A`/`git add .` — stage only the specific files your change owns.
 

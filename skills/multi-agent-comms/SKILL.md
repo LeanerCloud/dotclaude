@@ -9,7 +9,7 @@ description: The filesystem message bus and advisory lock protocol (`git-commit`
 
 Agent sessions working on the same project coordinate through a shared filesystem-based message bus at `~/.claude/agent-comms/`. This avoids conflicts, duplicated work, and broken commits when multiple sessions run concurrently.
 
-This file is the protocol between **peer** sessions that happen to share a repo. For the *hierarchical* case — one orchestrator directing implementer and reviewer agents through a queue of PRs, and coordinating via durable GitHub state rather than this bus — see `~/.claude/multi-agent-pr-orchestration.md`. The two compose: agents in that model still take the `git-commit` / `git-push` / `test-runner` locks below.
+This file is the protocol between **peer** sessions that happen to share a repo. For the *hierarchical* case — one orchestrator directing implementer and reviewer agents through a queue of PRs, and coordinating via durable GitHub state rather than this bus — see the `pr-orchestration` skill. The two compose: agents in that model still take the `git-commit` / `git-push` / `test-runner` locks below.
 
 ## Directory Layout
 
@@ -81,7 +81,7 @@ Agents should post a `sync` message:
 
 Locks are directories at `locks/<resource-name>.lock/` — use `mkdir` to acquire (atomic on POSIX; fails if already exists) and `rmdir` to release. Place a file inside (`info`) with the `AGENT_ID` and timestamp. Locks older than 10 minutes without a corresponding status beacon are considered stale and can be removed.
 
-> **Note**: the `&&` chaining below is intentional — the `echo`/`rm` must only run if `mkdir`/`rmdir` succeeds to preserve lock atomicity. This is an acceptable exception to the "avoid `&&`" rule in `tool-usage.md`. Write these as a script file per the multiline-shell rule.
+> **Note**: the `&&` chaining below is intentional — the `echo`/`rm` must only run if `mkdir`/`rmdir` succeeds to preserve lock atomicity. This is an acceptable exception to the "avoid `&&`" rule in the `tool-usage` skill. Write these as a script file per the multiline-shell rule.
 
 ```bash
 # Acquire lock (atomic — fails if already held)

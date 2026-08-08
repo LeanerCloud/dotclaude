@@ -44,7 +44,7 @@ The full prioritization the user gets is: open-yours-PRs (CI red / awaiting-your
 
 ## Capturing follow-ups discovered while working an issue
 
-Whenever processing a GitHub issue (implementing the fix, investigating the bug, exercising the feature) and noticing something that *could* be done but isn't strictly part of the current issue, **file it as a separate GitHub issue immediately and triage it at creation** — don't silently expand the scope of the current PR, don't drop the observation, don't leave a TODO comment in code as the only record. This complements `git-workflow.md` §"Capture follow-up tasks as new GitHub issues" — that rule fires at PR-completion time; this one fires the moment you spot the side-quest, regardless of where you are in the issue's lifecycle.
+Whenever processing a GitHub issue (implementing the fix, investigating the bug, exercising the feature) and noticing something that *could* be done but isn't strictly part of the current issue, **file it as a separate GitHub issue immediately and triage it at creation** — don't silently expand the scope of the current PR, don't drop the observation, don't leave a TODO comment in code as the only record. This complements the `git-commit` skill §"Capture follow-up tasks as new GitHub issues" — that rule fires at PR-completion time; this one fires the moment you spot the side-quest, regardless of where you are in the issue's lifecycle.
 
 **Triggers — file a new issue when you notice**:
 - a related-but-separate bug while reproducing the current one

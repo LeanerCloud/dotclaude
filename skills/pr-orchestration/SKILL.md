@@ -15,21 +15,25 @@ prevents actually happened.
 
 The model is **variant-independent**. It has two execution variants (§1):
 the interactive one, which this file describes throughout, and the scheduled
-one, whose cron-specific mechanics live in `issue-pr-autopilot.md`.
+one, whose cron-specific mechanics live in the `issue-pr-autopilot` skill.
 
 Everything already owned by another file is cross-referenced, not restated:
 
 | Topic | Owner |
 |-------|-------|
-| Commit conventions, review-bot loop, CI watchers, merge mechanics, rate limits | `git-workflow.md` |
-| Worktree isolation, staleness/disappearance, crash recovery, post-merge reclaim | `worktrees.md` |
-| Model-tier selection, reviewer independence, subsystem pooling, agent reuse | `subagent-strategy.md` |
-| Peer-session coordination on one repo (locks, sync messages) | `multi-agent-comms.md` |
-| Priority ordering of issues and PRs | `triage.md` |
+| Commit conventions | the `git-commit` skill |
+| Review-bot loop | the `cr-loop` skill |
+| CI watchers | the `ci-watch` skill |
+| Merge mechanics | the `pr-lifecycle` skill |
+| Rate limits | the `rate-limit-retry` skill |
+| Worktree isolation, staleness/disappearance, crash recovery, post-merge reclaim | the `worktrees` skill |
+| Model-tier selection, reviewer independence, subsystem pooling, agent reuse | the `subagent-strategy` skill |
+| Peer-session coordination on one repo (locks, sync messages) | the `multi-agent-comms` skill |
+| Priority ordering of issues and PRs | the `work-selection` skill |
 | Verification standards, adversarial verification | `CLAUDE.md` §4, §6 |
-| Testing rules, including asserting the defect | `coding-standards.md` |
-| Matching the CI-pinned tool version | `tool-usage.md` |
-| Cron routines, RemoteTrigger bodies, run budget | `issue-pr-autopilot.md` |
+| Testing rules, including asserting the defect | the `coding-standards` skill |
+| Matching the CI-pinned tool version | the `tool-usage` skill |
+| Cron routines, RemoteTrigger bodies, run budget | the `issue-pr-autopilot` skill |
 
 Paths below use placeholders: `<repo>` is the main checkout, `<wt>` a
 worktree root (this repo conventionally puts them under a scratch dir such
@@ -42,12 +46,12 @@ as `$TMPDIR/claude/`).
 Two ways to run the same model. Pick by which constraints you are under, not
 by preference.
 
-| | **Interactive** (this file) | **Scheduled** (`issue-pr-autopilot.md`) |
+| | **Interactive** (this file) | **Scheduled** (the `issue-pr-autopilot` skill) |
 |---|---|---|
 | Runs as | a local session you are watching | remote cron routines, unattended |
 | Subagents | yes, that is the whole design | **no** - a routine is one flat agent, single model, no `Agent` tool |
 | Tier split | per-agent, live (top tier reviews, a tier down implements) | across *separate routines* handing off through GitHub state |
-| Coordination state | orchestrator context + task list + `multi-agent-comms.md` locks | GitHub labels only |
+| Coordination state | orchestrator context + task list + the `multi-agent-comms` skill locks | GitHub labels only |
 | Watchers | background `Agent`s per push and per PR | the next cron fire *is* the watcher |
 | Good for | a backlog you are actively working, high-stakes money paths | steady unattended drip, backlogs nobody is watching |
 
@@ -76,14 +80,14 @@ its context filling up with diffs.
 planner and implementer roles above, not a different model. Read
 planner = the judgement-heavy phase, worker = the mechanical phase. The
 split exists for the same reason in both variants - to put top-tier
-reasoning only where judgement is the hard part (`subagent-strategy.md`
+reasoning only where judgement is the hard part (the `subagent-strategy` skill
 §"Routine PR-shipping splits across tiers") - and the tier rubric is the
 same one.
 
 **Independence and pooling**: a reviewer must never review code it wrote,
 and never re-bless a change it already approved; reviewers are pooled by
 subsystem so a warm agent stays independent on a *different* PR. Both rules
-live in `subagent-strategy.md` §"Reuse agents before spawning new ones",
+live in the `subagent-strategy` skill §"Reuse agents before spawning new ones",
 the owner of agent-reuse strategy. The PR-level consequence is the
 adversarial-clean merge gate (§5).
 
@@ -92,11 +96,11 @@ adversarial-clean merge gate (§5).
 When the planner and the implementer **do not share a process**, they can
 communicate only through **durable state**: the plan is committed rather than
 remembered (a plan branch, or `~/.claude/projects/<project>/plans/` per
-`worktrees.md`); the claim is the **first** durable action after it, which is
+the `worktrees` skill); the claim is the **first** durable action after it, which is
 what shrinks the §3 race window; and the handoff marker is parseable, so the
 next actor resolves it mechanically. The scheduled variant's instance (plan
 branch + `autopilot-branch:` marker + `plan-ready` label) is in
-`issue-pr-autopilot.md` §"Plan handoff".
+the `issue-pr-autopilot` skill §"Plan handoff".
 
 ---
 
@@ -104,7 +108,7 @@ branch + `autopilot-branch:` marker + `plan-ready` label) is in
 
 Several actors work the same repo at once, each in its own worktree, and
 more than one may push to the *same* PR branch. Interactive sessions can
-additionally use the filesystem lock bus in `multi-agent-comms.md`; that bus
+additionally use the filesystem lock bus in the `multi-agent-comms` skill; that bus
 does not exist for scheduled routines, so the rules below assume only what
 both variants have.
 
@@ -142,7 +146,7 @@ both variants have.
 
 Several actors may push to one PR branch. **Never force-push** - another
 session's commits live there; `--force-with-lease` only, per
-`git-workflow.md`. **Always check freshness before pushing** (`worktrees.md`
+the `cr-loop` skill. **Always check freshness before pushing** (the `worktrees` skill
 §"Staleness and disappearance", and the §7 trap it backs). **Never bare
 `git stash`** - the stack is shared across worktrees, so use a WIP commit, or
 `git stash push -u -m "<unique-tag>"` and recover by SHA with `apply`, never
@@ -152,9 +156,9 @@ session's commits live there; `--force-with-lease` only, per
 
 ## 4. Cost control
 
-Tier selection is owned by `subagent-strategy.md` (§"Delegate to the
+Tier selection is owned by the `subagent-strategy` skill (§"Delegate to the
 cheapest sufficient tier", §"Routine PR-shipping splits across tiers"); do
-not re-derive it here or in `issue-pr-autopilot.md`. Three controls are
+not re-derive it here or in the `issue-pr-autopilot` skill. Three controls are
 specific to running many items at once:
 
 - **A cheap preflight gate** before any expensive phase, so a quiet backlog
@@ -164,7 +168,7 @@ specific to running many items at once:
   whole point of the role split in §2.
 - **Per-pass caps** on how many new items enter the pipeline, so the number
   of in-flight PRs (and their review loops) stays bounded. The scheduled
-  variant's concrete caps and run budget are in `issue-pr-autopilot.md`.
+  variant's concrete caps and run budget are in the `issue-pr-autopilot` skill.
 
 ---
 
@@ -177,10 +181,10 @@ authorization to bypass one.
 |------|-------|----------|
 | CI green | every workflow run `success` for the exact HEAD SHA | merging broken code |
 | Review bot clean | 0 unresolved threads **AND** latest review newer than the HEAD push | the false-clean trap (§7) |
-| Adversarial clean | an independent agent **returned** a verdict against current HEAD - findings now fixed, or "NO CONFIRMED FINDINGS" plus what it attacked - **and posted it on the PR** (`git-workflow.md` §3b) | green-CI-but-still-broken, §7, and a verdict that dies with the session |
+| Adversarial clean | an independent agent **returned** a verdict against current HEAD - findings now fixed, or "NO CONFIRMED FINDINGS" plus what it attacked - **and posted it on the PR** (the `cr-loop` skill §3b) | green-CI-but-still-broken, §7, and a verdict that dies with the session |
 | Mergeable | `MERGEABLE` + `CLEAN`; no `--admin`, no `--no-verify` | merging past a pending check |
 
-The mergeable gate is `git-workflow.md` §4 ("never bypass required checks");
+The mergeable gate is the `pr-lifecycle` skill §4 ("never bypass required checks");
 this table exists because the other three are easy to skip when several PRs
 are in flight at once.
 
@@ -188,7 +192,7 @@ Merge mechanics under multi-PR load: merge **one at a time**, via the REST
 endpoint (`gh api PUT .../merge`) rather than `gh pr merge`, with ~30s
 spacing plus backoff. Bursting merges trips GitHub's secondary rate limit,
 which is distinct from the hourly quota and is handled per
-`git-workflow.md` §"Rate-limit handling". Rebase **just in time** - only
+the `rate-limit-retry` skill. Rebase **just in time** - only
 immediately before merging that PR. Eager mass-rebasing churns, because each
 merge invalidates the next.
 
@@ -200,12 +204,12 @@ Each runs to a fixed point. "I fixed round 1" is not an exit condition, and
 that is the part orchestrating many PRs makes easy to forget.
 
 **Order the work.** Process PRs and issues in triage-priority order
-(`priority/p0` first), not by number or by interest. Rubric in `triage.md`.
+(`priority/p0` first), not by number or by interest. Rubric in the `triage-labels` skill.
 
 **Rebase before reviewing, always.** Findings triaged against a tree that is
 not the one under review are wasted at best and misleading at worst.
 
-**Review-bot loop** - full rules in `git-workflow.md` §"Post-PR review loop"
+**Review-bot loop** - full rules in the `cr-loop` skill
 (trigger/watcher atomicity, triage buckets, never `@coderabbitai resolve`,
 `full review` after a throttle). Orchestration-level: exit is *zero
 actionables on the latest review*, and §7 is what makes an apparent exit
@@ -218,10 +222,10 @@ current HEAD. Roles and independence per §2.
 **The watcher model.** Every trigger of asynchronous work needs something
 durable that will act on the response; a trigger with no watcher is the
 defect. Interactive sessions arm background agents per push and per PR
-*before* or with the trigger, never after (`git-workflow.md`); scheduled
+*before* or with the trigger, never after (the `pr-lifecycle` skill); scheduled
 routines cannot spawn anything, so the next fire is the watcher, with the
 "disabling the routine orphans every triggered PR" consequence in
-`issue-pr-autopilot.md` §"Watcher model".
+the `issue-pr-autopilot` skill §"Watcher model".
 
 ---
 
@@ -229,19 +233,19 @@ routines cannot spawn anything, so the next fire is the watcher, with the
 
 Blocked means every open PR is waiting on an external signal (throttled
 review bot, CI in flight, human decision). Then: pick up unresolved GitHub
-issues in priority order (`triage.md`) and drive each through this same
+issues in priority order (the `triage-labels` skill) and drive each through this same
 pipeline - implement, adversarial review by a *different* agent, review-bot
 loop, merge, close - until every issue is addressed.
 
 Do not idle-poll. Long-running work notifies on completion; polling just
-re-blocks the orchestrator (`subagent-strategy.md`
+re-blocks the orchestrator (the `subagent-strategy` skill
 §"Background-first execution").
 
 ---
 
 ## 10. Agent briefing template
 
-A cold agent knows nothing. `subagent-strategy.md` covers which tier to
+A cold agent knows nothing. the `subagent-strategy` skill covers which tier to
 spawn and when to reuse a warm agent instead; this is what every brief must
 *contain*:
 
@@ -271,7 +275,7 @@ spawn and when to reuse a warm agent instead; this is what every brief must
    it announce itself.
 8. **Output shape** and whether it may modify code.
 9. **What it must post on the PR before reporting done**, per
-   `git-workflow.md` §3b: a reviewer posts its verdict and the evidence
+   the `cr-loop` skill §3b: a reviewer posts its verdict and the evidence
    under it, an implementer posts what its fix commit changed and how it
    was verified. A result that exists only in the reply to the
    orchestrator is gone the moment the session ends, and the next reader

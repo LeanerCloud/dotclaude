@@ -8,7 +8,7 @@ description: The scheduled cron-routine variant of PR orchestration - routine cr
 # Issue -> PR Autopilot (scheduled, multi-routine, multi-tier)
 
 > **This is the scheduled variant of the model documented in
-> `multi-agent-pr-orchestration.md`. Read that first**; this file covers only
+> the `pr-orchestration` skill. Read that first**; this file covers only
 > what differs when the trigger is a cron routine rather than an interactive
 > session. The roles, the handoff contract, the concurrency model, the merge
 > gate, the loops, and the traps are defined there and are not repeated here.
@@ -25,12 +25,12 @@ prompts (`plan.prompt.md` and
 machinery, it does not duplicate it:
 
 - The orchestration model this implements (roles, concurrency, merge gate,
-  loops, traps) -> `multi-agent-pr-orchestration.md`
-- Selection / triage rubric -> `triage.md` (work selection + label rubric)
-- Plan -> worktree -> implement -> review -> PR -> `CLAUDE.md`, `worktrees.md`,
-  `coding-standards.md`, `conventions.md`
-- Commit/PR hygiene + post-PR CR loop -> `git-workflow.md`
-- Model-tier selection -> `subagent-strategy.md`
+  loops, traps) -> the `pr-orchestration` skill
+- Selection / triage rubric -> the `work-selection` and `triage-labels` skills
+- Plan -> worktree -> implement -> review -> PR -> `CLAUDE.md`, the `worktrees` skill,
+  the `coding-standards` skill, the `conventions` skill
+- Commit/PR hygiene -> the `git-commit` and `pr-lifecycle` skills; post-PR CR loop -> `cr-loop`
+- Model-tier selection -> the `subagent-strategy` skill
 - Driving an opened PR to merge-ready -> the `pr-iterate` flow (`commands/` / skills)
 
 ## Why multiple routines (the load-bearing constraint)
@@ -192,22 +192,22 @@ You **cannot delete** via API; use https://claude.ai/code/routines.
 ## Watcher model (scheduled context differs from a local session)
 
 The generalised rule - every trigger needs something durable that will act on
-the response - is in `multi-agent-pr-orchestration.md` §"The loops". What
+the response - is in the `pr-orchestration` skill §"The loops". What
 differs here: neither routine can spawn `cr-watch`/`ci-watch` background agents
 (no Agent/Task tool; background processes die when the bounded run ends), so the
-local git-workflow.md "spawn a watcher" steps do not apply literally. The
+local `pr-lifecycle` "spawn a watcher" steps do not apply literally. The
 invariant is satisfied **structurally and cross-routine** instead: every PR the
 worker triggers/re-pings stays in the in-flight set (`pr-created`, not
 `pr-merged`, PR open) and is therefore guaranteed to be re-examined by the next
 worker fire. **The worker cron is the durable watcher** for both planner-spawned
 and human-spawned PRs, which is why **disabling the worker routine orphans every
 triggered PR**. CR rate-limit recovery uses `@coderabbitai full review` (not the
-incremental form), per git-workflow.md.
+incremental form), per the `cr-loop` skill.
 
 ## Plan handoff (the durable contract between the two tiers)
 
 The planner and the worker never run in the same process, so they are bound by
-the handoff contract in `multi-agent-pr-orchestration.md` §"The handoff
+the handoff contract in the `pr-orchestration` skill §"The handoff
 contract" (plan committed not remembered, claim as the first durable action,
 parseable marker). This is its concrete instance - they communicate only
 through GitHub state:
@@ -226,7 +226,7 @@ through GitHub state:
    Count eligible issues (open, `triaged`, not `plan-ready`, not `pr-created`, not
    `needs-human`, not `type/question`/`status/blocked`/`status/needs-info`). If 0,
    write a one-line summary and stop.
-2. **Select.** Rank eligible issues by `triage.md` (priority -> urgency -> impact
+2. **Select.** Rank eligible issues by the `work-selection` skill (priority -> urgency -> impact
    -> unblocks-others -> effort). Take the top **1-2** (the per-repo plan cap).
 3. **Plan + claim, per issue, in this order** (claim as a tight sequence right
    after the plan commit lands, to minimise the dup-window between the two
@@ -281,7 +281,7 @@ through GitHub state:
 The model - durable state as the coordination substrate, disjoint slices per
 phase, claims are not atomic locks, the three required mitigations, and
 correctness-from-state-not-the-clock - is in
-`multi-agent-pr-orchestration.md` §"Coordination and concurrency". This is how
+the `pr-orchestration` skill §"Coordination and concurrency". This is how
 it instantiates here:
 
 - **The substrate** is GitHub issue labels plus the `autopilot-branch:` issue
@@ -319,8 +319,8 @@ it instantiates here:
 
 The three generic controls (cheap preflight gate, top-tier reasoning only on the
 bounded planning/review phases, per-pass caps) are in
-`multi-agent-pr-orchestration.md` §"Cost control", and tier selection itself is
-owned by `subagent-strategy.md`. Their concrete values here:
+the `pr-orchestration` skill §"Cost control", and tier selection itself is
+owned by the `subagent-strategy` skill. Their concrete values here:
 
 - Preflight gates in both routines, so quiet backlogs cost ~nothing.
 - Opus runs **only** the bounded planning phase (cap 2 issues/fire); the long
@@ -452,7 +452,7 @@ delete.
 
 The variant-independent ones - correctness from state rather than the clock,
 rebase before advancing a review, plan staleness, and the poison-item guard -
-are in `multi-agent-pr-orchestration.md` §§"Coordination and concurrency", "The
+are in the `pr-orchestration` skill §§"Coordination and concurrency", "The
 loops", "Traps". What is specific to running this on a cron:
 
 - **Correctness is from labels, not the clock.** Restated because it is the
