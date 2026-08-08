@@ -1,4 +1,13 @@
-Run a CR-style review of the staged diff against `git-workflow.md` §1's six dimensions PLUS this project's `feedback_*.md` memory garden. Goal: catch what CodeRabbit would catch, BEFORE the commit lands, so the post-push CR loop converges in one pass.
+---
+name: review-staged-diff
+description: Run a CodeRabbit-style review of the staged diff across the six review dimensions plus
+  the project's feedback memory, and report findings as a table. Invoke before committing, to catch
+  locally what CR would otherwise catch after the push.
+---
+
+# Review the staged diff
+
+Run a CR-style review of the staged diff against the six review dimensions PLUS this project's `feedback_*.md` memory garden (the `git-commit` skill ("Per-project feedback memory")). Goal: catch what CodeRabbit would catch, BEFORE the commit lands, so the post-push CR loop converges in one pass.
 
 **Inputs to gather first** (in this order):
 
@@ -27,12 +36,12 @@ Run a CR-style review of the staged diff against `git-workflow.md` §1's six dim
 
 Severity: Major (would break behaviour or hide a bug), Minor (style / nitpick), Info (worth flagging but not blocking). One row per finding; do not bundle.
 
-**Fan-out for substantial diffs**: if the staged diff touches more than one of (Go, TypeScript, Terraform, frontend HTML/CSS, SQL/migration, IaC, Docker), or exceeds ~400 lines, spawn the specialised review agents from `git-workflow.md` §"Delegation" in parallel (silent-failure-hunter, type-design-analyzer, pr-test-analyzer, comment-analyzer, code-simplifier) and compile their findings into the same table. Otherwise inline the review.
+**Fan-out for substantial diffs**: if the staged diff touches more than one of (Go, TypeScript, Terraform, frontend HTML/CSS, SQL/migration, IaC, Docker), or exceeds ~400 lines, spawn the specialised review agents from the `git-commit` skill ("Delegation") in parallel (silent-failure-hunter, type-design-analyzer, pr-test-analyzer, comment-analyzer, code-simplifier) and compile their findings into the same table. Otherwise inline the review.
 
 **Output**:
 
 1. The findings table (or "No issues found" if clean).
 2. A short summary: dimension counts, memory-garden entries that matched, total Major / Minor / Info.
-3. If any finding suggests memorialising a new pattern (a recurring class CR has not yet flagged but is generalisable), call it out at the end so the human can decide whether to add it to memory after the commit lands per `git-workflow.md` §"Per-project feedback memory".
+3. If any finding suggests memorialising a new pattern (a recurring class CR has not yet flagged but is generalisable), call it out at the end so the human can decide whether to add it to memory after the commit lands per the `git-commit` skill ("Per-project feedback memory").
 
 Do NOT modify the staged diff yourself; this command is a review pass, not an edit pass. The user reviews the findings, fixes locally, and re-runs the command until 3 consecutive runs return "No issues found" (the §1 three-clean-pass gate).

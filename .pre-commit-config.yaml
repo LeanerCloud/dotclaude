@@ -28,3 +28,12 @@ repos:
         args: [--maxkb=500]
       - id: mixed-line-ending
         args: [--fix=lf]
+
+  - repo: local
+    hooks:
+      - id: validate-skills
+        name: validate skills are portable across Claude/Codex/Gemini
+        entry: scripts/validate-skills.sh
+        language: script
+        files: ^skills/
+        pass_filenames: false

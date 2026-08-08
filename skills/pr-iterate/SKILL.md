@@ -1,6 +1,14 @@
 ---
 name: pr-iterate
-description: Drive a PR (or list of PRs, or all eligible open PRs in the current repo) to merge-ready state by resolving conflicts, addressing CodeRabbit (CR) findings, re-pinging CR, and iterating until CR has zero actionables and CI is green. Invocations - `/pr-iterate <PR#>` (single), `/pr-iterate <PR#> <PR#> ...` (parallel fan-out across the listed PRs), `/pr-iterate` (fan out across all eligible open PRs in current repo, with a confirmation gate). Triggered by user requests like "address CR on #NNN", "address CR comments on #NNN", "fix conflicts on #NNN", "iterate on #NNN", "push fixes and re-ping CR on #NNN", "iterate on all my open PRs", "fan out pr-iterate on my backlog". Use whenever the next action on one or more PRs is some combination of {resolve conflicts, fix CR findings, push, re-ping `@coderabbitai review`}. Do NOT use for opening a brand-new PR or for merging.
+description: >-
+  Drive one PR, several, or every eligible open PR to merge-ready - resolve conflicts, address
+  CodeRabbit findings, push, re-ping CR, repeat until CR has zero actionables and CI is green.
+  Invoke on "address CR on #NNN", "fix conflicts on #NNN", "iterate on #NNN", "iterate on all my
+  open PRs", "fan out pr-iterate on my backlog". Never opens a new PR and never merges.
+when_to_use: >-
+  Also triggered by "address CR comments on #NNN" and "push fixes and re-ping CR on #NNN". Takes an
+  optional PR list - no argument fans out across all eligible open PRs in the current repo behind a
+  confirmation gate.
 ---
 
 <!-- NOTE: reconstructed copy committed to dotclaude so the scheduled issue-pr-autopilot
@@ -272,7 +280,7 @@ issues, skip the rest with a brief reason.
    PR in the last 5 minutes. The trailing `@coderabbitai review` triggers the next CR pass -
    never the `resolve` shortcut. Echo `pinged #<N>` after a successful post so broken-iterator
    bugs are visible in transcript output.
-5. Arm the CI watcher per git-workflow.md's post-push rule (launch one background `Agent` per
+5. Arm the CI watcher per the `ci-watch` skill (launch one background `Agent` per
    workflow run, named `ci-watch-<short-sha>-<workflow-slug>`, that fixes CI failures
    autonomously via follow-up commits coordinated through the same push lock).
 
@@ -288,6 +296,10 @@ issues, skip the rest with a brief reason.
    renumber via `git mv`. Stash collision -> sleep 2 min, retry; do NOT `--no-verify`.
 
 ## Phase 5b - CR rate-limit handling
+
+The general rules (detection wordings, cooldown parsing, `full review` on recovery) belong to the
+`cr-loop` and `rate-limit-retry` skills; what follows is only what this fan-out adds on top - the
+wave-level marker file that stops N parallel agents from each re-tripping an org-level limit.
 
 After every `@coderabbitai review` ping, CR may respond with a rate-limit message instead of a
 review. Two asymmetric cases:

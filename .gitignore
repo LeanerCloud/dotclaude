@@ -33,9 +33,12 @@ daemon/
 jobs/
 security/
 daemon.log
+daemon.lock
+daemon.status.json
 daemon-auth-status.json
 daemon-auth-cooldown
 scheduled_tasks.lock
+gh-pr-status-cache.json
 
 # Per-project memory (persisted per working directory)
 projects/
