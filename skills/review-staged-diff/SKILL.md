@@ -7,7 +7,7 @@ description: Run a CodeRabbit-style review of the staged diff across the six rev
 
 # Review the staged diff
 
-Run a CR-style review of the staged diff against the six review dimensions PLUS this project's `feedback_*.md` memory garden (the `feedback-memory` skill). Goal: catch what CodeRabbit would catch, BEFORE the commit lands, so the post-push CR loop converges in one pass.
+Run a CR-style review of the staged diff against the six review dimensions PLUS this project's `feedback_*.md` memory garden (the `git-commit` skill ("Per-project feedback memory")). Goal: catch what CodeRabbit would catch, BEFORE the commit lands, so the post-push CR loop converges in one pass.
 
 **Inputs to gather first** (in this order):
 
@@ -42,6 +42,6 @@ Severity: Major (would break behaviour or hide a bug), Minor (style / nitpick), 
 
 1. The findings table (or "No issues found" if clean).
 2. A short summary: dimension counts, memory-garden entries that matched, total Major / Minor / Info.
-3. If any finding suggests memorialising a new pattern (a recurring class CR has not yet flagged but is generalisable), call it out at the end so the human can decide whether to add it to memory after the commit lands per the `feedback-memory` skill.
+3. If any finding suggests memorialising a new pattern (a recurring class CR has not yet flagged but is generalisable), call it out at the end so the human can decide whether to add it to memory after the commit lands per the `git-commit` skill ("Per-project feedback memory").
 
 Do NOT modify the staged diff yourself; this command is a review pass, not an edit pass. The user reviews the findings, fixes locally, and re-runs the command until 3 consecutive runs return "No issues found" (the §1 three-clean-pass gate).

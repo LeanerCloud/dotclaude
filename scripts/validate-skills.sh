@@ -6,7 +6,13 @@
 set -euo pipefail
 
 skills_dir="${1:-$(cd "$(dirname "$0")/.." && pwd)/skills}"
-max_description=300
+
+# Codex renders the whole skill list into at most ~8000 characters and silently shortens
+# descriptions past that, degrading selection with no warning. The total is the constraint that
+# actually bites; the per-skill cap is a sanity bound so one skill cannot eat the budget.
+max_description=400
+max_total=7000
+total=0
 failures=0
 
 fail() {
@@ -55,12 +61,35 @@ for skill_path in "$skills_dir"/*/; do
          found && /^[[:space:]]+[^[:space:]]/ { sub(/^[[:space:]]+/, " "); print; next }
          found { exit }' | tr -d '\n')"
 
+  # In a PLAIN (unquoted) YAML scalar, " #" starts a comment — so a description mentioning "#NNN"
+  # or a "#123" issue ref is silently truncated at that point, and the skill ends up advertising
+  # half of what it does. Block scalars (>- / |-) and quoted scalars are immune.
+  case "$description" in
+    '>'*|'|'*|'"'*|"'"*) ;;
+    *' #'*)
+      fail "$skill_name: description is a plain scalar containing ' #', which YAML truncates as a comment — use a '>-' block scalar"
+      ;;
+  esac
+
+  # Drop the block-scalar indicator so the length reflects what the model actually reads.
+  description="${description#[>|]}"
+  description="${description#[-+]}"
+  description="${description# }"
+
   if [ -z "$description" ]; then
     fail "$skill_name: frontmatter has no 'description:' field"
   elif [ "${#description}" -gt "$max_description" ]; then
-    fail "$skill_name: description is ${#description} chars, over the $max_description-char budget"
+    fail "$skill_name: description is ${#description} chars, over the $max_description-char cap"
   fi
+
+  total=$((total + ${#description} + ${#skill_name} + 4))
 done
+
+if [ "$total" -gt "$max_total" ]; then
+  fail "skill list renders to $total chars, over the $max_total budget — Codex truncates near 8000"
+fi
+
+echo "skill list: $total / $max_total chars"
 
 if [ "$failures" -gt 0 ]; then
   echo "$failures skill validation error(s)" >&2

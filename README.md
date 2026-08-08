@@ -32,14 +32,12 @@ portability contract and the per-tool discovery paths.
 | [`cr-loop`](skills/cr-loop/) | a CodeRabbit review is pending or has arrived |
 | [`pr-iterate`](skills/pr-iterate/) | driving one or many existing PRs to merge-ready |
 | [`rate-limit-retry`](skills/rate-limit-retry/) | any 429 / usage limit / "try again later" |
-| [`feedback-memory`](skills/feedback-memory/) | the per-project `feedback_*.md` memory garden |
 | [`review-staged-diff`](skills/review-staged-diff/) | reviewing a staged changeset before it lands |
 | [`review-and-implement`](skills/review-and-implement/) | hardening a plan, then building it |
 | [`worktrees`](skills/worktrees/) | starting any non-trivial change |
 | [`subagent-strategy`](skills/subagent-strategy/) | deciding how to delegate, or which tier |
 | [`multi-agent-comms`](skills/multi-agent-comms/) | several agents share one project |
 | [`pr-orchestration`](skills/pr-orchestration/) | orchestrating several PRs/agents at once |
-| [`orchestration-traps`](skills/orchestration-traps/) | before declaring multi-agent work done |
 | [`issue-pr-autopilot`](skills/issue-pr-autopilot/) | the scheduled issue→PR autopilot |
 | [`triage-labels`](skills/triage-labels/) | any untriaged issue or PR you touch |
 | [`triage-pass`](skills/triage-pass/) | "triage", "prioritize the backlog" |

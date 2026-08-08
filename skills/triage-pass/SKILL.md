@@ -2,7 +2,8 @@
 name: triage-pass
 description: Running a full backlog triage - when it is warranted, the pass itself, parallel-agent
   fan-out, the three-pass approach for 100+ item backlogs, anti-patterns, and how to report results.
-  Invoke on "triage", "prioritize the backlog", or "go over open issues".
+  Invoke on "triage", "let's triage", "prioritize the backlog", "go over open issues", a backlog
+  overview request, before sprint planning, or after a major merge.
 ---
 
 # The triage pass

@@ -64,14 +64,12 @@ effort (gpt-5.5 / Gemini 3.1 Pro). Keep cheapest/mid/top aligned if local model 
 | `cr-loop` | a CodeRabbit review is pending or has arrived |
 | `pr-iterate` | driving one or many existing PRs to merge-ready |
 | `rate-limit-retry` | any 429 / usage limit / "try again later" |
-| `feedback-memory` | writing code or reviewing a diff on a project with a memory garden |
 | `review-staged-diff` | reviewing a staged changeset before it lands |
 | `review-and-implement` | a plan is written and ready to be hardened, then built |
 | `worktrees` | starting any non-trivial change |
 | `subagent-strategy` | deciding how to delegate, or which tier to spawn on |
 | `multi-agent-comms` | several agents or sessions share one project |
 | `pr-orchestration` | orchestrating several PRs/agents at once |
-| `orchestration-traps` | before declaring multi-agent work done |
 | `issue-pr-autopilot` | setting up or operating the scheduled issue→PR autopilot |
 | `triage-labels` | reading, creating or updating any untriaged issue or PR |
 | `triage-pass` | "triage", "prioritize the backlog", "go over open issues" |
@@ -311,7 +309,7 @@ piping into `bash`, `eval`); **any multiline shell MUST be a script file** in `.
 - **Before creating an entry, search existing memories** — prefer updating over duplicating. **Remove
   stale entries promptly.** Review lessons at session start for the relevant project.
 - **Apply per-project memory at write time and review gates, not only after CR** — invoke the
-  `feedback-memory` skill for when to read and write the `feedback_*.md` garden.
+  `git-commit` skill for when to read and write the `feedback_*.md` garden.
 - **Workflow improvements — self-update via PR**: when you notice a gap in the `~/.claude` guidance
   (missing, ambiguous, contradictory, outdated, or something that just caused friction), **capture it
   as a pull request against `LeanerCloud/dotclaude`**. First open a GitHub issue describing the gap,

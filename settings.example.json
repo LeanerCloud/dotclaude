@@ -13,5 +13,18 @@
   "voice": {
     "enabled": true,
     "mode": "hold"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/scripts/hooks/skill-reminder.sh"
+          }
+        ]
+      }
+    ]
   }
 }

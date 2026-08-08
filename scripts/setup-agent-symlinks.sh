@@ -135,6 +135,24 @@ link_skills() {
     echo "error: no skills found under $claude_dir/skills" >&2
     return 1
   fi
+
+  # Prune links this script made for skills that have since been renamed or merged away. Scoped
+  # deliberately: only a SYMLINK, only one whose target is under CLAUDE_DIR/skills, and only when
+  # that target no longer resolves. Anything else is left alone.
+  for link in "$agents_skills_dir"/*; do
+    [ -L "$link" ] || continue
+    [ -e "$link" ] && continue
+    case "$(readlink "$link")" in
+      "$claude_dir"/skills/*)
+        rm "$link"
+        echo "pruned: $link (target no longer exists)"
+        ;;
+      *)
+        echo "warn: leaving broken symlink not owned by this script: $link" >&2
+        ;;
+    esac
+  done
+
   echo "linked $found skill(s) into $agents_skills_dir"
 }
 
