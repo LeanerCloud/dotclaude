@@ -1,6 +1,13 @@
 ---
 name: pr-iterate
-description: Drive a PR (or list of PRs, or all eligible open PRs in the current repo) to merge-ready state by resolving conflicts, addressing CodeRabbit (CR) findings, re-pinging CR, and iterating until CR has zero actionables and CI is green. Invocations - `/pr-iterate <PR#>` (single), `/pr-iterate <PR#> <PR#> ...` (parallel fan-out across the listed PRs), `/pr-iterate` (fan out across all eligible open PRs in current repo, with a confirmation gate). Triggered by user requests like "address CR on #NNN", "address CR comments on #NNN", "fix conflicts on #NNN", "iterate on #NNN", "push fixes and re-ping CR on #NNN", "iterate on all my open PRs", "fan out pr-iterate on my backlog". Use whenever the next action on one or more PRs is some combination of {resolve conflicts, fix CR findings, push, re-ping `@coderabbitai review`}. Do NOT use for opening a brand-new PR or for merging.
+description: Drive one PR, several, or every eligible open PR to merge-ready - resolve conflicts,
+  address CodeRabbit findings, push, re-ping CR, repeat until CR has zero actionables and CI is
+  green. Invoke when the next action on a PR is any of those. Never opens a new PR and never merges.
+when_to_use: >-
+  Triggered by "address CR on #NNN", "address CR comments on #NNN", "fix conflicts on #NNN",
+  "iterate on #NNN", "push fixes and re-ping CR on #NNN", "iterate on all my open PRs",
+  "fan out pr-iterate on my backlog". Takes an optional PR list - no argument fans out across all
+  eligible open PRs in the current repo behind a confirmation gate.
 ---
 
 <!-- NOTE: reconstructed copy committed to dotclaude so the scheduled issue-pr-autopilot
