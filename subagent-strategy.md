@@ -50,6 +50,28 @@ In all of these, send the agent the new instruction with just the delta ("review
 
 **Tie-breaker**: when the follow-up reads the same >2-3 files the agent already loaded, reuse usually wins; when the briefing is two sentences and the files are small, a cold spawn at a cheaper tier may still be cheaper. Decide by which context is larger: the files to re-read, or the delta message.
 
+### Standing rosters: keep agents across a series of PRs, not just across one follow-up
+
+Everything above optimises a single follow-up. Over a multi-PR session the compounding win is different, and larger: an agent that has worked several changes in one subsystem accumulates a model of **how that subsystem fails**, which no briefing transfers and no file cache substitutes for.
+
+**Stand up a small named roster at the start of a multi-PR session** (typically one reviewer and one implementer per active subsystem) and route by name for its duration, rather than spawning per task. Reviewer/implementer independence still binds: pooling is per subsystem, not per PR, so a reviewer that reviewed PR A reviews PR B in the same subsystem and never reviews what it wrote.
+
+What this buys beyond cached reads:
+
+- **Implementers apply prior corrections proactively.** An implementer told once that a wildcard-carrying scope must be tested with `len(x) == 0` rather than an `IsUnrestricted(x)` helper applied that unprompted to the next PR's identical guard. A fresh agent repeats the defect and costs another review round.
+- **Reviewers start finding defects in the *fixes*, not just the original bugs**: a fix that closed the less-reachable half of a bug; a guard that introduced a false refusal for every seeded group. Those need a model of the subsystem's failure shapes, not familiarity with a diff.
+- **The agent that found a bug is the cheapest verifier of the same bug's fix elsewhere**, because it already knows the shape.
+
+**Brief the environment delta, not just the task delta.** A long-lived agent's model of the world goes stale in ways its model of the code does not. Every continuation should carry what changed around it: the base branch moved, the CI contract changed, another agent now holds a file it is about to edit, or an instruction it was given earlier has been **retracted**. Omitting these produces collisions and rework that read as agent error but are orchestration error.
+
+**Handoff contract.** When an agent winds down, its report must let a successor act without re-deriving:
+
+- **Pin the baseline in both directions**, not only the failing one. A handoff recording just the failing row of a mock/production divergence leads the successor to tighten until that row passes, swapping one wrong answer for another while staying green. Record the passing-by-coincidence row too, and why it passes.
+- **Name the axis actually verified.** "Attribution is safe" invites the successor to trust more than was checked; "attribution is safe *across packages*; within-file scope unchecked" does not.
+- **State what is not covered**, including anything inspected and deliberately left alone. A sweep reporting only what it changed is indistinguishable from one that stopped early.
+
+**An agent flagging its own context depth and handing over is a good outcome, not a failure.** Say so in the briefing, because agents tend to frame it apologetically. Prefer a clean handoff now to a mid-task one later, especially when the remaining work is an open-ended fan-out (triage each of N failures, resolve each of N call sites) rather than a bounded step.
+
 **`Workflow` scripts have no SendMessage**: each `agent()` call is a cold start. Get the same economy structurally:
 
 - **Partition by file/module, not by step.** One agent owns each file or cluster and performs ALL steps on it (read, fix, test, verify) in a single `agent()` call, instead of a per-step pipeline where stage 2's agent re-reads everything stage 1's agent just read.
