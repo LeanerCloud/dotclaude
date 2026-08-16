@@ -54,7 +54,7 @@ Before every commit, enter a review loop (same discipline as the plan review loo
 - **Test coverage & edge cases** — are the new paths actually exercised, including boundaries, error paths, and the contract (not just the happy path)?
 - **Security** — beyond OWASP basics: trust boundaries, authz on every new path, secret handling, injection via every new input.
 - **Over-engineering & scope** — parameters with no caller, abstractions with one consumer, validation of unreachable states, machinery the current requirement doesn't need. Could a competent colleague have written this in half the lines? See the `coding-standards` skill ("Simplicity & Scope (YAGNI)").
-- **Comment accuracy & density** — do comments match the code, or did they rot during edits? Is the diff over-commented (restatements of the next line, rationale essays, review-round references)? See the `coding-standards` skill ("Comments").
+- **Comment accuracy & density** — do comments match the code, or did they rot during edits? Is the diff over-commented (restatements of the next line, rationale essays, review-round references)? **Measure it, don't eyeball it**: run the one-liner in the `coding-standards` skill ("Comments") and check the two per-comment rules — nothing over 2 lines, nothing describing what the code does. Over ~15% means delete until under it or name the exception.
 - **Performance & resources** — N+1s, unbounded growth, leaked handles/goroutines, needless allocation on hot paths.
 - **API, naming & convention consistency** — does it match the surrounding code's idiom, naming, and the project's documented conventions?
 

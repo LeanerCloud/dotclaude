@@ -189,8 +189,29 @@ Rationale belongs in the PR description; the source carries only what a future e
 - **Default to no comment.** Naming and structure carry the meaning; reach for a comment only where they can't.
 - **Comment only where the WHY isn't deducible from the code**: a deliberate choice a reader would otherwise "fix", a constraint that isn't visible at this spot, a workaround for an external bug (link the upstream issue or CVE), a deviation from the obvious approach.
 - **Keep it terse: 1-2 lines.** Never paragraphs, never half a page. If it needs more than that, it belongs in the PR description or the commit message.
-- **Rough budget: under ~15% comment-to-code on added lines.** A guideline for self-checking, not a hard gate; config files and public API surfaces legitimately run higher.
+- **Two hard per-comment rules**, checkable one comment at a time and not subject to averaging: **no comment exceeds 2 lines**, and **no comment describes what the code does** (that one is deleted, not shortened). These bite where a ratio can't: a diff can sit under budget and still be full of three-line restatements.
+- **Budget: under ~15% comment-to-code on added lines**, measured as below. Over budget is not a veto, it is a trigger — go back through the comments and delete until you are under it or can name why this file is a genuine exception.
 - **Delete on sight**: restatements of the next line; multi-paragraph rationale essays; what-was-considered-and-rejected narrative; references to review rounds, our own past bugs, or `"as of <date>"`; JSDoc/docstrings restating types the signature already gives; long preambles on tests (the test name carries the meaning).
+
+**Measure it the same way every time.** State the number in the PR description or the pre-commit self-check, so it is a fact rather than an impression:
+
+```bash
+git diff <base>...HEAD -- . ':(exclude)**/dist/*' ':(exclude)**/*.lock' | awk '
+  /^\+/ && !/^\+\+\+/ { t++; l=substr($0,2); sub(/^[ \t]+/,"",l)
+    if (l ~ /^(\/\/|\/\*|\*|#)/) c++; if (l=="") b++ }
+  END { printf "added=%d comment=%d code=%d ratio=%.1f%%\n", t, c, t-c-b, c*100/(t-b) }'
+```
+
+Three ways this number lies, all of which have produced a wrong answer in practice:
+- **Whole-file counts instead of added lines.** Counting every comment in a file you touched includes ones already on `main` and can inflate the figure two- or three-fold. Only `+` lines count.
+- **Generated or vendored output.** A committed bundle or lockfile swamps the ratio in both directions — exclude it and measure the hand-written slice.
+- **Stacked branches.** A PR stacked on another inherits its comments, so measure against the parent branch rather than `main`, or the shared lines are counted twice.
+
+**Legitimate exceptions, named rather than assumed**: a constants or config file, where the values *are* the content and the only thing unrecoverable from the code is why each holds that value; and any small file, where a handful of necessary notes over a few dozen lines of code prices in high. Say which applies; don't let "config files run higher" become a blanket excuse.
+
+**Fix stale comments adjacent to your diff.** The rules cover the comments your change sits among, not only the lines you added: the block above the function you edited, the note beside the line you moved, the comment inside the hunk. If it restates the code, runs past 2 lines, or has rotted out of sync with the code, fix or delete it while you are there — and **delete commented-out code on sight**, since version control already keeps it and nobody will uncomment it.
+
+Scope this tightly: **adjacent to the diff, not the whole file.** A stale comment at the other end of a file you happened to touch is somebody else's change. This is a narrow carve-out from "don't touch what you weren't asked to touch" (`CLAUDE.md` core principles) — that rule exists to prevent unrelated drive-by refactors, not to preserve rot in the lines you are already rewriting. Put the cleanup in its own commit so the functional diff stays readable.
 
 ```go
 // Bad: six lines restating the code and narrating the decision
