@@ -1,8 +1,9 @@
 ---
 name: coding-standards
-description: Stack preferences, testing philosophy, error handling, security, API design, the YAGNI
-  and comment-density rules, and the first-visit project bootstrap checklist. Invoke when writing or
-  reviewing code, and on first visit to any project.
+description: Stack preferences, testing philosophy, error handling, security (incl. a pre-launch
+  security checklist), API design, the YAGNI and comment-density rules, and the first-visit project
+  bootstrap checklist. Invoke when writing or reviewing code, on first visit to any project, and
+  before launching a user-facing app.
 ---
 
 # Coding Standards
@@ -147,6 +148,40 @@ If you can't prove an edit is behaviour-preserving, don't make it. A small confi
 - Apply principle of least privilege to service accounts, IAM roles, and database users
 - Use short-lived credentials; rotate secrets regularly
 - Rate-limit and throttle public-facing endpoints
+
+### Pre-Launch Security Checklist
+
+Run this gate before shipping any user-facing app. Several lines restate the bullets above as a launch-time checklist; the detail lives in those bullets. Tick every box or record why it doesn't apply. Numbers are for reference only.
+
+**Secrets & keys**
+- [ ] (1) Hide API keys: no secrets in client code, repos, or bundles; load from env/secret manager (bullets above).
+- [ ] (2) Purge git secrets: scan full history (`gitleaks`/`trufflehog`) and rotate anything ever committed (see the `infra-ops` skill).
+- [ ] (3) Client uses the public/anon key only (Supabase anon, Firebase web config); the service-role/admin key never ships to the browser or mobile app.
+
+**Auth, sessions & abuse**
+- [ ] (6) Enforce auth server-side: never trust client-side checks; every mutation and protected read re-verifies authn + authz on the server.
+- [ ] (10) Hash passwords with argon2id (or bcrypt/scrypt) + per-user salt; never plaintext, never fast/general-purpose hashes (MD5/SHA-*). Prefer an IdP/OAuth over rolling your own.
+- [ ] (9) Secure session cookies: `HttpOnly`, `Secure`, `SameSite=Lax`/`Strict`, scoped domain/path, sane expiry; rotate the session id on login and privilege change.
+- [ ] (11) Rate-limit and lock out auth endpoints (login, signup, reset, OTP) against brute force and credential stuffing.
+- [ ] (12) Add bot protection on public forms/signup (CAPTCHA/Turnstile or WAF).
+
+**Data access & authorization**
+- [ ] (4) Enable row-level security (RLS) at the database and scope every query to the authenticated principal.
+- [ ] (7) Lock record access: verify object-level ownership on every read/write; deny by default to prevent IDOR / horizontal escalation.
+- [ ] (8) Block field tampering: bind writable fields via an explicit allowlist (DTO/schema); never spread untrusted request bodies into an ORM model (guards `is_admin`, `role`, `price`).
+- [ ] (5) Encrypt sensitive data: TLS in transit, encryption at rest, and app-layer encryption (KMS) for high-sensitivity fields (tokens, PII, financial).
+
+**Input & output**
+- [ ] (14) Validate all input at boundaries; allowlist over denylist (bullets above).
+- [ ] (13) Parameterize all DB queries; never interpolate input into SQL (bullets above).
+- [ ] (15) Escape/sanitize user content rendered in HTML to prevent XSS (bullets above).
+- [ ] (16) Restrict file uploads: size limits, MIME from content, stored outside web root, scanned (bullets above).
+- [ ] (17) Trim API responses: serialize through an explicit response DTO; never dump full DB rows or internal fields (password hashes, tokens, other users' data).
+
+**Transport, headers & supply chain**
+- [ ] (19) Force HTTPS: redirect HTTP to HTTPS, TLS everywhere, and set HSTS.
+- [ ] (18) Set security headers: CSP, `X-Frame-Options`, `X-Content-Type-Options`, `Strict-Transport-Security` (bullets above).
+- [ ] (20) Scan dependencies for CVEs (`govulncheck`/`npm audit`/Trivy/Dependabot) (bullets above).
 
 ## Performance
 
