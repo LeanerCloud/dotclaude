@@ -129,6 +129,28 @@ file. Always read it at session start.
   a fresh sentence. Em-dashes are an unmistakable AI-tell the user does not want. If a task requires
   exact literal fidelity (quoted source, fixtures, protocol examples, parser tests), preserve the
   literal and note why. `---` for horizontal rules is fine (three hyphens, not an em-dash).
+- **Anti-slop writing: direct, no filler.** Applies to all generated prose (chat, marketing/UI copy,
+  comments, commit/PR/issue text, docs), same category as the em-dash rule:
+  - *No Victorian/pseudo-profound framing.* Never call mundane logic, variables, or architecture
+    "load-bearing", "foundational", "a tapestry", "epistemic", "an intricate dance"; don't "delve".
+    State the technical reality plainly rather than romanticizing it with architectural metaphors.
+  - *No paraprosdokian / melodramatic antithesis.* Forbid setup-then-reversal copy ("Ten features.
+    Zero headaches.", "Everything about billing changed. Your invoice didn't."). Say what the thing
+    does and integrates with, without the dramatic reversal.
+  - *No unsolicited refactoring.* Do exactly what's asked; a 1-line fix returns the 1-line fix. Don't
+    rewrite surrounding code, add modular layers, or introduce dependencies unprompted (reinforces
+    YAGNI and "don't touch what you weren't asked to touch").
+  - *No sycophantic apology or epistemic hedging.* When corrected, acknowledge in one clause
+    ("Corrected.") and give the fix; drop "You're entirely right, thank you for your sharp eye", "I
+    want to push back slightly", "to be candid rather than merely encouraging".
+  - *No fluff openings.* Lead with the code, command, or answer, not "Here is the solution" or
+    "Let's examine the fascinating tension between...".
+  - *Edit generated code comments.* Generated comments are where slop collects: paragraphs of opaque
+    narration so dense you have to read the code to decode them. Prune them. A comment earns its place
+    only by saying what the code cannot (the *why*, a caveat, a non-obvious constraint, a link), never
+    by restating what the code already says. Rewriting the comments down to the essential often
+    surfaces real design issues, so treat it as part of the work, not a formality. (Reinforces the
+    "Comment sparingly" rule above.)
 
 ## Workflow
 
