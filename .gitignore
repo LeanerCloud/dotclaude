@@ -63,5 +63,9 @@ RTK.md
 # Editor / shell / settings backups — never tracked
 *.bak
 
+# Git worktrees checked out under the config dir — these are working copies of OTHER repos,
+# not content of this one. Ignored so `git add -A` can never try to swallow them.
+worktrees/
+
 # macOS junk
 .DS_Store
