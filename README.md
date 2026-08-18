@@ -52,6 +52,7 @@ successor skills, so older references keep resolving.
 |------|---------|
 | [`scripts/setup-agent-symlinks.sh`](scripts/setup-agent-symlinks.sh) | Link each skill into `~/.agents/skills/` (read by Codex and Gemini) and the root config into `~/.codex` and `~/.gemini`. |
 | [`scripts/validate-skills.sh`](scripts/validate-skills.sh) | Pre-commit check that every skill stays discoverable by all three tools. |
+| [`scripts/bootstrap-triage-labels.sh`](scripts/bootstrap-triage-labels.sh) | Create the full triage-rubric label set in a repo, once, before its first triage pass. Idempotent; never deletes a label. |
 | [`agents/`](agents/) | Submodule pointing to [`contains-studio/agents`](https://github.com/contains-studio/agents) — a curated agent library. |
 | [`local-paths.md.example`](local-paths.md.example) | Template for `local-paths.md`, per-machine paths and tool locations referenced from the rule files (e.g. graphify CLI / venv). |
 | [`projects.md.example`](projects.md.example) | Template for `projects.md`, the personal index of projects Claude should know about. |

@@ -84,55 +84,17 @@ gh issue close   <num> --reason "not planned" --comment "Duplicate of #X — clo
 gh issue close   <num> --reason completed     --comment "Answered above — closing. Reopen if still ambiguous."
 ```
 
-Pre-create missing labels once per repo. Full bootstrap (covers the entire rubric — run idempotently with `--force` to update colours/descriptions on re-run):
+Pre-create missing labels once per repo with **`scripts/bootstrap-triage-labels.sh`** (in this
+repo), which creates the entire rubric below in one pass:
 
 ```sh
-# Status (procedural)
-gh label create "triaged"                 --color "0e8a16" --description "Item has been triaged" --force
-gh label create "status/blocked"          --color "b60205" --description "Blocked on something external" --force
-gh label create "status/needs-info"       --color "fbca04" --description "Awaiting clarification from the asker" --force
-gh label create "status/stale-candidate"  --color "cccccc" --description "Flagged for the next stale sweep" --force
-gh label create "status/wontdo"           --color "ededed" --description "Closed as not-planned" --force
-
-# Priority (derived — see rubric)
-gh label create "priority/p0" --color "b60205" --description "Drop everything; same-day fix" --force
-gh label create "priority/p1" --color "d93f0b" --description "Next up; this sprint" --force
-gh label create "priority/p2" --color "fbca04" --description "Backlog-worthy" --force
-gh label create "priority/p3" --color "c5def5" --description "Polish / idea / may never ship" --force
-
-# Severity (independent of how often)
-gh label create "severity/critical" --color "b60205" --description "Major harm when it happens" --force
-gh label create "severity/high"     --color "d93f0b" --description "Significant harm" --force
-gh label create "severity/medium"   --color "fbca04" --description "Moderate harm" --force
-gh label create "severity/low"      --color "c5def5" --description "Minor harm" --force
-
-# Urgency
-gh label create "urgency/now"          --color "b60205" --description "Drop other things" --force
-gh label create "urgency/this-sprint"  --color "d93f0b" --description "Within the current sprint" --force
-gh label create "urgency/this-quarter" --color "fbca04" --description "Within the quarter" --force
-gh label create "urgency/eventually"   --color "c5def5" --description "No deadline" --force
-
-# Impact (audience size + blast radius)
-gh label create "impact/all-users" --color "b60205" --description "Affects every user" --force
-gh label create "impact/many"      --color "d93f0b" --description "Affects most users" --force
-gh label create "impact/few"       --color "fbca04" --description "Limited audience" --force
-gh label create "impact/internal"  --color "c5def5" --description "Team-internal only" --force
-
-# Effort
-gh label create "effort/xs" --color "c5def5" --description "Trivial / one-liner" --force
-gh label create "effort/s"  --color "c5def5" --description "Hours" --force
-gh label create "effort/m"  --color "fbca04" --description "Days" --force
-gh label create "effort/l"  --color "d93f0b" --description "Weeks" --force
-gh label create "effort/xl" --color "b60205" --description "Multi-week / refactor" --force
-
-# Type
-gh label create "type/bug"      --color "ee0701" --description "Defect" --force
-gh label create "type/feat"     --color "0e8a16" --description "New capability" --force
-gh label create "type/chore"    --color "c5def5" --description "Maintenance / non-user-visible" --force
-gh label create "type/docs"     --color "0075ca" --description "Documentation" --force
-gh label create "type/security" --color "b60205" --description "Security finding" --force
-gh label create "type/question" --color "d876e3" --description "Question for the project / asker" --force
+scripts/bootstrap-triage-labels.sh              # the repo you are standing in
+scripts/bootstrap-triage-labels.sh owner/repo   # a specific repo
 ```
+
+It uses `gh label create --force`, so re-running updates colours and descriptions rather than
+failing, and it only ever creates or updates - it never deletes a label, including ones outside this
+set. The script is the single definition of the label set; this section is the rationale for it.
 
 Skip dimensions the project already covers under different names — don't fragment. If the project uses `Pri-Critical` instead of `priority/p0`, conform.
 
