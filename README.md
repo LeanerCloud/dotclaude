@@ -97,10 +97,10 @@ successor skills, so older references keep resolving.
 
 ## Customizing
 
-Everything here is opinion, not gospel. The rules in `CLAUDE.md` and its referenced files are instructions to Claude — edit them to match how you work.
+Everything here is opinion, not gospel. The rules in `CLAUDE.md` and the skills are instructions to Claude — edit them to match how you work.
 
-- Change the preferred stack in `coding-standards.md`.
-- Adjust the commit conventions in `git-workflow.md`.
+- Change the preferred stack in [`skills/coding-standards/SKILL.md`](skills/coding-standards/SKILL.md).
+- Adjust the commit conventions in [`skills/git-commit/SKILL.md`](skills/git-commit/SKILL.md).
 - Swap out the agent submodule in `.gitmodules` for a different library, or vendor your own agents into `agents/`.
 - Add your own skills under `skills/<name>/SKILL.md` — they become `/name` in Claude, `$name` in
   Codex, and implicitly activatable in Gemini. Run `scripts/validate-skills.sh` before committing.
