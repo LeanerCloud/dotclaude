@@ -161,8 +161,8 @@ Run this gate before shipping any user-facing app. Several lines restate the bul
 **Auth, sessions & abuse**
 - [ ] (6) Enforce auth server-side: never trust client-side checks; every mutation and protected read re-verifies authn + authz on the server.
 - [ ] (10) Hash passwords with argon2id (or bcrypt/scrypt) + per-user salt; never plaintext, never fast/general-purpose hashes (MD5/SHA-*). Prefer an IdP/OAuth over rolling your own.
-- [ ] (9) Secure session cookies: `HttpOnly`, `Secure`, `SameSite=Lax`/`Strict`, scoped domain/path, sane expiry; rotate the session id on login and privilege change.
-- [ ] (11) Rate-limit and lock out auth endpoints (login, signup, reset, OTP) against brute force and credential stuffing.
+- [ ] (9) Secure session cookies: `HttpOnly`, `Secure`, `SameSite=Lax`/`Strict` by default, scoped domain/path, sane expiry; rotate the session id on login and privilege change. Use `SameSite=None` only where a cross-site flow genuinely needs it, and then only with `Secure` plus explicit CSRF or `Origin` checking — cookie attributes narrow CSRF exposure, they do not replace CSRF protection.
+- [ ] (11) Throttle auth endpoints (login, signup, reset, OTP) against brute force and credential stuffing: rate limits, progressive delays, and challenges. Prefer these to lockouts — locking the *account* on failed attempts hands an attacker a denial-of-service against any user whose address they know, and locking the *endpoint* denies service to everyone. Where a lockout is genuinely warranted, make it temporary and risk-based, with a recovery path that cannot itself be abused, and alert on it.
 - [ ] (12) Add bot protection on public forms/signup (CAPTCHA/Turnstile or WAF).
 
 **Data access & authorization**
