@@ -155,7 +155,7 @@ Run this gate before shipping any user-facing app. Several lines restate the bul
 
 **Secrets & keys**
 - [ ] (1) Hide API keys: no secrets in client code, repos, or bundles; load from env/secret manager (bullets above).
-- [ ] (2) Purge git secrets: scan full history (`gitleaks`/`trufflehog`) and rotate anything ever committed (see the `infra-ops` skill).
+- [ ] (2) Detect and rotate leaked secrets: scan full history (`gitleaks`/`trufflehog`) and revoke or rotate anything ever committed (see the `infra-ops` skill). **Rotation is the fix, not history rewriting** — a committed secret must be treated as compromised whether or not the commit still exists, and a rewrite alone leaves it live in clones, forks and caches. Rewriting history or removing committed data is a destructive operation requiring explicit per-item confirmation (tenet 9).
 - [ ] (3) Client uses the public/anon key only (Supabase anon, Firebase web config); the service-role/admin key never ships to the browser or mobile app.
 
 **Auth, sessions & abuse**
@@ -180,7 +180,7 @@ Run this gate before shipping any user-facing app. Several lines restate the bul
 
 **Transport, headers & supply chain**
 - [ ] (19) Force HTTPS: redirect HTTP to HTTPS, TLS everywhere, and set HSTS.
-- [ ] (18) Set security headers: CSP, `X-Frame-Options`, `X-Content-Type-Options`, `Strict-Transport-Security` (bullets above).
+- [ ] (18) Verify the *effective* security-header values, not merely that the headers are present: a reviewed CSP (no blanket `unsafe-inline`/`*`), a protective framing policy (`X-Frame-Options: DENY`/`SAMEORIGIN`, or `frame-ancestors`), `X-Content-Type-Options: nosniff`, and HSTS actually served over HTTPS. Read them off a real response — `X-Frame-Options: ALLOWALL` ticks a presence check while protecting nothing.
 - [ ] (20) Scan dependencies for CVEs (`govulncheck`/`npm audit`/Trivy/Dependabot) (bullets above).
 
 ## Performance
