@@ -63,5 +63,11 @@ RTK.md
 # Editor / shell / settings backups — never tracked
 *.bak
 
+# Git worktrees checked out under the config dir — these are working copies of OTHER repos,
+# not content of this one. Ignored so `git add -A` can never try to swallow them.
+# Anchored with a leading slash: an unanchored `worktrees/` would match at any depth and would
+# silently swallow a future `skills/worktrees/` too.
+/worktrees/
+
 # macOS junk
 .DS_Store
