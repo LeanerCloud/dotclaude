@@ -55,7 +55,7 @@ effort (gpt-5.5 / Gemini 3.1 Pro). Keep cheapest/mid/top aligned if local model 
 
 | Skill | Invoke when |
 |-------|-------------|
-| `coding-standards` | writing or reviewing code; first visit to any project |
+| `coding-standards` | writing or reviewing code; first visit to any project; before launching a user-facing app |
 | `conventions` | working with Go, TypeScript, Python, Shell, Docker, Terraform, or databases |
 | `tool-usage` | **before any Bash call**, before writing a shell script, choosing native tools vs Bash |
 | `git-commit` | **before staging a commit** or writing a commit message |

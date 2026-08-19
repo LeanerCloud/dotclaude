@@ -23,7 +23,7 @@ portability contract and the per-tool discovery paths.
 
 | Skill | Invoke when |
 |-------|-------------|
-| [`coding-standards`](skills/coding-standards/) | writing or reviewing code; first visit to any project |
+| [`coding-standards`](skills/coding-standards/) | writing or reviewing code; first visit to any project; **before launching a user-facing app** |
 | [`conventions`](skills/conventions/) | Go, TypeScript, Python, Shell, Docker, Terraform, databases |
 | [`tool-usage`](skills/tool-usage/) | before any Bash call or shell script |
 | [`git-commit`](skills/git-commit/) | before staging a commit or writing a message |
