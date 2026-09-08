@@ -76,6 +76,7 @@ effort (gpt-5.5 / Gemini 3.1 Pro). Keep cheapest/mid/top aligned if local model 
 | `work-selection` | "what should I work on next?" |
 | `infra-ops` | infrastructure, deployments, cloud resources, ops |
 | `project-docs` | setting up, updating, or consulting project documentation |
+| `cristi-voice` | writing or reviewing site/marketing copy, LinkedIn posts, or any prose published under Cristian's or LeanerCloud's name |
 
 Read `~/.claude/projects.md` at the start of every session, and update it whenever working in a
 project not yet listed (fields: Project, Path, Stack, Description). Per-machine paths and tool
