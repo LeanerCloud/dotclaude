@@ -90,7 +90,7 @@ Repeat local verification for behavior affected by the change; when the impact i
 the full applicable verification. If the required reviewer or applicable verification is
 unavailable, the PR is blocked rather than clean by assumption. The normal human merge default
 still applies. For CUDly, the user may explicitly authorize agent merging for the project or current
-task; all gates still apply.
+ task; all gates still apply. This does not override the `LeanerCloud/dotclaude` prohibition above.
 
 ### 5. Post-merge verification
 
