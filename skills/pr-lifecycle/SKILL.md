@@ -65,13 +65,16 @@ For CUDly, require all of these before merge:
 
 - An independent, read-only Claude reviewer running the exact model slug `claude-fable-5-1` has
   adversarially reviewed the full PR diff at the final HEAD SHA and has no unresolved actionable
-  findings. Read-only means no file edits and no git, GitHub, or other external mutations. This review
+  findings. Invoke it with `--safe-mode --restricted --strict-mcp-config --tools Read`, never with
+  `--dangerously-skip-permissions`, so read-only means no file edits and no git, GitHub, or other
+  external mutations. This review
   satisfies the generic adversarial-clean gate; its verdict must identify what it attacked and name
   the reviewed SHA. The invoking session posts that verdict verbatim and attaches or links evidence
   from `claude -p --model claude-fable-5-1 --output-format json`: the command proves the requested
-  model, and the main review turn's `modelUsage` entry must report `canonicalModel` as
-  `claude-fable-5-1` with nonzero output tokens. An invocation path that exposes no returned-model
-  metadata cannot satisfy this evidence requirement. A GPT substitute, generic tier equivalent, or
+  model, and the result's `modelUsage` map must contain a `claude-fable-5-1` entry whose
+  `canonicalModel` is `claude-fable-5-1` and whose `outputTokens` is nonzero. An invocation path that
+  exposes no returned-model metadata cannot satisfy this evidence requirement. A GPT substitute,
+  generic tier equivalent, or
   floating Fable alias does not satisfy this gate.
 - CodeRabbit has returned a substantive clean review covering the final HEAD, with no unresolved
   actionable findings and every Nitpick fixed or justified.
