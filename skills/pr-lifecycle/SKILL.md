@@ -68,8 +68,11 @@ For CUDly, require all of these before merge:
   findings. Invoke it with `--safe-mode --restricted --strict-mcp-config --tools Read`, never with
   `--dangerously-skip-permissions`, so read-only means no file edits and no git, GitHub, or other
   external mutations. This review
-  satisfies the generic adversarial-clean gate; its verdict must identify what it attacked and name
-  the reviewed SHA. The invoking session posts that verdict verbatim and attaches or links evidence
+  satisfies the generic adversarial-clean gate; its verdict must identify what it attacked, list the
+  files reviewed, name the reviewed SHA, and report either every finding's disposition or exactly
+  `NO CONFIRMED FINDINGS`. The invoking session posts that verdict verbatim on the PR and attaches or
+  links `git rev-parse HEAD`, `git status --porcelain`, and `git diff --name-only <base>...HEAD`
+  output proving a clean final-HEAD worktree and the file set supplied to the reviewer, plus evidence
   from `claude -p --model claude-fable-5-1 --output-format json`: the command proves the requested
   model, and the result's `modelUsage` map must contain a `claude-fable-5-1` entry whose
   `canonicalModel` is `claude-fable-5-1` and whose `outputTokens` is nonzero. An invocation path that
@@ -84,9 +87,9 @@ For CUDly, require all of these before merge:
   for it.
 
 Claude Sonnet may optionally drive local Chrome verification, but it cannot substitute for the
-independent code reviewer. Browser verification does not authorize cloud purchases, deployments,
-or other external mutations. Fixture or intercepted evidence must be identified as such and must
-not be reported as a live integration result.
+independent code reviewer. No verification step, whether browser, curl, CLI, or test, authorizes
+cloud purchases, deployments, or other external mutations. Fixture or intercepted evidence must be
+identified as such and must not be reported as a live integration result.
 
 Any HEAD change after review, including a rebase, requires both reviews again against the new HEAD.
 Repeat local verification for behavior affected by the change; when the impact is unclear, repeat
