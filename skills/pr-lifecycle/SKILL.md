@@ -63,18 +63,22 @@ After CI is green and CodeRabbit's loop has settled, hand off to the user. Spawn
 
 For CUDly, require all of these before merge:
 
-- An independent Claude reviewer running the exact model slug `claude-fable-5-1` has adversarially
-  reviewed the final commit and has no unresolved actionable findings. This review satisfies the
-  generic adversarial-clean gate, and its PR verdict must identify what it attacked and name the
-  reviewed SHA. The invoking session must attach or link CLI JSON output or API response metadata
-  showing that both the requested and returned model equal `claude-fable-5-1`; an invocation path
-  that exposes no returned-model metadata cannot satisfy this evidence requirement. A GPT substitute,
-  generic tier equivalent, or floating Fable alias does not satisfy this gate.
+- An independent, read-only Claude reviewer running the exact model slug `claude-fable-5-1` has
+  adversarially reviewed the full PR diff at the final HEAD SHA and has no unresolved actionable
+  findings. Read-only means no file edits and no git, GitHub, or other external mutations. This review
+  satisfies the generic adversarial-clean gate; its verdict must identify what it attacked and name
+  the reviewed SHA. The invoking session posts that verdict verbatim and attaches or links evidence
+  from `claude -p --model claude-fable-5-1 --output-format json`: the command proves the requested
+  model, and the main review turn's `modelUsage` entry must report `canonicalModel` as
+  `claude-fable-5-1` with nonzero output tokens. An invocation path that exposes no returned-model
+  metadata cannot satisfy this evidence requirement. A GPT substitute, generic tier equivalent, or
+  floating Fable alias does not satisfy this gate.
 - CodeRabbit has returned a substantive clean review covering the final HEAD, with no unresolved
   actionable findings and every Nitpick fixed or justified.
 - CI passes for the exact final HEAD.
 - Applicable local verification exercises the real affected scenario under CUDly's support matrix:
-  local macOS verification, Linux verification in CI, and no Windows support work.
+  local macOS verification and Linux verification in CI. Windows is unsupported; do not verify or fix
+  for it.
 
 Claude Sonnet may optionally drive local Chrome verification, but it cannot substitute for the
 independent code reviewer. Browser verification does not authorize cloud purchases, deployments,
