@@ -72,6 +72,10 @@ In all of these, send the agent the new instruction with just the delta ("review
 
 **When in doubt, go one tier cheaper and see if it's good enough** — for implementation, research, and mechanical work; re-spawn stronger if it struggles. *Exception*: planning, review, iteration, debugging, and non-trivial implementation default to Opus; step down only when the specific step is clearly mechanical, and step up to Fable only for peak-critical work. The cost of a stalled agent that needs main-session takeover exceeds the up-front Opus delta. The main conversation's model is user-set and fixed mid-session; this rule only governs `Agent` spawns.
 
+An exact reviewer model pinned by a project-specific rule or skill section overrides this rubric.
+See the `pr-lifecycle` skill's CUDly final-HEAD gate for its pinned reviewer and separate verification
+role.
+
 ## Label-mirroring on PR creation
 
 Every `gh pr create` MUST be followed by mirroring the closing issue's triage labels onto the new PR: `priority/*`, `severity/*`, `urgency/*`, `impact/*`, `effort/*`, `type/*`, plus `triaged` (only if the issue carries it — never invent it). PRs without triage labels are invisible to the same priority queries that surface the issues, so an unlabeled PR is effectively unreviewable in priority order. Treat label-mirroring as part of the `open-PR` step. For PRs closing multiple issues, take the highest `priority/*` and `severity/*` across the set and union the rest. When delegating PR shipping to a subagent, include this step in the prompt explicitly.

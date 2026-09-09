@@ -55,9 +55,38 @@ After CI is green and CodeRabbit's loop has settled, hand off to the user. Spawn
 - `merged: true` → proceed to §5.
 - `state: CLOSED` and not merged → terminal, clean up, exit (and notify user that the PR was closed unmerged so any in-flight work can be re-planned).
 
-**Self-merge exception**: if the project's `CLAUDE.md` or a project-level memory entry explicitly authorises agent self-merge (e.g., a solo project where the user is also the agent operator and CI green is sufficient), the agent may merge after CI is green and CodeRabbit is settled. The default is **wait for human review**.
+**Self-merge exception**: if the project's `CLAUDE.md` or a project-level memory entry explicitly authorises agent self-merge (e.g., a solo project where the user is also the agent operator and CI green is sufficient), the agent may merge after CI is green and CodeRabbit is settled. The default is **wait for human review**. The `LeanerCloud/dotclaude` repository must never be self-merged, regardless of standing authorization.
 
 **Never bypass required checks to merge — no `--admin` / force-merge.** Whenever merging is on the table (human merge, or the self-merge exception above), merge ONLY from a settled, green state: `mergeable == MERGEABLE` AND `mergeStateStatus == CLEAN`, with CI green and CodeRabbit's review actually **completed** (not `pending` / "review in progress" / an `UNSTABLE` state). Do NOT use `gh pr merge --admin` (or GitHub's "merge without waiting for requirements") to push past a pending or failing status check, a required review, or an in-progress CodeRabbit pass. This is the merge-time analog of "never `--no-verify`" and the "no masking CI debt" directive: a bypassed check is an unreviewed merge, and "it turned out fine" is not a justification. If a check is merely pending, **wait for it to settle** and merge normally. If a check is genuinely stuck or provably irrelevant, get **explicit per-merge authorization from the user that names the specific check to bypass** before using `--admin` — a blanket "go ahead and merge" / "merge them" does NOT authorise a check-bypass, only a normal merge once green.
+
+### 4a. CUDly final-HEAD gate
+
+For CUDly, require all of these before merge:
+
+- An independent Claude reviewer running the exact model slug `claude-fable-5-1` has adversarially
+  reviewed the final commit and has no unresolved actionable findings. This review satisfies the
+  generic adversarial-clean gate, and its PR verdict must identify what it attacked and name the
+  reviewed SHA. The invoking session must attach or link CLI JSON output or API response metadata
+  showing that both the requested and returned model equal `claude-fable-5-1`; an invocation path
+  that exposes no returned-model metadata cannot satisfy this evidence requirement. A GPT substitute,
+  generic tier equivalent, or floating Fable alias does not satisfy this gate.
+- CodeRabbit has returned a substantive clean review covering the final HEAD, with no unresolved
+  actionable findings and every Nitpick fixed or justified.
+- CI passes for the exact final HEAD.
+- Applicable local verification exercises the real affected scenario under CUDly's support matrix:
+  local macOS verification, Linux verification in CI, and no Windows support work.
+
+Claude Sonnet may optionally drive local Chrome verification, but it cannot substitute for the
+independent code reviewer. Browser verification does not authorize cloud purchases, deployments,
+or other external mutations. Fixture or intercepted evidence must be identified as such and must
+not be reported as a live integration result.
+
+Any HEAD change after review, including a rebase, requires both reviews again against the new HEAD.
+Repeat local verification for behavior affected by the change; when the impact is unclear, repeat
+the full applicable verification. If the required reviewer or applicable verification is
+unavailable, the PR is blocked rather than clean by assumption. The normal human merge default
+still applies. For CUDly, the user may explicitly authorize agent merging for the project or current
+task; all gates still apply.
 
 ### 5. Post-merge verification
 
