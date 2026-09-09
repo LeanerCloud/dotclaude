@@ -46,7 +46,7 @@ def strip_html(raw):
 
 
 def strip_md(raw):
-    raw = re.sub(r"\A---.*?---", "", raw, flags=re.S)
+    raw = re.sub(r"\A---\s*?\n.*?\n---\s*?(?:\n|$)", "", raw, flags=re.S)
     raw = re.sub(r"```.*?```", " ", raw, flags=re.S)
     raw = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", raw)
     raw = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", raw)
@@ -105,7 +105,12 @@ def main(paths):
         sys.exit("no text found")
     sents = sentences(text)
     lens = [n for n, _ in sents]
-    contr = len(re.findall(r"\b\w+'(?:m|ll|ve|d|s|re|t)\b", text)) - len(re.findall(r"\b[A-Z]\w*'s\b", text))
+    if not lens:
+        sys.exit("no complete sentences found")
+    # 's is ambiguous: "it's" is a contraction, "the client's bill" is not
+    _PRON = r"(?:it|that|there|here|what|who|he|she|let|this|one|everything|nothing|something)"
+    contr = (len(re.findall(r"\b\w+'(?:m|ll|ve|re|t|d)\b", text, re.I))
+             + len(re.findall(r"\b" + _PRON + r"'s\b", text, re.I)))
     metrics = {
         "contractions per 100 words": 100 * contr / nw,
         "mean words per sentence": statistics.mean(lens),
