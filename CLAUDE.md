@@ -10,9 +10,9 @@ skill"**. Discovery paths and the portability contract are in [`skills/README.md
 
 ## Core Tenets
 
-1. **Understand before changing** — For non-trivial work in unfamiliar code, read
-   `graphify-out/GRAPH_REPORT.md` and `wiki/index.md` first. If `graphify-out/` is missing, **create
-   it first** before any non-trivial exploration (§0). Don't edit code you haven't mapped.
+1. **Understand before changing** — For non-trivial work in unfamiliar code, build or refresh the
+   Compass graph first (§0) and map what you will touch with `compass explain`, `compass path` and
+   `compass affected`. Don't edit code you haven't mapped.
 2. **Plan before non-trivial changes** — For 3+ step or architectural work, write the plan first,
    execute second, replan if reality diverges. Skip for mechanical one-liners.
 3. **Reuse before writing** — Before adding a new function, type, or helper, grep for existing
@@ -161,23 +161,20 @@ Before answering architecture questions or starting non-trivial work in an unfam
 
 - Read the project's `CLAUDE.md` first — it takes precedence over global rules. Check
   `known-issues.md` at the project root (format: invoke `project-docs`).
-- If `graphify-out/GRAPH_REPORT.md` exists, read it for god nodes, community structure, and component
-  relationships before touching code. If `graphify-out/wiki/index.md` exists, navigate it instead of
-  raw source.
-- **If neither exists** (and the project has >~5 source files, or the architecture isn't clear from
-  the directory listing): **build the graph first**, before any non-trivial exploration:
-
-  ```bash
-  <graphify-venv>/bin/python3 \
-    -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"
-  ```
-
-  Resolve `<graphify-venv>` from `~/.claude/local-paths.md`. Runs 1-5 min; use Bash
-  `run_in_background: true` and wait for the completion notification before declaring it ready.
-- Re-run the same command after modifying code. The `PreToolUse` hook installed by
-  `graphify claude install` rebuilds automatically after Write/Edit, but its 5-second timeout may skip
-  large edit batches — run it manually after a big refactor. If `graphify claude install` has never
-  run in the project, run it once.
+- **Build the Compass graph first** when the project has >~5 source files or the architecture isn't
+  clear from the directory listing. Compass is a local Rust binary: no model credentials, seconds to
+  about a minute per build. Resolve its location from `~/.claude/local-paths.md`.
+  - In a repo you own: `compass init . --yes` once (writes `.compass/config.toml` and `compass-out/`;
+    add `compass-out/` to `.gitignore`), then `compass update .` after changes, or `compass watch`.
+  - In a repo you don't own, or one another session is working in: build out of tree so nothing lands
+    in the checkout, e.g. `compass extract <path> --code-only --out <dir>`, and run queries from `<dir>`.
+- **Query it instead of grep-and-read loops**: `compass explain <symbol>` (callers, callees,
+  location), `compass path <from> <to>`, `compass affected <symbol> --depth 3`, and
+  `compass query "<terms>"`. For an overview, `compass export html` (or `wiki` / `obsidian`).
+- **Know its limits and fall back to `rg` plus reading the source**: `query` matches identifiers and
+  words, not meaning ("mmap segment" finds `compatible_mmap`; a plain-English sentence can return
+  nothing); C macros and code pulled in through `#include "file.c"` are not indexed; dynamic dispatch,
+  reflection and generated code resolve only partially.
 - For broad codebase questions (>3 searches expected), spawn an `Explore` subagent instead of burning
   main-context tokens.
 
@@ -229,8 +226,8 @@ the job or ~80% of it. Duplication is far easier to prevent than to clean up.
   type, the verb, related domain nouns. Read the top 3-5 hits. Ask: "does something already solve
   this, or 80% of this?"
 - **Check neighbours first**: same package/module, then `utils`/`common`/`shared`/`lib`, then sibling
-  packages. Use graphify when available — the graph surfaces helpers grep misses because names don't
-  overlap. When missing, create it first (§0).
+  packages. Use Compass (`compass query`, `compass explain`) when a graph exists, since it surfaces
+  callers and related helpers that grep misses. When missing, build it first (§0).
 - **If similar code exists, decide explicitly**: exact fit -> reuse (import, don't copy); close fit
   (~80%) -> propose refactoring the existing code (flag the refactor and blast radius in the plan, get
   approval before expanding scope); superficially similar but semantically different -> document in
