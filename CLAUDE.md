@@ -427,8 +427,7 @@ auto-memory after corrections.
   itself, system temp / scratchpad, `~/Downloads`/`~/Desktop` and similar scratch locations.
 - **Before staging a commit, invoke `git-commit`** — conventional commits, atomic commits, and the
   mandatory pre-commit review loop that runs until a pass is clean (3 clean passes for high-stakes
-  diffs). Never mention Anthropic/Claude in
-  commit messages. Never use heredoc-based `git commit -m`.
+  diffs). Never use heredoc-based `git commit -m`.
 - **After every `git push`, invoke `ci-watch`** — one background watcher per workflow run, fixing
   failures autonomously.
 - **When opening a PR, invoke `pr-lifecycle`**; when a CodeRabbit review is in flight, invoke
