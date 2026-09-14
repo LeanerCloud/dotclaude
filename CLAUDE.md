@@ -247,7 +247,8 @@ plan must have passed the §1 review before the worktree exists; the authoritati
 `~/.claude/projects/<project>/plans/<slug>.md` so a crash mid-implementation is recoverable; the
 merge gate is all plan items implemented + a clean §1 post-implementation review + a clean
 verification pass (three for high-stakes changes); rebase rather than merge by default. A small
-single-commit change can stay on a feature branch in the main checkout.
+single-commit change can stay on a feature branch in the main checkout when no other session is
+using it.
 
 ### 1c. Local Review Loop — Opus Reviews Every Implementation Change
 

@@ -162,5 +162,5 @@ This is exactly the cleanup that keeps a repo from reaching hundreds of stale wo
 
 ## When to use one
 
-- **Use a worktree when the work is multi-commit or long-running, or when another session may be working in the same checkout.** A small single-commit change can stay on a feature branch in the main checkout.
+- **Use a worktree when the work is multi-commit or long-running, or when another session may be working in the same checkout.** A small single-commit change can stay on a feature branch in the main checkout, as long as no other session is using that checkout.
 - **If a plan turns out to require multiple independent changes**, create one worktree per change. Land them one at a time onto the base branch in dependency order, re-running the verification for each.
