@@ -93,11 +93,6 @@ file. Always read it at session start.
 > multi-person team. Apply proportionally — a solo project doesn't need a formal review process, but
 > the underlying principle (don't merge broken code, test before deploying) always applies.
 
-- **Always run a rate-limit retry cron — for every request, never stall.** From the start of any
-  request, keep a ~2-minute cron running (`CronCreate`, e.g. `*/2 * * * *`) that catches any
-  throttling and retries the pending work a few minutes later, so nothing stalls silently. It
-  self-deletes (`CronDelete`) once the work completes and escalates after a sensible ceiling. Invoke
-  the `rate-limit-retry` skill.
 - **Simplicity First (YAGNI)**: make every change as simple as possible. Build only what a current
   caller needs; no parameters, flags, hooks, or abstraction layers for a future that hasn't arrived.
   Sophistication is a cost, not a virtue.
