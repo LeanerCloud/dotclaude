@@ -117,7 +117,7 @@ Every project has a memory garden at `~/.claude/projects/<project-slug>/memory/`
 **Read the memory garden in four contexts:**
 
 1. **Before / during writing new code on any branch.** Skim relevant `feedback_*.md` entries up front and apply them proactively. Catches patterns at write-time and saves a downstream CR cycle. This is the cheapest place to apply a known rule.
-2. **During the §1 pre-commit 3-pass review gate.** Use the memory as one input to the checklist alongside Completeness / Correctness / Security / Bugs / Duplication. Any pattern that matches the changeset should be cross-checked.
+2. **During the §1 pre-commit review gate.** Use the memory as one input to the checklist alongside Completeness / Correctness / Security / Bugs / Duplication. Any pattern that matches the changeset should be cross-checked.
 3. **During the §1 post-implementation review gate.** Same usage -- the memory is a fast checklist source the reviewer can apply alongside the other dimensions.
 4. **Before pushing CR-fix commits.** After CodeRabbit lands a review pass, scan the memory before pushing fixes to catch any other matching entries CR might raise next round.
 

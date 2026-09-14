@@ -15,7 +15,7 @@ Running a whole backlog pass is the `triage-pass` skill; choosing what to work o
 > **When you create an issue or PR** in a repo that uses this rubric, label it on the same call. Don't label or comment on items other people own as a side effect of reading them.
 
 - **Creating** (`gh issue create`, `gh pr create`): pass `--label` with the full rubric on the same call. Don't ship a creation without labels and rely on a later sweep to clean up.
-- **Updating an item you own or were asked to work on** (editing body/title, posting a comment, applying any `gh issue edit`/`gh pr edit`): if the item has no `triaged` label, fold a triage pass into the same edit. Either apply labels yourself if you can decide them, or apply `status/needs-info` + post a specific clarifying-question comment per §"Mechanics".
+- **Updating an item you own or were asked to work on** (editing body/title, posting a comment, applying any `gh issue edit`/`gh pr edit`): if the item has no `triaged` label, fold a triage pass into the same edit. Either apply labels yourself if you can decide them, or apply `triaged` + `status/needs-info` + post a specific clarifying-question comment per §"Mechanics".
 - **Reading** someone else's item as part of a larger task: leave it untouched. Mention untriaged items to the user as a hygiene note, and offer a `triage-pass` if there are many.
 - **Exception — `type/question` items** still skip the priority rubric per the §"Picking the next thing to work on" rule: apply `type/question` + `status/needs-info`, post the clarifying question, mark `triaged`, and leave open.
 

@@ -14,8 +14,9 @@ landing on top of someone else's uncommitted work, two builds or installs overwr
 simultaneous pushes to one ref.
 
 This is the protocol between **peer** sessions. For one orchestrator directing implementers and
-reviewers through a queue of PRs, see the `pr-orchestration` skill; its agents still take the locks
-below.
+reviewers through a queue of PRs, see the `pr-orchestration` skill; its interactive agents on the
+same machine still take the locks below. File locks only serialize processes on one machine, so
+scheduled routines running elsewhere coordinate through GitHub state instead.
 
 ## 1. Check for other sessions before touching a shared checkout
 
@@ -47,7 +48,9 @@ lockf -t 600 /tmp/agent-locks/<repo>-<resource>.lock <command>   # macOS / BSD
 
 Name locks by repo so different repos never block each other. Resources worth locking:
 
-- `git-push`: pushes, especially force-pushes (`<repo>-git-push-<branch>` when PRs push in parallel)
+- `git-push-<branch>`: every push to a branch, from any workflow (`pr-iterate`, `ci-watch`, a
+  manual fix), takes `<repo>-git-push-<branch>`, so pushes to the same ref serialize while
+  different PRs don't block each other
 - `build` / `install`: anything writing shared build output or installing onto the system
 - `test-suite`: a full run that contends for ports, databases or CPU
 

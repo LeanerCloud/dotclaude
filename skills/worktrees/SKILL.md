@@ -7,13 +7,13 @@ description: Worktree isolation per change - creation preconditions, plan persis
 
 # Worktree Isolation Per Change
 
-Non-trivial work happens in a dedicated git worktree branched off the current branch — never commit in-progress work directly on the branch you started from. The base branch stays clean until the change is fully implemented and verified, so a broken or abandoned attempt never pollutes it.
+Multi-commit or long-running work, and any work in a checkout another session may be using, happens in a dedicated git worktree branched off the current branch — never commit in-progress work directly on the branch you started from. The base branch stays clean until the change is fully implemented and verified, so a broken or abandoned attempt never pollutes it.
 
 This file is the full worktree-isolation protocol: when to create one, how to persist the plan, the PID/ownership lifecycle, crash recovery, the merge gate, and cleanup. CLAUDE.md §1b carries a short headline + pointer here.
 
 ## Preconditions and creation
 
-- **Precondition — plan has passed the §1 three-pass review gate.** The worktree is the commitment to implement. Don't create one while the plan is still being iterated on, or it becomes a dumping ground for exploratory edits made on an unverified plan (and once commits start landing, reviewing the plan becomes fighting the code's momentum instead of shaping its design). If the plan needs more revision, stay on the base branch, revise, re-review, then come back.
+- **Precondition — plan has passed the §1 review gate** (three clean passes for high-stakes plans). The worktree is the commitment to implement. Don't create one while the plan is still being iterated on, or it becomes a dumping ground for exploratory edits made on an unverified plan (and once commits start landing, reviewing the plan becomes fighting the code's momentum instead of shaping its design). If the plan needs more revision, stay on the base branch, revise, re-review, then come back.
 - **Record the base branch** (the branch checked out when the task starts — e.g., `feat/multicloud-web-frontend`, `main`) in the plan. That's what you'll rebase/merge onto at the end. If the base branch is `main` or another protected branch, still use a worktree — PR discipline from the `git-commit` skill applies on top.
 - **Create the worktree after the plan review gate passes**, before the first commit:
   ```bash
@@ -49,7 +49,7 @@ Paste verbatim below the header — copy-paste, don't paraphrase, so every plan 
 
 **Before touching any file in the worktree, resolve ownership**:
 1. Read `pid:`, `host:`, and `pid_updated:` from the header.
-2. If `host:` equals the current hostname, run `kill -0 <pid> 2>/dev/null`. Exit code 0 → another session owns this plan. STOP and coordinate via `~/.claude/agent-comms/` (see the `multi-agent-comms` skill) — do not adopt.
+2. If `host:` equals the current hostname, run `kill -0 <pid> 2>/dev/null`. Exit code 0 → another session owns this plan. STOP and coordinate with that session (`ListAgents` / `SendMessage`, see the `multi-agent-comms` skill) — do not adopt.
 3. If `host:` differs OR `kill -0` fails OR `pid_updated:` is older than 24h, the plan is orphaned. Adopt it: overwrite `pid:` with your own PID, `host:` with your hostname, `pid_updated:` with now (ISO-8601). Save the header BEFORE any code edit. The adoption write is the lock — whichever session writes last wins; the other must abandon if it discovers the change.
 4. Re-read the header after a short delay (~2s) to detect a competing adopter. If your PID is still there, you own the plan; otherwise back off.
 

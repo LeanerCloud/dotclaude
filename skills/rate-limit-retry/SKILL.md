@@ -1,15 +1,17 @@
 ---
 name: rate-limit-retry
-description: What to do when an operation is throttled (429, secondary rate limit, usage limit,
-  "try again later") by any API, model or CLI - schedule one self-deleting retry instead of
-  stalling or busy-waiting. Invoke when a throttle actually happens.
+description: What to do when an operation is throttled (429, secondary rate limit, a usage limit
+  that resets, "try again later") by any API, model or CLI - schedule one self-deleting retry
+  instead of stalling; escalate exhausted credits instead. Invoke when a throttle actually happens.
 ---
 
 # Rate-limit handling: retry when throttled, never stall
 
 ## The rule
 
-When an operation is throttled (a `429` / `403 secondary rate limit` / "rate limit" / "usage limit" / "try again later" from the GitHub API, CodeRabbit, the model/API itself, or any CLI reporting a cooldown), do NOT abandon the work and do NOT block the session busy-waiting. Schedule a retry for that operation.
+When an operation is throttled (a `429` / `403 secondary rate limit` / "rate limit" / a usage limit with a reset time / "try again later" from the GitHub API, CodeRabbit, the model/API itself, or any CLI reporting a cooldown), do NOT abandon the work and do NOT block the session busy-waiting. Schedule a retry for that operation.
+
+**Exhausted credits and billing blocks are not throttles.** A message such as `You've run out of usage credits` or a billing error won't clear by waiting: escalate to the user with the verbatim message and schedule no retry (the same distinction the `cr-loop` skill makes).
 
 Don't start a retry cron pre-emptively at the start of a request. A standing cron that fires every couple of minutes costs tokens and context on every tick, even when nothing was ever throttled.
 

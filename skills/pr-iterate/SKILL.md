@@ -141,9 +141,10 @@ depends on another's merge order. Serialize when PRs form a stack (#A -> #B reba
 ### Collision and lock concerns
 
 1. Worktree paths are independent per PR (`.worktrees/<repo>/<slug>`).
-2. The push lock `/tmp/agent-locks/<repo>-git-push.lock` (held with `flock`, or `lockf` on
-   macOS, per the `multi-agent-comms` skill) serializes pushes across all parallel agents. This
-   is correct - it prevents simultaneous force-pushes from corrupting refs.
+2. The push lock `/tmp/agent-locks/<repo>-git-push-<branch>.lock` (held with `flock`, or `lockf`
+   on macOS, per the `multi-agent-comms` skill) serializes every push to that PR branch, including
+   `ci-watch` fix pushes, which take the same lock. This is correct - it prevents simultaneous
+   force-pushes from corrupting refs, while different PRs push in parallel.
 3. Shared base files: when one PR merges first, later PRs rebase to pick up the new base.
 4. gh API rate limits: parallel calls are typically fine (5000 req/hr authenticated).
 
@@ -230,7 +231,7 @@ across PRs you did not author, e.g. autopilot Phase 3 advancing human PRs.)
    `flock -w 600`). The lock is released when the push exits:
    ```
    mkdir -p /tmp/agent-locks
-   flock -w 600 /tmp/agent-locks/<repo>-git-push.lock git -C <worktree> push --force-with-lease
+   flock -w 600 /tmp/agent-locks/<repo>-git-push-<branch>.lock git -C <worktree> push --force-with-lease
    ```
    ONLY ever push the PR's own branch - never a shared `feat/*` branch or `main`.
 6. If there were real content conflicts, drop a short rebase note as a PR comment.
@@ -358,7 +359,7 @@ Once ALL THREE are true: CR's latest review says `Actionable comments posted: 0`
 - NEVER use `@coderabbitai resolve` - always `@coderabbitai review` (or `full review` on recovery).
 - NEVER push to a shared branch (e.g. `feat/*`, `main`) - only the PR's own branch.
 - NEVER pass `--yes` to any project CLI.
-- ALWAYS run the push under `flock` / `lockf` on `/tmp/agent-locks/<repo>-git-push.lock`.
+- ALWAYS run the push under `flock` / `lockf` on `/tmp/agent-locks/<repo>-git-push-<branch>.lock`.
 - ALWAYS delegate the actual implementation to a Sonnet subagent; main session plans/dispatches.
 - ALWAYS file out-of-scope CR findings as separate triaged issues with the full label set.
 - ALWAYS run pre-commit hooks; on transient `tflint --init` 403 or stash collision, sleep 2 min, retry.
