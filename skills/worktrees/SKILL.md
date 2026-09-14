@@ -92,7 +92,7 @@ The next session enumerates `~/.claude/projects/<project>/plans/` and reads each
 
 - `host:` matches current hostname AND `kill -0 <pid>` succeeds → **active**, leave alone.
 - `host:` matches AND `kill -0` fails → **orphaned locally**, safe to adopt.
-- `host:` differs → can't verify PID across machines; treat as orphaned only if `pid_updated:` is older than 24h (stale heartbeat). Otherwise leave alone and coordinate via the multi-agent comms bus.
+- `host:` differs → can't verify PID across machines; treat as orphaned only if `pid_updated:` is older than 24h (stale heartbeat). Otherwise leave alone and coordinate with that session (the `multi-agent-comms` skill).
 - After adoption, `cd` to the `worktree:` path, re-read the embedded workflow, run `git status` and `git log <base_branch>..HEAD` to see progress, and resume from the first unchecked task.
 
 ## Staleness and disappearance
@@ -141,7 +141,7 @@ The creating session is usually **not** the one that observes its PR reach a ter
    - `git -C <worktree> status --porcelain` is empty (no uncommitted changes), AND
    - `git -C <worktree> log --oneline @{u}..` is empty (nothing ahead of upstream); if the upstream branch is already gone from origin, the commits are on the merged PR / base branch.
    - If **either** check is non-empty, do NOT remove; this is the `feedback_recover_stranded_fix_work` case (a dead agent left finished-but-uncommitted or unpushed work). Recover it first (commit, gate, fresh PR, or cherry-pick), then remove.
-3. **Never reclaim a `locked` worktree** (a running agent owns it) or one whose plan header shows a live PID on this host; coordinate via `~/.claude/agent-comms/` first.
+3. **Never reclaim a `locked` worktree** (a running agent owns it) or one whose plan header shows a live PID on this host; coordinate with that session first (the `multi-agent-comms` skill).
 4. **Remove**: `git worktree remove <worktree>` (add `--force` only if git balks on a lock/submodule *after* the safety gate confirmed it clean). Then delete BOTH sides of the now-orphaned branch and the plan file:
    - **Local branch**: `git branch -D <branch>`.
    - **Remote branch**: `git push origin --delete <branch>` — the head branch of a `MERGED` or wontfix-`CLOSED` PR serves no further purpose, and leaving it strands a remote ref that clutters `git branch -r`, breaks branch pickers, and (over a busy repo) accumulates into hundreds of dead refs. Skip only if origin already lacks it (GitHub auto-deleted it on merge — check `git ls-remote --heads origin <branch>` first, or just ignore the "remote ref does not exist" error). NEVER delete the remote of an `OPEN`-PR branch, `main`, or a protected/base branch.

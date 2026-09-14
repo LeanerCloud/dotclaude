@@ -29,7 +29,7 @@ Everything already owned by another file is cross-referenced, not restated:
 | Rate limits | the `rate-limit-retry` skill |
 | Worktree isolation, staleness/disappearance, crash recovery, post-merge reclaim | the `worktrees` skill |
 | Model-tier selection, reviewer independence, subsystem pooling, agent reuse | the `subagent-strategy` skill |
-| Peer-session coordination on one repo (locks, sync messages) | the `multi-agent-comms` skill |
+| Peer-session coordination on one repo (session messaging, per-repo locks) | the `multi-agent-comms` skill |
 | Priority ordering of issues and PRs | the `work-selection` skill |
 | Verification standards, adversarial verification | `CLAUDE.md` §4, §6 |
 | Testing rules, including asserting the defect | the `coding-standards` skill |
@@ -109,8 +109,8 @@ the `issue-pr-autopilot` skill §"Plan handoff".
 
 Several actors work the same repo at once, each in its own worktree, and
 more than one may push to the *same* PR branch. Interactive sessions can
-additionally use the filesystem lock bus in the `multi-agent-comms` skill; that bus
-does not exist for scheduled routines, so the rules below assume only what
+additionally use session messaging and the per-repo locks in the `multi-agent-comms`
+skill; scheduled routines have neither, so the rules below assume only what
 both variants have.
 
 - **Durable shared state is the coordination substrate.** Issue/PR labels

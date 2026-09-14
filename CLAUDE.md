@@ -113,6 +113,9 @@ file. Always read it at session start.
   simpler one and move forward rather than asking.
 - **Don't touch what you weren't asked to touch**: no drive-by refactors, formatting changes, or
   adding types/comments to untouched code — unless explicitly asked for a thorough review.
+- **Shared checkouts**: before editing, building, installing or pushing in a repo another session may
+  be using, check for other sessions and coordinate with them; run shared build, install and push
+  steps under a per-repo lock. Invoke the `multi-agent-comms` skill.
 - **Comment sparingly**: default to no comment; add one only where the *why* isn't deducible from the
   code, and keep it to 1-2 lines. Rationale belongs in the PR description, not the source.
 - **Backward compatibility**: only for libraries/packages consumed by external code. Within the
