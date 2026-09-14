@@ -30,16 +30,14 @@ known-issues.md         # project root — NOT inside .project-docs/ — known b
 
 Only create files that are relevant — a simple CLI tool doesn't need `api.md` or `infrastructure.md`. An incomplete but accurate doc is better than a comprehensive stale one.
 
-## graphify Knowledge Graph
+## Compass Knowledge Graph
 
-graphify builds a persistent knowledge graph from the codebase — community detection, cross-file relationships, and architecture overview — that survives across sessions and reduces the need to re-read raw files.
+Compass builds a local knowledge graph of the codebase (symbols, calls, dependencies, communities) that survives across sessions and reduces the need to re-read raw files. Full usage and its limits are in `CLAUDE.md` §0.
 
-- **On first visit to a project**: check if `graphify-out/GRAPH_REPORT.md` exists
-  - If yes → read it before starting work; it shows god nodes, community clusters, and component relationships
-  - If `graphify-out/wiki/index.md` exists → navigate the wiki instead of reading raw source files
-  - If neither exists and the project is non-trivial → run `graphify .` to build the graph
-- **During work**: after modifying code files, re-run `graphify .` to keep the graph current
-- **Install into a project**: `graphify claude install` — writes the graphify section to the project's `CLAUDE.md` and installs git hooks for auto-rebuild
+- **On first visit to a project**: if `compass-out/` is missing and the project is non-trivial, run `compass init . --yes` (or build out of tree with `compass extract <path> --code-only --out <dir>` when the checkout isn't yours)
+- **For orientation**: `compass export html` (or `wiki`) gives the architecture map; `compass explain <symbol>` and `compass affected <symbol>` answer targeted questions
+- **During work**: after modifying code files, run `compass update .` (or keep `compass watch` running) so the graph stays current
+- **Assistant integration**: `compass install --project` writes Compass guidance into the project; review the generated files before committing them
 
 ## Rules
 

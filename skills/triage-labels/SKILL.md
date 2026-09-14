@@ -1,25 +1,25 @@
 ---
 name: triage-labels
 description: The five-dimension label rubric (type, severity, urgency, impact, effort) plus derived
-  priority, what "untriaged" and "stale" mean, and the `gh` mechanics. Invoke whenever you read,
-  create or update any issue or PR that lacks the `triaged` marker.
+  priority, what "untriaged" and "stale" mean, and the `gh` mechanics. Invoke when creating an issue or PR in a
+  repo that uses the rubric, or when asked to label or triage items.
 ---
 
-# Triage labels and the always-on per-item rule
+# Triage labels and the per-item rule
 
 Running a whole backlog pass is the `triage-pass` skill; choosing what to work on next is
 `work-selection`. This skill is the rubric those two apply.
 
-### Always-on per-item rule (separate from full passes)
+### Per-item rule (separate from full passes)
 
-> **Whenever you read, create, or update an issue or PR**, apply the rubric inline if the item lacks the `triaged` marker. Don't leave untriaged items in your wake.
+> **When you create an issue or PR** in a repo that uses this rubric, label it on the same call. Don't label or comment on items other people own as a side effect of reading them.
 
 - **Creating** (`gh issue create`, `gh pr create`): pass `--label` with the full rubric on the same call. Don't ship a creation without labels and rely on a later sweep to clean up.
-- **Updating** (editing body/title, posting a comment, applying any `gh issue edit`/`gh pr edit`): if the item has no `triaged` label, fold a triage pass into the same edit. Either apply labels yourself if you can decide them, or apply `status/needs-info` + post a specific clarifying-question comment per §"Mechanics".
-- **Reading** as part of a larger task: if you'd be the next human-attention checkpoint that item gets, apply the rubric. Skip if the item is genuinely incidental to your task with no signal to apply the rubric on; in that case, mention it to the user as a hygiene note.
+- **Updating an item you own or were asked to work on** (editing body/title, posting a comment, applying any `gh issue edit`/`gh pr edit`): if the item has no `triaged` label, fold a triage pass into the same edit. Either apply labels yourself if you can decide them, or apply `triaged` + `status/needs-info` + post a specific clarifying-question comment per §"Mechanics".
+- **Reading** someone else's item as part of a larger task: leave it untouched. Mention untriaged items to the user as a hygiene note, and offer a `triage-pass` if there are many.
 - **Exception — `type/question` items** still skip the priority rubric per the §"Picking the next thing to work on" rule: apply `type/question` + `status/needs-info`, post the clarifying question, mark `triaged`, and leave open.
 
-The rubric to apply is the same as in a full pass — see §"Default label set" + §"Priority rubric". The point of the always-on rule is that untriaged items accumulate silently between scheduled sweeps; the cheap moment to label them correctly is when they're already in your context.
+The rubric to apply is the same as in a full pass — see §"Default label set" + §"Priority rubric". The cheap moment to label an item correctly is when you create it; labelling other people's items belongs in a triage pass the user asked for.
 
 ## What "untriaged" means (and what "stale" means — independently)
 

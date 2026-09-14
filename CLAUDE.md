@@ -10,11 +10,11 @@ skill"**. Discovery paths and the portability contract are in [`skills/README.md
 
 ## Core Tenets
 
-1. **Understand before changing** — For non-trivial work in unfamiliar code, read
-   `graphify-out/GRAPH_REPORT.md` and `wiki/index.md` first. If `graphify-out/` is missing, **create
-   it first** before any non-trivial exploration (§0). Don't edit code you haven't mapped.
-2. **Plan before non-trivial changes** — For 3+ step or architectural work, write the plan first,
-   execute second, replan if reality diverges. Skip for mechanical one-liners.
+1. **Understand before changing** — For non-trivial work in unfamiliar code, build or refresh the
+   Compass graph first (§0) and map what you will touch with `compass explain`, `compass path` and
+   `compass affected`. Don't edit code you haven't mapped.
+2. **Plan before non-trivial changes** — For architectural or multi-commit work, write the plan
+   first, execute second, replan if reality diverges. Skip for a few obvious steps.
 3. **Reuse before writing** — Before adding a new function, type, or helper, grep for existing
    functionality. Exact fit: reuse. Close fit (~80%): refactor existing code (flag the scope change
    in the plan). Never silently copy-paste. (§1a)
@@ -71,7 +71,7 @@ effort (gpt-5.5 / Gemini 3.1 Pro). Keep cheapest/mid/top aligned if local model 
 | `multi-agent-comms` | several agents or sessions share one project |
 | `pr-orchestration` | orchestrating several PRs/agents at once |
 | `issue-pr-autopilot` | setting up or operating the scheduled issue→PR autopilot |
-| `triage-labels` | reading, creating or updating any untriaged issue or PR |
+| `triage-labels` | creating an issue or PR, or updating an untriaged one you own or were asked to work on |
 | `triage-pass` | "triage", "prioritize the backlog", "go over open issues" |
 | `work-selection` | "what should I work on next?" |
 | `infra-ops` | infrastructure, deployments, cloud resources, ops |
@@ -93,11 +93,6 @@ file. Always read it at session start.
 > multi-person team. Apply proportionally — a solo project doesn't need a formal review process, but
 > the underlying principle (don't merge broken code, test before deploying) always applies.
 
-- **Always run a rate-limit retry cron — for every request, never stall.** From the start of any
-  request, keep a ~2-minute cron running (`CronCreate`, e.g. `*/2 * * * *`) that catches any
-  throttling and retries the pending work a few minutes later, so nothing stalls silently. It
-  self-deletes (`CronDelete`) once the work completes and escalates after a sensible ceiling. Invoke
-  the `rate-limit-retry` skill.
 - **Simplicity First (YAGNI)**: make every change as simple as possible. Build only what a current
   caller needs; no parameters, flags, hooks, or abstraction layers for a future that hasn't arrived.
   Sophistication is a cost, not a virtue.
@@ -118,6 +113,9 @@ file. Always read it at session start.
   simpler one and move forward rather than asking.
 - **Don't touch what you weren't asked to touch**: no drive-by refactors, formatting changes, or
   adding types/comments to untouched code — unless explicitly asked for a thorough review.
+- **Shared checkouts**: before editing, building, installing or pushing in a repo another session may
+  be using, check for other sessions and coordinate with them; run shared build, install and push
+  steps under a per-repo lock. Invoke the `multi-agent-comms` skill.
 - **Comment sparingly**: default to no comment; add one only where the *why* isn't deducible from the
   code, and keep it to 1-2 lines. Rationale belongs in the PR description, not the source.
 - **Backward compatibility**: only for libraries/packages consumed by external code. Within the
@@ -161,30 +159,27 @@ Before answering architecture questions or starting non-trivial work in an unfam
 
 - Read the project's `CLAUDE.md` first — it takes precedence over global rules. Check
   `known-issues.md` at the project root (format: invoke `project-docs`).
-- If `graphify-out/GRAPH_REPORT.md` exists, read it for god nodes, community structure, and component
-  relationships before touching code. If `graphify-out/wiki/index.md` exists, navigate it instead of
-  raw source.
-- **If neither exists** (and the project has >~5 source files, or the architecture isn't clear from
-  the directory listing): **build the graph first**, before any non-trivial exploration:
-
-  ```bash
-  <graphify-venv>/bin/python3 \
-    -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"
-  ```
-
-  Resolve `<graphify-venv>` from `~/.claude/local-paths.md`. Runs 1-5 min; use Bash
-  `run_in_background: true` and wait for the completion notification before declaring it ready.
-- Re-run the same command after modifying code. The `PreToolUse` hook installed by
-  `graphify claude install` rebuilds automatically after Write/Edit, but its 5-second timeout may skip
-  large edit batches — run it manually after a big refactor. If `graphify claude install` has never
-  run in the project, run it once.
+- **Build the Compass graph first** when the project has >~5 source files or the architecture isn't
+  clear from the directory listing. Compass is a local Rust binary: no model credentials, seconds to
+  about a minute per build. Resolve its location from `~/.claude/local-paths.md`.
+  - In a repo you own: `compass init . --yes` once (writes `.compass/config.toml` and `compass-out/`;
+    add `compass-out/` to `.gitignore`), then `compass update .` after changes, or `compass watch`.
+  - In a repo you don't own, or one another session is working in: build out of tree so nothing lands
+    in the checkout, e.g. `compass extract <path> --code-only --out <dir>`, and run queries from `<dir>`.
+- **Query it instead of grep-and-read loops**: `compass explain <symbol>` (callers, callees,
+  location), `compass path <from> <to>`, `compass affected <symbol> --depth 3`, and
+  `compass query "<terms>"`. For an overview, `compass export html` (or `wiki` / `obsidian`).
+- **Know its limits and fall back to `rg` plus reading the source**: `query` matches identifiers and
+  words, not meaning ("mmap segment" finds `compatible_mmap`; a plain-English sentence can return
+  nothing); C macros and code pulled in through `#include "file.c"` are not indexed; dynamic dispatch,
+  reflection and generated code resolve only partially.
 - For broad codebase questions (>3 searches expected), spawn an `Explore` subagent instead of burning
   main-context tokens.
 
 ### 1. Plan Mode Default
 
-- Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions). If something goes
-  sideways, STOP and re-plan.
+- Enter plan mode for architectural decisions and multi-commit work; a few obvious steps don't need a
+  formal plan. If something goes sideways, STOP and re-plan.
 - **Plan format**: atomic tasks with explicit file paths, each independently verifiable. State what
   changes, where, and how to prove it works.
 - **Plan the smallest thing that satisfies the request.** Name the caller for every parameter, option,
@@ -193,13 +188,15 @@ Before answering architecture questions or starting non-trivial work in an unfam
 - **User checkpoint**: for multi-commit plans, cross-cutting refactors, or anything touching shared
   infrastructure, share the plan before implementing.
 - **Plan review loop — MANDATORY gate before implementation starts**: review the plan, fix every
-  issue, re-review. Repeat until **three consecutive passes find nothing** (any finding restarts the
-  count at zero). Do NOT create the §1b worktree, enter ExitPlanMode, or write code until this passes.
+  issue, re-review until **a pass finds nothing**. For high-stakes plans (money or data-mutation
+  paths, security or auth, migrations, fixes to previously failed fixes) require **three consecutive
+  clean passes** (any finding restarts the count at zero). Do NOT create the §1b worktree, enter
+  ExitPlanMode, or write code until this passes.
   Each pass covers: the six review dimensions (below); Reuse (§1a); scope discipline (only what was
   asked?); blast radius (callers, tests, migrations, downstream consumers all listed?); unknowns
   (verify "verify-first" items NOW, not at implementation time). Per-pass findings go in the plan as a
   short "review pass N" note. The `review-and-implement` skill drives this loop.
-- Only after three clean passes: implement in distinct atomic commits, writing tests as you go.
+- Only after the review is clean: implement in distinct atomic commits, writing tests as you go.
 - **⚠️ MANDATORY post-implementation review — NO EXCEPTIONS**: after implementing, review ALL changes
   before reporting done. Hard gate; never skip or defer. Fix every issue, re-review, don't declare
   done until clean.
@@ -229,8 +226,8 @@ the job or ~80% of it. Duplication is far easier to prevent than to clean up.
   type, the verb, related domain nouns. Read the top 3-5 hits. Ask: "does something already solve
   this, or 80% of this?"
 - **Check neighbours first**: same package/module, then `utils`/`common`/`shared`/`lib`, then sibling
-  packages. Use graphify when available — the graph surfaces helpers grep misses because names don't
-  overlap. When missing, create it first (§0).
+  packages. Use Compass (`compass query`, `compass explain`) when a graph exists, since it surfaces
+  callers and related helpers that grep misses. When missing, build it first (§0).
 - **If similar code exists, decide explicitly**: exact fit -> reuse (import, don't copy); close fit
   (~80%) -> propose refactoring the existing code (flag the refactor and blast radius in the plan, get
   approval before expanding scope); superficially similar but semantically different -> document in
@@ -243,14 +240,15 @@ the job or ~80% of it. Duplication is far easier to prevent than to clean up.
 
 ### 1b. Worktree Isolation Per Change
 
-Non-trivial work happens in a dedicated git worktree branched off the current branch — never commit
-in-progress work directly on the branch you started from. **Invoke the `worktrees` skill** for the
-full protocol. Headlines: the plan must have passed the §1 three-pass gate before the worktree
-exists; the authoritative plan lives at `~/.claude/projects/<project>/plans/<slug>.md` so a crash
-mid-implementation is recoverable; the merge gate is all plan items implemented + a clean §1
-post-implementation review + **three consecutive verification passes finding no gaps**; rebase rather
-than merge by default. Skip only for trivially mechanical edits (typo, pure rename, comment tweak) —
-when in doubt, create the worktree.
+Multi-commit or long-running work, and any work in a checkout another session may be using, happens in
+a dedicated git worktree branched off the current branch; never commit in-progress work directly on
+the branch you started from. **Invoke the `worktrees` skill** for the full protocol. Headlines: the
+plan must have passed the §1 review before the worktree exists; the authoritative plan lives at
+`~/.claude/projects/<project>/plans/<slug>.md` so a crash mid-implementation is recoverable; the
+merge gate is all plan items implemented + a clean §1 post-implementation review + a clean
+verification pass (three for high-stakes changes); rebase rather than merge by default. A small
+single-commit change can stay on a feature branch in the main checkout when no other session is
+using it.
 
 ### 1c. Local Review Loop — Opus Reviews Every Implementation Change
 
@@ -321,7 +319,8 @@ it). Part of the open-PR step, not a follow-up.
 tools (`Read`, `Edit`, `Write`, `Glob`, `Grep`, `NotebookEdit`) over Bash for file ops; avoid
 approval-triggering Bash patterns (composed commands, compound `cd &&`, `sudo`/`rm -rf`/`chmod`,
 piping into `bash`, `eval`); **any multiline shell MUST be a script file** in `.claude/scripts/`
-(persistent) or `/tmp/claude/` (throw-away), reviewed with 3 clean passes before executing.
+(persistent) or `/tmp/claude/` (throw-away), reviewed before executing (3 clean passes for scripts
+that delete, push, or touch credentials).
 
 ### 3. Self-Improvement Loop
 
@@ -333,9 +332,10 @@ piping into `bash`, `eval`); **any multiline shell MUST be a script file** in `.
   stale entries promptly.** Review lessons at session start for the relevant project.
 - **Apply per-project memory at write time and review gates, not only after CR** — invoke the
   `git-commit` skill for when to read and write the `feedback_*.md` garden.
-- **Workflow improvements — self-update via PR**: when you notice a gap in the `~/.claude` guidance
-  (missing, ambiguous, contradictory, outdated, or something that just caused friction), **capture it
-  as a pull request against `LeanerCloud/dotclaude`**. First open a GitHub issue describing the gap,
+- **Workflow improvements — propose, then PR**: when you notice a gap in the `~/.claude` guidance
+  (missing, ambiguous, contradictory, outdated, or something that just caused friction), **tell the
+  user and propose the change**; once they agree, capture it as a pull request against
+  `LeanerCloud/dotclaude`. First open a GitHub issue describing the gap,
   then branch off `origin/main` (`chore/<slug>` or `docs/<slug>`), make the minimal focused edit,
   commit, push, and `gh pr create` with `Closes #<n>` in the body. Batch several gaps noticed in the
   same session into one issue + PR pair. **Guardrails**: the PR is the approval gate — NEVER push
@@ -406,9 +406,10 @@ already give a clear ordering — at ≤10 already-labelled items, invoke `work-
 A session-start scan showing >30 untriaged items, >5 open PRs untouched in 7 days, or a P0 without
 recent activity is grounds to *offer* a pass — don't run it uninvited.
 
-**Always-on per-item rule** (regardless of any pass): **whenever you read, create, or update an issue
-or PR, apply the triage rubric inline if it lacks the `triaged` marker** — invoke `triage-labels`.
-Don't leave untriaged items in your wake.
+**Per-item rule** (regardless of any pass): **when you create an issue or PR, or update one you own or
+were asked to work on, apply the triage rubric inline if it lacks the `triaged` marker** (invoke
+`triage-labels`). Don't label other people's items as a side effect of reading them; mention them to
+the user instead.
 
 ## Task Management
 
@@ -419,12 +420,14 @@ auto-memory after corrections.
 ## Git Workflow
 
 - **Repo first — check at TASK START, not commit time**: if you're working in a PROJECT dir that isn't
-  a git repo, `git init` immediately, before the first non-trivial edit. Multi-phase work in an
+  a git repo, offer to `git init` it before the first non-trivial edit (init without asking only when
+  the user asked you to create the project there). Multi-phase work in an
   unversioned tree loses its per-step history irreversibly, and creating a repo is safe and additive
   (the opposite of the never-destroy-`.git` rule, tenet 9). **Exceptions (do NOT init)**: the home dir
   itself, system temp / scratchpad, `~/Downloads`/`~/Desktop` and similar scratch locations.
 - **Before staging a commit, invoke `git-commit`** — conventional commits, atomic commits, and the
-  mandatory pre-commit review loop that runs to 3 clean passes. Never mention Anthropic/Claude in
+  mandatory pre-commit review loop that runs until a pass is clean (3 clean passes for high-stakes
+  diffs). Never mention Anthropic/Claude in
   commit messages. Never use heredoc-based `git commit -m`.
 - **After every `git push`, invoke `ci-watch`** — one background watcher per workflow run, fixing
   failures autonomously.

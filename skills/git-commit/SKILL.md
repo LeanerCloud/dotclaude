@@ -1,7 +1,8 @@
 ---
 name: git-commit
 description: Conventional-commit format, atomic commits, the repo-init-at-task-start rule, the
-  mandatory review loop that runs to three clean passes, and the per-project feedback memory garden.
+  mandatory review loop (until a pass is clean; three clean passes for high-stakes diffs), and the
+  per-project feedback memory garden.
   Invoke before staging or writing a commit message.
 ---
 
@@ -15,11 +16,11 @@ a PR.
 
 This is the first thing to check, because everything else here is worthless without a repo to commit to. **The trigger is task start, not commit time** — if you only notice there's no repo when you finally go to commit, the per-step history is already gone.
 
-- **If you're working in a PROJECT directory that is not a git repo, `git init` it immediately** — at the very start of the task, before the first file change. "Not a repo" = the environment reports `Is a git repository: false`, `git rev-parse --git-dir` fails, or there's no `.git`. Fold this check into the `CLAUDE.md` §0 "understand the codebase first" bootstrap so it fires at session start on any project. A "project directory" is any codebase/deliverable you're building or modifying — the thing that would eventually have a repo, a README, a build.
-- **Location exceptions — do NOT `git init` these, even for multi-file work**: the home directory itself (`~`), system temp / the session scratchpad (`/tmp`, `/private/tmp/...`, `$TMPDIR`), and ad-hoc non-project dirs like `~/Downloads`, `~/Desktop`, `~/.config`-style dotdirs. These are scratch/staging space, not projects — versioning them is noise. The test: *"am I building a project/deliverable here?"* → repo required. *"Is this a home/temp/downloads scratch location?"* → no repo. When in doubt about whether a dir is a project, it is (init it) — the false-negative (unversioned real work) is far more costly than a stray `.git` in a scratch dir.
+- **If you're working in a PROJECT directory that is not a git repo, offer to `git init` it** at the very start of the task, before the first file change; init without asking only when the user asked you to create the project there. "Not a repo" = the environment reports `Is a git repository: false`, `git rev-parse --git-dir` fails, or there's no `.git`. Fold this check into the `CLAUDE.md` §0 "understand the codebase first" bootstrap so it fires at session start on any project. A "project directory" is any codebase/deliverable you're building or modifying — the thing that would eventually have a repo, a README, a build.
+- **Location exceptions — do NOT `git init` these, even for multi-file work**: the home directory itself (`~`), system temp / the session scratchpad (`/tmp`, `/private/tmp/...`, `$TMPDIR`), and ad-hoc non-project dirs like `~/Downloads`, `~/Desktop`, `~/.config`-style dotdirs. These are scratch/staging space, not projects — versioning them is noise. The test: *"am I building a project/deliverable here?"* → repo required. *"Is this a home/temp/downloads scratch location?"* → no repo. When in doubt about whether a dir is a project, treat it as one and offer the init: the false-negative (unversioned real work) is far more costly than a stray `.git` in a scratch dir.
 - **Creating a repo is safe and purely additive — it is the OPPOSITE of the "never destroy `.git`" rule (`CLAUDE.md` §9).** Do not let caution about *deleting* `.git` bleed into reluctance to *create* one. `git init` on a non-repo cannot lose data.
 - **Never do multi-step or multi-phase work in an unversioned tree.** Without a repo you cannot make the small atomic commits this document requires, and — worse — intermediate states are unrecoverable: editing files in place destroys the per-step history you were supposed to commit. A crash, a bad edit, or a botched mid-way refactor then has no fallback, and there is no honest way to reconstruct the per-phase commits after the fact.
-- **After `git init`**: add/confirm a `.gitignore`, make an initial commit of the starting scaffold, then commit atomically as each phase/task/change lands (per Atomic commits below). For a long autonomous build this means **a commit per phase**, landed as you go — NOT one giant commit at the end. If you catch yourself many edits deep with zero commits, stop and fix it: `git init` now, commit the current verified state as a baseline (honestly labelled — you can split it into coarse logical commits for navigability but don't fabricate per-phase history that no longer exists), and commit atomically from that point on.
+- **After `git init`**: add/confirm a `.gitignore`, make an initial commit of the starting scaffold, then commit atomically as each phase/task/change lands (per Atomic commits below). For a long autonomous build this means **a commit per phase**, landed as you go — NOT one giant commit at the end. If you catch yourself many edits deep with zero commits, stop and fix it: with the user's go-ahead, `git init` now, commit the current verified state as a baseline (honestly labelled — you can split it into coarse logical commits for navigability but don't fabricate per-phase history that no longer exists), and commit atomically from that point on.
 - Exempt only genuinely trivial one-shot actions (answer a question, read/inspect a file). The moment you're about to make more than a couple of related edits, the repo must exist first.
 
 ## Commit messages
@@ -44,7 +45,7 @@ This is the first thing to check, because everything else here is worthless with
 
 ## ⚠️ Mandatory pre-commit review loop — NO EXCEPTIONS
 
-Before every commit, enter a review loop (same discipline as the plan review loop). Do NOT commit after a single pass — iterate until **3 consecutive review passes find zero issues**. Do NOT skip, shortcut, or batch this step. The goal is to land clean commits in the first place, so the history doesn't need fix-up commits.
+Before every commit, enter a review loop (same discipline as the plan review loop). Do NOT commit after a pass that found issues: fix them and re-review until **a pass finds zero issues**. For high-stakes diffs (money or data-mutation paths, security or auth, migrations, or a fix for a previously failed fix) iterate until **3 consecutive review passes find zero issues**. Do NOT skip, shortcut, or batch this step. The goal is to land clean commits in the first place, so the history doesn't need fix-up commits.
 
 **Review on Opus, as comprehensively as possible — CodeRabbit's lens is the floor, not the ceiling.** This review is judgement-heavy, so run it at Opus tier (the §1c local review loop and the plan-review gate are its analogues — both Opus per `CLAUDE.md` §2); escalate to the Fable reserve only for the hardest / highest-stakes money-path diffs. The six dimensions above are the baseline; then go wider than any single reviewer would. Review as CodeRabbit would (its Actionable / Nitpick categories, the project's CR config, recurring past CR findings) AND as a demanding staff engineer would, across at least:
 
@@ -76,7 +77,7 @@ Read the full staged diff (`git diff --cached`) and the relevant unstaged contex
 ### Each iteration
 
 - Print a short summary of issues found before and after fixing them (matches the plan-review-loop format).
-- An iteration with fixes resets the clean-pass counter — you need 3 clean passes *after* the last fix.
+- An iteration with fixes means another pass; for high-stakes diffs it also resets the clean-pass counter, so you need 3 clean passes *after* the last fix.
 
 ### Multi-commit work
 
@@ -116,7 +117,7 @@ Every project has a memory garden at `~/.claude/projects/<project-slug>/memory/`
 **Read the memory garden in four contexts:**
 
 1. **Before / during writing new code on any branch.** Skim relevant `feedback_*.md` entries up front and apply them proactively. Catches patterns at write-time and saves a downstream CR cycle. This is the cheapest place to apply a known rule.
-2. **During the §1 pre-commit 3-pass review gate.** Use the memory as one input to the checklist alongside Completeness / Correctness / Security / Bugs / Duplication. Any pattern that matches the changeset should be cross-checked.
+2. **During the §1 pre-commit review gate.** Use the memory as one input to the checklist alongside Completeness / Correctness / Security / Bugs / Duplication. Any pattern that matches the changeset should be cross-checked.
 3. **During the §1 post-implementation review gate.** Same usage -- the memory is a fast checklist source the reviewer can apply alongside the other dimensions.
 4. **Before pushing CR-fix commits.** After CodeRabbit lands a review pass, scan the memory before pushing fixes to catch any other matching entries CR might raise next round.
 

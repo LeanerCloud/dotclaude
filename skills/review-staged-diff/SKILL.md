@@ -44,4 +44,4 @@ Severity: Major (would break behaviour or hide a bug), Minor (style / nitpick), 
 2. A short summary: dimension counts, memory-garden entries that matched, total Major / Minor / Info.
 3. If any finding suggests memorialising a new pattern (a recurring class CR has not yet flagged but is generalisable), call it out at the end so the human can decide whether to add it to memory after the commit lands per the `git-commit` skill ("Per-project feedback memory").
 
-Do NOT modify the staged diff yourself; this command is a review pass, not an edit pass. The user reviews the findings, fixes locally, and re-runs the command until 3 consecutive runs return "No issues found" (the §1 three-clean-pass gate).
+Do NOT modify the staged diff yourself; this command is a review pass, not an edit pass. The user reviews the findings, fixes locally, and re-runs the command until a run returns "No issues found" (3 consecutive clean runs for high-stakes diffs, per the §1 review gate).

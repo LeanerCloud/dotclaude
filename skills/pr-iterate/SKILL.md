@@ -141,9 +141,11 @@ depends on another's merge order. Serialize when PRs form a stack (#A -> #B reba
 ### Collision and lock concerns
 
 1. Worktree paths are independent per PR (`.worktrees/<repo>/<slug>`).
-2. The push lock `~/.claude/agent-comms/locks/git-push.lock` serializes pushes across all
-   parallel agents (mkdir-based poll-and-retry). This is correct - it prevents simultaneous
-   force-pushes from corrupting refs.
+2. The push lock `/tmp/agent-locks/<repo>-git-push-<branch-key>.lock` (`<branch-key>` is the branch
+   name with every `/` replaced by `-`; held with `flock`, or `lockf` on macOS, per the
+   `multi-agent-comms` skill) serializes every push to that PR branch, including
+   `ci-watch` fix pushes, which take the same lock. This is correct - it prevents simultaneous
+   force-pushes from corrupting refs, while different PRs push in parallel.
 3. Shared base files: when one PR merges first, later PRs rebase to pick up the new base.
 4. gh API rate limits: parallel calls are typically fine (5000 req/hr authenticated).
 
@@ -226,12 +228,11 @@ across PRs you did not author, e.g. autopilot Phase 3 advancing human PRs.)
 4. Verify post-rebase from the worktree root: `gofmt -l ./...`, `go vet ./...`, `go build ./...`,
    `go test ./<touched-pkg>/... -count=1`, `terraform -chdir=<dir> validate` if iac touched.
    (Frontend: `npm test -- <pattern>` + `npx tsc --noEmit`.)
-5. Push the rebase (lock-protected force-push):
+5. Push the rebase (lock-protected force-push; on macOS use `lockf -t 600` instead of
+   `flock -w 600`). The lock is released when the push exits:
    ```
-   [ -f ~/.claude/agent-comms/locks/git-push.lock ] && rm ~/.claude/agent-comms/locks/git-push.lock
-   until mkdir ~/.claude/agent-comms/locks/git-push.lock 2>/dev/null; do sleep 2; done
-   git -C <worktree> push --force-with-lease
-   rmdir ~/.claude/agent-comms/locks/git-push.lock
+   mkdir -p /tmp/agent-locks
+   flock -w 600 /tmp/agent-locks/<repo>-git-push-<branch-key>.lock git -C <worktree> push --force-with-lease
    ```
    ONLY ever push the PR's own branch - never a shared `feat/*` branch or `main`.
 6. If there were real content conflicts, drop a short rebase note as a PR comment.
@@ -272,9 +273,9 @@ issues, skip the rest with a brief reason.
 
 ## Phase 4 - Push + re-ping CR
 
-1. Acquire the push lock (same mkdir protocol as Phase 2.5).
+1. Run the push under the push lock (same `flock` / `lockf` form as Phase 2.5).
 2. Push: `git push` (additive) or `git push --force-with-lease` (rebased).
-3. Release the lock (`rmdir`).
+3. Nothing to release: the lock drops when the push command exits.
 4. Post a per-finding-summary comment + re-ping CR in one comment. Before posting, run the
    dedup guard: skip the post if a user-authored `@coderabbitai review` was already sent to this
    PR in the last 5 minutes. The trailing `@coderabbitai review` triggers the next CR pass -
@@ -359,7 +360,7 @@ Once ALL THREE are true: CR's latest review says `Actionable comments posted: 0`
 - NEVER use `@coderabbitai resolve` - always `@coderabbitai review` (or `full review` on recovery).
 - NEVER push to a shared branch (e.g. `feat/*`, `main`) - only the PR's own branch.
 - NEVER pass `--yes` to any project CLI.
-- ALWAYS lock the push via `mkdir ~/.claude/agent-comms/locks/git-push.lock`.
+- ALWAYS run the push under `flock` / `lockf` on `/tmp/agent-locks/<repo>-git-push-<branch-key>.lock`.
 - ALWAYS delegate the actual implementation to a Sonnet subagent; main session plans/dispatches.
 - ALWAYS file out-of-scope CR findings as separate triaged issues with the full label set.
 - ALWAYS run pre-commit hooks; on transient `tflint --init` 403 or stash collision, sleep 2 min, retry.

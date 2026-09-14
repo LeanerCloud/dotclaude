@@ -4,19 +4,17 @@ Per-machine paths and tool locations referenced from `CLAUDE.md` and other docs
 in this repo. This file is gitignored — copy this `.example` to `local-paths.md`
 and fill in your own values.
 
-## Graphify
+## Compass
 
-Used by §0 ("Understand the Codebase First") in `CLAUDE.md` to build the
-codebase graph (`graphify-out/`) when one isn't already present.
+Used by §0 ("Understand the Codebase First") in `CLAUDE.md` to build and query
+the codebase knowledge graph (`compass-out/`).
 
-- **CLI binary**: `~/bin/graphify` (the `graphify claude install` entry point;
-  also commonly aliased to `graphify` on the shell `PATH`)
-- **Python entry point**: `<graphify-checkout>/.venv/bin/python3`
-  Used to drive the rebuild directly when the CLI hook is unavailable, e.g.:
-  ```bash
-  <graphify-checkout>/.venv/bin/python3 \
-    -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"
-  ```
+- **CLI binary**: `~/.local/bin/compass` (release installer default;
+  `cargo install` puts it in `~/.cargo/bin/compass`)
+- **Install**: download the archive for your platform from
+  <https://github.com/crabbuild/compass/releases>, check it against the
+  published `.sha256`, and put `compass` on `PATH`. Verify with
+  `compass --version`.
 
 ## Reference runs of the post-PR review loop
 

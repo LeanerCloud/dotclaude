@@ -7,13 +7,13 @@ description: Worktree isolation per change - creation preconditions, plan persis
 
 # Worktree Isolation Per Change
 
-Non-trivial work happens in a dedicated git worktree branched off the current branch — never commit in-progress work directly on the branch you started from. The base branch stays clean until the change is fully implemented and verified, so a broken or abandoned attempt never pollutes it.
+Multi-commit or long-running work, and any work in a checkout another session may be using, happens in a dedicated git worktree branched off the current branch — never commit in-progress work directly on the branch you started from. The base branch stays clean until the change is fully implemented and verified, so a broken or abandoned attempt never pollutes it.
 
 This file is the full worktree-isolation protocol: when to create one, how to persist the plan, the PID/ownership lifecycle, crash recovery, the merge gate, and cleanup. CLAUDE.md §1b carries a short headline + pointer here.
 
 ## Preconditions and creation
 
-- **Precondition — plan has passed the §1 three-pass review gate.** The worktree is the commitment to implement. Don't create one while the plan is still being iterated on, or it becomes a dumping ground for exploratory edits made on an unverified plan (and once commits start landing, reviewing the plan becomes fighting the code's momentum instead of shaping its design). If the plan needs more revision, stay on the base branch, revise, re-review, then come back.
+- **Precondition — plan has passed the §1 review gate** (three clean passes for high-stakes plans). The worktree is the commitment to implement. Don't create one while the plan is still being iterated on, or it becomes a dumping ground for exploratory edits made on an unverified plan (and once commits start landing, reviewing the plan becomes fighting the code's momentum instead of shaping its design). If the plan needs more revision, stay on the base branch, revise, re-review, then come back.
 - **Record the base branch** (the branch checked out when the task starts — e.g., `feat/multicloud-web-frontend`, `main`) in the plan. That's what you'll rebase/merge onto at the end. If the base branch is `main` or another protected branch, still use a worktree — PR discipline from the `git-commit` skill applies on top.
 - **Create the worktree after the plan review gate passes**, before the first commit:
   ```bash
@@ -49,7 +49,7 @@ Paste verbatim below the header — copy-paste, don't paraphrase, so every plan 
 
 **Before touching any file in the worktree, resolve ownership**:
 1. Read `pid:`, `host:`, and `pid_updated:` from the header.
-2. If `host:` equals the current hostname, run `kill -0 <pid> 2>/dev/null`. Exit code 0 → another session owns this plan. STOP and coordinate via `~/.claude/agent-comms/` (see the `multi-agent-comms` skill) — do not adopt.
+2. If `host:` equals the current hostname, run `kill -0 <pid> 2>/dev/null`. Exit code 0 → another session owns this plan. STOP and coordinate with that session (`ListAgents` / `SendMessage`, see the `multi-agent-comms` skill) — do not adopt.
 3. If `host:` differs OR `kill -0` fails OR `pid_updated:` is older than 24h, the plan is orphaned. Adopt it: overwrite `pid:` with your own PID, `host:` with your hostname, `pid_updated:` with now (ISO-8601). Save the header BEFORE any code edit. The adoption write is the lock — whichever session writes last wins; the other must abandon if it discovers the change.
 4. Re-read the header after a short delay (~2s) to detect a competing adopter. If your PID is still there, you own the plan; otherwise back off.
 
@@ -58,7 +58,7 @@ Paste verbatim below the header — copy-paste, don't paraphrase, so every plan 
 **Merge gate — ALL must hold before rebasing onto `base_branch:`**:
 - Every item in this plan is implemented (tick each line).
 - The CLAUDE.md §1 post-implementation review is clean.
-- **Three consecutive verification passes find no gaps.** A pass covers tests, lint/typecheck, the §4 per-change-type verification (UI smoke, API curl, etc.), and a re-read of the diff against the plan. Any finding → fix and restart the count at zero. Partial credit does not exist.
+- **A verification pass finds no gaps** (three consecutive clean passes for high-stakes changes). A pass covers tests, lint/typecheck, the §4 per-change-type verification (UI smoke, API curl, etc.), and a re-read of the diff against the plan. Any finding → fix and verify again. Partial credit does not exist.
 
 **On completion**: rebase onto `base_branch:`, push, `git worktree remove` the worktree, flip `status:` to `merged`, then delete (or archive) this plan file. If the PR merges out-of-band (a human or another agent's `merge-watch` merges it after this session is gone), any later session reclaims this worktree via the sweep in the `worktrees` skill ("Reclaiming worktrees after the PR merges or closes").
 
@@ -92,7 +92,7 @@ The next session enumerates `~/.claude/projects/<project>/plans/` and reads each
 
 - `host:` matches current hostname AND `kill -0 <pid>` succeeds → **active**, leave alone.
 - `host:` matches AND `kill -0` fails → **orphaned locally**, safe to adopt.
-- `host:` differs → can't verify PID across machines; treat as orphaned only if `pid_updated:` is older than 24h (stale heartbeat). Otherwise leave alone and coordinate via the multi-agent comms bus.
+- `host:` differs → can't verify PID across machines; treat as orphaned only if `pid_updated:` is older than 24h (stale heartbeat). Otherwise leave alone and coordinate with that session (the `multi-agent-comms` skill).
 - After adoption, `cd` to the `worktree:` path, re-read the embedded workflow, run `git status` and `git log <base_branch>..HEAD` to see progress, and resume from the first unchecked task.
 
 ## Staleness and disappearance
@@ -118,7 +118,7 @@ ALL of these must hold before rebasing/merging back onto the base branch:
 
 1. Every item in the plan is implemented (cross-check the plan line-by-line).
 2. The §1 post-implementation review is complete and clean.
-3. **Three consecutive verification passes find no gaps.** A pass covers: tests, lint/typecheck, the §4 per-change-type verification (UI smoke, API curl, etc.), and a re-read of the diff against the plan. If any pass surfaces anything — missing behaviour, regression, hack, duplication, security concern — fix it and **restart the count at zero**. Partial credit does not exist.
+3. **A verification pass finds no gaps** (three consecutive clean passes for high-stakes changes: money or data-mutation paths, security, migrations, fixes to previously failed fixes). A pass covers: tests, lint/typecheck, the §4 per-change-type verification (UI smoke, API curl, etc.), and a re-read of the diff against the plan. If any pass surfaces anything — missing behaviour, regression, hack, duplication, security concern — fix it and verify again; for high-stakes changes **restart the count at zero**. Partial credit does not exist.
 
 ## Rebase and cleanup
 
@@ -141,7 +141,7 @@ The creating session is usually **not** the one that observes its PR reach a ter
    - `git -C <worktree> status --porcelain` is empty (no uncommitted changes), AND
    - `git -C <worktree> log --oneline @{u}..` is empty (nothing ahead of upstream); if the upstream branch is already gone from origin, the commits are on the merged PR / base branch.
    - If **either** check is non-empty, do NOT remove; this is the `feedback_recover_stranded_fix_work` case (a dead agent left finished-but-uncommitted or unpushed work). Recover it first (commit, gate, fresh PR, or cherry-pick), then remove.
-3. **Never reclaim a `locked` worktree** (a running agent owns it) or one whose plan header shows a live PID on this host; coordinate via `~/.claude/agent-comms/` first.
+3. **Never reclaim a `locked` worktree** (a running agent owns it) or one whose plan header shows a live PID on this host; coordinate with that session first (the `multi-agent-comms` skill).
 4. **Remove**: `git worktree remove <worktree>` (add `--force` only if git balks on a lock/submodule *after* the safety gate confirmed it clean). Then delete BOTH sides of the now-orphaned branch and the plan file:
    - **Local branch**: `git branch -D <branch>`.
    - **Remote branch**: `git push origin --delete <branch>` — the head branch of a `MERGED` or wontfix-`CLOSED` PR serves no further purpose, and leaving it strands a remote ref that clutters `git branch -r`, breaks branch pickers, and (over a busy repo) accumulates into hundreds of dead refs. Skip only if origin already lacks it (GitHub auto-deleted it on merge — check `git ls-remote --heads origin <branch>` first, or just ignore the "remote ref does not exist" error). NEVER delete the remote of an `OPEN`-PR branch, `main`, or a protected/base branch.
@@ -160,7 +160,7 @@ The worktree sweep above only reaches branches that still have a worktree. Local
 
 This is exactly the cleanup that keeps a repo from reaching hundreds of stale worktrees/branches; run it as routine hygiene, not a one-off rescue.
 
-## When to skip
+## When to use one
 
-- **Skip the worktree only for trivially mechanical edits** — a single-line typo fix, a rename with no logic change, a comment tweak — the same bar as "skip the plan". When in doubt, create the worktree; the overhead is seconds and the isolation is worth it.
-- **If a plan turns out to require multiple independent changes**, create one worktree per change. Land them one at a time onto the base branch in dependency order, re-running the 3-pass verification for each.
+- **Use a worktree when the work is multi-commit or long-running, or when another session may be working in the same checkout.** A small single-commit change can stay on a feature branch in the main checkout, as long as no other session is using that checkout.
+- **If a plan turns out to require multiple independent changes**, create one worktree per change. Land them one at a time onto the base branch in dependency order, re-running the verification for each.

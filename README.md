@@ -39,7 +39,7 @@ portability contract and the per-tool discovery paths.
 | [`multi-agent-comms`](skills/multi-agent-comms/) | several agents share one project |
 | [`pr-orchestration`](skills/pr-orchestration/) | orchestrating several PRs/agents at once |
 | [`issue-pr-autopilot`](skills/issue-pr-autopilot/) | the scheduled issue→PR autopilot |
-| [`triage-labels`](skills/triage-labels/) | any untriaged issue or PR you touch |
+| [`triage-labels`](skills/triage-labels/) | creating an issue or PR, or updating one you own |
 | [`triage-pass`](skills/triage-pass/) | "triage", "prioritize the backlog" |
 | [`work-selection`](skills/work-selection/) | "what should I work on next?" |
 | [`infra-ops`](skills/infra-ops/) | infrastructure, deployments, cloud resources, ops |
@@ -54,7 +54,7 @@ successor skills, so older references keep resolving.
 | [`scripts/validate-skills.sh`](scripts/validate-skills.sh) | Pre-commit check that every skill stays discoverable by all three tools. |
 | [`scripts/bootstrap-triage-labels.sh`](scripts/bootstrap-triage-labels.sh) | Create the full triage-rubric label set in a repo, once, before its first triage pass. Idempotent; never deletes a label. |
 | [`agents/`](agents/) | Submodule pointing to [`contains-studio/agents`](https://github.com/contains-studio/agents) — a curated agent library. |
-| [`local-paths.md.example`](local-paths.md.example) | Template for `local-paths.md`, per-machine paths and tool locations referenced from the rule files (e.g. graphify CLI / venv). |
+| [`local-paths.md.example`](local-paths.md.example) | Template for `local-paths.md`, per-machine paths and tool locations referenced from the rule files (e.g. the Compass binary). |
 | [`projects.md.example`](projects.md.example) | Template for `projects.md`, the personal index of projects Claude should know about. |
 | [`settings.example.json`](settings.example.json) | Template for `settings.json`, listing enabled plugins and other Claude Code options. |
 

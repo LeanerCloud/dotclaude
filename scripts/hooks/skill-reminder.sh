@@ -22,7 +22,7 @@ remind() {
 
 case "$command" in
   *"git commit"*)
-    remind "Reminder (git-commit skill): the pre-commit review loop is mandatory and runs until 3 consecutive passes find zero issues — fix findings in the same changeset, never in a follow-up commit. Conventional-commit format, no Anthropic/Claude mention, no heredoc -m. Invoke the git-commit skill if it is not already loaded."
+    remind "Reminder (git-commit skill): the pre-commit review loop is mandatory and runs until a pass finds zero issues (3 consecutive clean passes for high-stakes diffs); fix findings in the same changeset, never in a follow-up commit. Conventional-commit format, no Anthropic/Claude mention, no heredoc -m. Invoke the git-commit skill if it is not already loaded."
     ;;
   *"git push"*)
     remind "Reminder (ci-watch skill): after this push, enumerate every workflow run for the pushed commit and launch one background watcher per run. If this is an open PR branch, also re-request CodeRabbit and arm its watcher in the same action (cr-loop skill)."
