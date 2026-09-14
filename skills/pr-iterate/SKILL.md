@@ -327,7 +327,8 @@ PR `ready-for-merge-without-CR` (if CLEAN + green) or `blocked-on-cr-billing`.
 CR's rate-limit is org-level. Marker file `~/.claude/agent-comms/cr-rate-limit-deadline.txt`:
 Case A content = the UTC ISO-8601 deadline; Case B content = literal `BILLING_BLOCKED`. Every
 agent checks the marker before a re-ping; if still within the window, skip the ping and schedule
-a wakeup. Atomic `mv` write to avoid sibling races. First agent after the deadline removes the
+a wakeup. Create the directory first (`mkdir -p ~/.claude/agent-comms`; nothing else creates it
+now), then write with an atomic `mv` to avoid sibling races. First agent after the deadline removes the
 stale Case-A marker; Case-B markers persist until manually cleared.
 
 ### Rate-limit recovery review command

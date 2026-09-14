@@ -407,7 +407,8 @@ A session-start scan showing >30 untriaged items, >5 open PRs untouched in 7 day
 recent activity is grounds to *offer* a pass — don't run it uninvited.
 
 **Per-item rule** (regardless of any pass): **when you create an issue or PR, or update one you own or
-were asked to work on, apply the triage rubric inline if it lacks the `triaged` marker** (invoke
+were asked to work on, in a repo that uses the triage rubric, apply it inline if the item lacks the
+`triaged` marker** (invoke
 `triage-labels`). Don't label other people's items as a side effect of reading them; mention them to
 the user instead.
 
