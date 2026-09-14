@@ -328,7 +328,8 @@ CR's rate-limit is org-level. Marker file `~/.claude/agent-comms/cr-rate-limit-d
 Case A content = the UTC ISO-8601 deadline; Case B content = literal `BILLING_BLOCKED`. Every
 agent checks the marker before a re-ping; if still within the window, skip the ping and schedule
 a wakeup. Create the directory first (`mkdir -p ~/.claude/agent-comms`; nothing else creates it
-now), then write with an atomic `mv` to avoid sibling races. First agent after the deadline removes the
+now), then write a temp file in that same directory and `mv` it over the marker; a temp file on
+another filesystem (e.g. `/tmp`) makes the `mv` a non-atomic copy. First agent after the deadline removes the
 stale Case-A marker; Case-B markers persist until manually cleared.
 
 ### Rate-limit recovery review command

@@ -71,7 +71,7 @@ effort (gpt-5.5 / Gemini 3.1 Pro). Keep cheapest/mid/top aligned if local model 
 | `multi-agent-comms` | several agents or sessions share one project |
 | `pr-orchestration` | orchestrating several PRs/agents at once |
 | `issue-pr-autopilot` | setting up or operating the scheduled issue→PR autopilot |
-| `triage-labels` | creating an issue or PR, or updating an untriaged one you own or were asked to work on |
+| `triage-labels` | in a repo that uses the rubric: creating an issue or PR, or updating an untriaged one you own or were asked to work on |
 | `triage-pass` | "triage", "prioritize the backlog", "go over open issues" |
 | `work-selection` | "what should I work on next?" |
 | `infra-ops` | infrastructure, deployments, cloud resources, ops |
