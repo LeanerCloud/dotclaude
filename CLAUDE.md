@@ -71,7 +71,7 @@ effort (gpt-5.5 / Gemini 3.1 Pro). Keep cheapest/mid/top aligned if local model 
 | `multi-agent-comms` | several agents or sessions share one project |
 | `pr-orchestration` | orchestrating several PRs/agents at once |
 | `issue-pr-autopilot` | setting up or operating the scheduled issue→PR autopilot |
-| `triage-labels` | reading, creating or updating any untriaged issue or PR |
+| `triage-labels` | creating an issue or PR, or updating an untriaged one you own or were asked to work on |
 | `triage-pass` | "triage", "prioritize the backlog", "go over open issues" |
 | `work-selection` | "what should I work on next?" |
 | `infra-ops` | infrastructure, deployments, cloud resources, ops |
@@ -328,9 +328,10 @@ that delete, push, or touch credentials).
   stale entries promptly.** Review lessons at session start for the relevant project.
 - **Apply per-project memory at write time and review gates, not only after CR** — invoke the
   `git-commit` skill for when to read and write the `feedback_*.md` garden.
-- **Workflow improvements — self-update via PR**: when you notice a gap in the `~/.claude` guidance
-  (missing, ambiguous, contradictory, outdated, or something that just caused friction), **capture it
-  as a pull request against `LeanerCloud/dotclaude`**. First open a GitHub issue describing the gap,
+- **Workflow improvements — propose, then PR**: when you notice a gap in the `~/.claude` guidance
+  (missing, ambiguous, contradictory, outdated, or something that just caused friction), **tell the
+  user and propose the change**; once they agree, capture it as a pull request against
+  `LeanerCloud/dotclaude`. First open a GitHub issue describing the gap,
   then branch off `origin/main` (`chore/<slug>` or `docs/<slug>`), make the minimal focused edit,
   commit, push, and `gh pr create` with `Closes #<n>` in the body. Batch several gaps noticed in the
   same session into one issue + PR pair. **Guardrails**: the PR is the approval gate — NEVER push
@@ -401,9 +402,10 @@ already give a clear ordering — at ≤10 already-labelled items, invoke `work-
 A session-start scan showing >30 untriaged items, >5 open PRs untouched in 7 days, or a P0 without
 recent activity is grounds to *offer* a pass — don't run it uninvited.
 
-**Always-on per-item rule** (regardless of any pass): **whenever you read, create, or update an issue
-or PR, apply the triage rubric inline if it lacks the `triaged` marker** — invoke `triage-labels`.
-Don't leave untriaged items in your wake.
+**Per-item rule** (regardless of any pass): **when you create an issue or PR, or update one you own or
+were asked to work on, apply the triage rubric inline if it lacks the `triaged` marker** (invoke
+`triage-labels`). Don't label other people's items as a side effect of reading them; mention them to
+the user instead.
 
 ## Task Management
 
@@ -414,7 +416,8 @@ auto-memory after corrections.
 ## Git Workflow
 
 - **Repo first — check at TASK START, not commit time**: if you're working in a PROJECT dir that isn't
-  a git repo, `git init` immediately, before the first non-trivial edit. Multi-phase work in an
+  a git repo, offer to `git init` it before the first non-trivial edit (init without asking only when
+  the user asked you to create the project there). Multi-phase work in an
   unversioned tree loses its per-step history irreversibly, and creating a repo is safe and additive
   (the opposite of the never-destroy-`.git` rule, tenet 9). **Exceptions (do NOT init)**: the home dir
   itself, system temp / scratchpad, `~/Downloads`/`~/Desktop` and similar scratch locations.
