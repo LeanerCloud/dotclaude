@@ -13,8 +13,8 @@ skill"**. Discovery paths and the portability contract are in [`skills/README.md
 1. **Understand before changing** — For non-trivial work in unfamiliar code, build or refresh the
    Compass graph first (§0) and map what you will touch with `compass explain`, `compass path` and
    `compass affected`. Don't edit code you haven't mapped.
-2. **Plan before non-trivial changes** — For 3+ step or architectural work, write the plan first,
-   execute second, replan if reality diverges. Skip for mechanical one-liners.
+2. **Plan before non-trivial changes** — For architectural or multi-commit work, write the plan
+   first, execute second, replan if reality diverges. Skip for a few obvious steps.
 3. **Reuse before writing** — Before adding a new function, type, or helper, grep for existing
    functionality. Exact fit: reuse. Close fit (~80%): refactor existing code (flag the scope change
    in the plan). Never silently copy-paste. (§1a)
@@ -175,8 +175,8 @@ Before answering architecture questions or starting non-trivial work in an unfam
 
 ### 1. Plan Mode Default
 
-- Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions). If something goes
-  sideways, STOP and re-plan.
+- Enter plan mode for architectural decisions and multi-commit work; a few obvious steps don't need a
+  formal plan. If something goes sideways, STOP and re-plan.
 - **Plan format**: atomic tasks with explicit file paths, each independently verifiable. State what
   changes, where, and how to prove it works.
 - **Plan the smallest thing that satisfies the request.** Name the caller for every parameter, option,
@@ -185,13 +185,15 @@ Before answering architecture questions or starting non-trivial work in an unfam
 - **User checkpoint**: for multi-commit plans, cross-cutting refactors, or anything touching shared
   infrastructure, share the plan before implementing.
 - **Plan review loop — MANDATORY gate before implementation starts**: review the plan, fix every
-  issue, re-review. Repeat until **three consecutive passes find nothing** (any finding restarts the
-  count at zero). Do NOT create the §1b worktree, enter ExitPlanMode, or write code until this passes.
+  issue, re-review until **a pass finds nothing**. For high-stakes plans (money or data-mutation
+  paths, security or auth, migrations, fixes to previously failed fixes) require **three consecutive
+  clean passes** (any finding restarts the count at zero). Do NOT create the §1b worktree, enter
+  ExitPlanMode, or write code until this passes.
   Each pass covers: the six review dimensions (below); Reuse (§1a); scope discipline (only what was
   asked?); blast radius (callers, tests, migrations, downstream consumers all listed?); unknowns
   (verify "verify-first" items NOW, not at implementation time). Per-pass findings go in the plan as a
   short "review pass N" note. The `review-and-implement` skill drives this loop.
-- Only after three clean passes: implement in distinct atomic commits, writing tests as you go.
+- Only after the review is clean: implement in distinct atomic commits, writing tests as you go.
 - **⚠️ MANDATORY post-implementation review — NO EXCEPTIONS**: after implementing, review ALL changes
   before reporting done. Hard gate; never skip or defer. Fix every issue, re-review, don't declare
   done until clean.
@@ -235,14 +237,14 @@ the job or ~80% of it. Duplication is far easier to prevent than to clean up.
 
 ### 1b. Worktree Isolation Per Change
 
-Non-trivial work happens in a dedicated git worktree branched off the current branch — never commit
-in-progress work directly on the branch you started from. **Invoke the `worktrees` skill** for the
-full protocol. Headlines: the plan must have passed the §1 three-pass gate before the worktree
-exists; the authoritative plan lives at `~/.claude/projects/<project>/plans/<slug>.md` so a crash
-mid-implementation is recoverable; the merge gate is all plan items implemented + a clean §1
-post-implementation review + **three consecutive verification passes finding no gaps**; rebase rather
-than merge by default. Skip only for trivially mechanical edits (typo, pure rename, comment tweak) —
-when in doubt, create the worktree.
+Multi-commit or long-running work, and any work in a checkout another session may be using, happens in
+a dedicated git worktree branched off the current branch; never commit in-progress work directly on
+the branch you started from. **Invoke the `worktrees` skill** for the full protocol. Headlines: the
+plan must have passed the §1 review before the worktree exists; the authoritative plan lives at
+`~/.claude/projects/<project>/plans/<slug>.md` so a crash mid-implementation is recoverable; the
+merge gate is all plan items implemented + a clean §1 post-implementation review + a clean
+verification pass (three for high-stakes changes); rebase rather than merge by default. A small
+single-commit change can stay on a feature branch in the main checkout.
 
 ### 1c. Local Review Loop — Opus Reviews Every Implementation Change
 
@@ -313,7 +315,8 @@ it). Part of the open-PR step, not a follow-up.
 tools (`Read`, `Edit`, `Write`, `Glob`, `Grep`, `NotebookEdit`) over Bash for file ops; avoid
 approval-triggering Bash patterns (composed commands, compound `cd &&`, `sudo`/`rm -rf`/`chmod`,
 piping into `bash`, `eval`); **any multiline shell MUST be a script file** in `.claude/scripts/`
-(persistent) or `/tmp/claude/` (throw-away), reviewed with 3 clean passes before executing.
+(persistent) or `/tmp/claude/` (throw-away), reviewed before executing (3 clean passes for scripts
+that delete, push, or touch credentials).
 
 ### 3. Self-Improvement Loop
 
@@ -416,7 +419,8 @@ auto-memory after corrections.
   (the opposite of the never-destroy-`.git` rule, tenet 9). **Exceptions (do NOT init)**: the home dir
   itself, system temp / scratchpad, `~/Downloads`/`~/Desktop` and similar scratch locations.
 - **Before staging a commit, invoke `git-commit`** — conventional commits, atomic commits, and the
-  mandatory pre-commit review loop that runs to 3 clean passes. Never mention Anthropic/Claude in
+  mandatory pre-commit review loop that runs until a pass is clean (3 clean passes for high-stakes
+  diffs). Never mention Anthropic/Claude in
   commit messages. Never use heredoc-based `git commit -m`.
 - **After every `git push`, invoke `ci-watch`** — one background watcher per workflow run, fixing
   failures autonomously.

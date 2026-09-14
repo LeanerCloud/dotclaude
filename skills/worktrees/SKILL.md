@@ -58,7 +58,7 @@ Paste verbatim below the header — copy-paste, don't paraphrase, so every plan 
 **Merge gate — ALL must hold before rebasing onto `base_branch:`**:
 - Every item in this plan is implemented (tick each line).
 - The CLAUDE.md §1 post-implementation review is clean.
-- **Three consecutive verification passes find no gaps.** A pass covers tests, lint/typecheck, the §4 per-change-type verification (UI smoke, API curl, etc.), and a re-read of the diff against the plan. Any finding → fix and restart the count at zero. Partial credit does not exist.
+- **A verification pass finds no gaps** (three consecutive clean passes for high-stakes changes). A pass covers tests, lint/typecheck, the §4 per-change-type verification (UI smoke, API curl, etc.), and a re-read of the diff against the plan. Any finding → fix and verify again. Partial credit does not exist.
 
 **On completion**: rebase onto `base_branch:`, push, `git worktree remove` the worktree, flip `status:` to `merged`, then delete (or archive) this plan file. If the PR merges out-of-band (a human or another agent's `merge-watch` merges it after this session is gone), any later session reclaims this worktree via the sweep in the `worktrees` skill ("Reclaiming worktrees after the PR merges or closes").
 
@@ -118,7 +118,7 @@ ALL of these must hold before rebasing/merging back onto the base branch:
 
 1. Every item in the plan is implemented (cross-check the plan line-by-line).
 2. The §1 post-implementation review is complete and clean.
-3. **Three consecutive verification passes find no gaps.** A pass covers: tests, lint/typecheck, the §4 per-change-type verification (UI smoke, API curl, etc.), and a re-read of the diff against the plan. If any pass surfaces anything — missing behaviour, regression, hack, duplication, security concern — fix it and **restart the count at zero**. Partial credit does not exist.
+3. **A verification pass finds no gaps** (three consecutive clean passes for high-stakes changes: money or data-mutation paths, security, migrations, fixes to previously failed fixes). A pass covers: tests, lint/typecheck, the §4 per-change-type verification (UI smoke, API curl, etc.), and a re-read of the diff against the plan. If any pass surfaces anything — missing behaviour, regression, hack, duplication, security concern — fix it and verify again; for high-stakes changes **restart the count at zero**. Partial credit does not exist.
 
 ## Rebase and cleanup
 
@@ -160,7 +160,7 @@ The worktree sweep above only reaches branches that still have a worktree. Local
 
 This is exactly the cleanup that keeps a repo from reaching hundreds of stale worktrees/branches; run it as routine hygiene, not a one-off rescue.
 
-## When to skip
+## When to use one
 
-- **Skip the worktree only for trivially mechanical edits** — a single-line typo fix, a rename with no logic change, a comment tweak — the same bar as "skip the plan". When in doubt, create the worktree; the overhead is seconds and the isolation is worth it.
-- **If a plan turns out to require multiple independent changes**, create one worktree per change. Land them one at a time onto the base branch in dependency order, re-running the 3-pass verification for each.
+- **Use a worktree when the work is multi-commit or long-running, or when another session may be working in the same checkout.** A small single-commit change can stay on a feature branch in the main checkout.
+- **If a plan turns out to require multiple independent changes**, create one worktree per change. Land them one at a time onto the base branch in dependency order, re-running the verification for each.

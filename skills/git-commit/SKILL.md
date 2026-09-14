@@ -1,7 +1,8 @@
 ---
 name: git-commit
 description: Conventional-commit format, atomic commits, the repo-init-at-task-start rule, the
-  mandatory review loop that runs to three clean passes, and the per-project feedback memory garden.
+  mandatory review loop (until a pass is clean; three clean passes for high-stakes diffs), and the
+  per-project feedback memory garden.
   Invoke before staging or writing a commit message.
 ---
 
@@ -44,7 +45,7 @@ This is the first thing to check, because everything else here is worthless with
 
 ## ⚠️ Mandatory pre-commit review loop — NO EXCEPTIONS
 
-Before every commit, enter a review loop (same discipline as the plan review loop). Do NOT commit after a single pass — iterate until **3 consecutive review passes find zero issues**. Do NOT skip, shortcut, or batch this step. The goal is to land clean commits in the first place, so the history doesn't need fix-up commits.
+Before every commit, enter a review loop (same discipline as the plan review loop). Do NOT commit after a pass that found issues: fix them and re-review until **a pass finds zero issues**. For high-stakes diffs (money or data-mutation paths, security or auth, migrations, or a fix for a previously failed fix) iterate until **3 consecutive review passes find zero issues**. Do NOT skip, shortcut, or batch this step. The goal is to land clean commits in the first place, so the history doesn't need fix-up commits.
 
 **Review on Opus, as comprehensively as possible — CodeRabbit's lens is the floor, not the ceiling.** This review is judgement-heavy, so run it at Opus tier (the §1c local review loop and the plan-review gate are its analogues — both Opus per `CLAUDE.md` §2); escalate to the Fable reserve only for the hardest / highest-stakes money-path diffs. The six dimensions above are the baseline; then go wider than any single reviewer would. Review as CodeRabbit would (its Actionable / Nitpick categories, the project's CR config, recurring past CR findings) AND as a demanding staff engineer would, across at least:
 
@@ -76,7 +77,7 @@ Read the full staged diff (`git diff --cached`) and the relevant unstaged contex
 ### Each iteration
 
 - Print a short summary of issues found before and after fixing them (matches the plan-review-loop format).
-- An iteration with fixes resets the clean-pass counter — you need 3 clean passes *after* the last fix.
+- An iteration with fixes means another pass; for high-stakes diffs it also resets the clean-pass counter, so you need 3 clean passes *after* the last fix.
 
 ### Multi-commit work
 
