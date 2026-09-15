@@ -39,7 +39,7 @@ portability contract and the per-tool discovery paths.
 | [`multi-agent-comms`](skills/multi-agent-comms/) | several agents share one project |
 | [`pr-orchestration`](skills/pr-orchestration/) | orchestrating several PRs/agents at once |
 | [`issue-pr-autopilot`](skills/issue-pr-autopilot/) | the scheduled issue→PR autopilot |
-| [`triage-labels`](skills/triage-labels/) | creating an issue or PR, or updating one you own |
+| [`triage-labels`](skills/triage-labels/) | creating an issue or PR, or updating an untriaged one you own or were asked to work on, in a repo that uses the rubric |
 | [`triage-pass`](skills/triage-pass/) | "triage", "prioritize the backlog" |
 | [`work-selection`](skills/work-selection/) | "what should I work on next?" |
 | [`infra-ops`](skills/infra-ops/) | infrastructure, deployments, cloud resources, ops |

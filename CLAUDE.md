@@ -71,7 +71,7 @@ effort (gpt-5.5 / Gemini 3.1 Pro). Keep cheapest/mid/top aligned if local model 
 | `multi-agent-comms` | several agents or sessions share one project |
 | `pr-orchestration` | orchestrating several PRs/agents at once |
 | `issue-pr-autopilot` | setting up or operating the scheduled issue→PR autopilot |
-| `triage-labels` | creating an issue or PR, or updating an untriaged one you own or were asked to work on |
+| `triage-labels` | in a repo that uses the rubric: creating an issue or PR, or updating an untriaged one you own or were asked to work on |
 | `triage-pass` | "triage", "prioritize the backlog", "go over open issues" |
 | `work-selection` | "what should I work on next?" |
 | `infra-ops` | infrastructure, deployments, cloud resources, ops |
@@ -407,7 +407,8 @@ A session-start scan showing >30 untriaged items, >5 open PRs untouched in 7 day
 recent activity is grounds to *offer* a pass — don't run it uninvited.
 
 **Per-item rule** (regardless of any pass): **when you create an issue or PR, or update one you own or
-were asked to work on, apply the triage rubric inline if it lacks the `triaged` marker** (invoke
+were asked to work on, in a repo that uses the triage rubric, apply it inline if the item lacks the
+`triaged` marker** (invoke
 `triage-labels`). Don't label other people's items as a side effect of reading them; mention them to
 the user instead.
 
