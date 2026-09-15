@@ -25,7 +25,7 @@ Everything already owned by another file is cross-referenced, not restated:
 | Commit conventions | the `git-commit` skill |
 | Review-bot loop | the `cr-loop` skill |
 | CI watchers | the `ci-watch` skill |
-| Merge mechanics | the `pr-lifecycle` skill |
+| Merge mechanics and project-specific final-HEAD gates | the `pr-lifecycle` skill |
 | Rate limits | the `rate-limit-retry` skill |
 | Worktree isolation, staleness/disappearance, crash recovery, post-merge reclaim | the `worktrees` skill |
 | Model-tier selection, reviewer independence, subsystem pooling, agent reuse | the `subagent-strategy` skill |
@@ -175,14 +175,14 @@ specific to running many items at once:
 
 ## 5. The merge gate
 
-A PR merges only when **all four** hold. A blanket "merge them" is never
-authorization to bypass one.
+A PR merges only when **all four** hold. Project-specific gates in the `pr-lifecycle` skill add to
+these generic gates. A blanket "merge them" is never authorization to bypass one.
 
 | Gate | Check | Prevents |
 |------|-------|----------|
 | CI green | every workflow run `success` for the exact HEAD SHA | merging broken code |
 | Review bot clean | 0 unresolved threads **AND** latest review newer than the HEAD push | the false-clean trap (§7) |
-| Adversarial clean | an independent agent **returned** a verdict against current HEAD - findings now fixed, or "NO CONFIRMED FINDINGS" plus what it attacked - **and posted it on the PR** (the `cr-loop` skill §3b) | green-CI-but-still-broken, §7, and a verdict that dies with the session |
+| Adversarial clean | an independent agent **returned** a verdict against current HEAD - findings now fixed, or "NO CONFIRMED FINDINGS" plus what it attacked - **and the invoking session posted the verdict verbatim on the PR** (the `cr-loop` skill §3b) | green-CI-but-still-broken, §7, and a verdict that dies with the session |
 | Mergeable | `MERGEABLE` + `CLEAN`; no `--admin`, no `--no-verify` | merging past a pending check |
 
 The mergeable gate is the `pr-lifecycle` skill §4 ("never bypass required checks");
@@ -530,9 +530,10 @@ spawn and when to reuse a warm agent instead; this is what every brief must
    only outcome that does not announce itself (§7), so the brief has to make
    it announce itself.
 8. **Output shape** and whether it may modify code.
-9. **What it must post on the PR before reporting done**, per
-   the `cr-loop` skill §3b: a reviewer posts its verdict and the evidence
-   under it, an implementer posts what its fix commit changed and how it
+9. **What must be recorded on the PR before reporting done**, per
+   the `cr-loop` skill §3b: a read-only reviewer returns its verdict and
+   evidence, the invoking session posts the verdict verbatim and the evidence
+   on the PR, and an implementer posts what its fix commit changed and how it
    was verified. A result that exists only in the reply to the
    orchestrator is gone the moment the session ends, and the next reader
    of that PR has no way to tell the review happened at all.
