@@ -289,6 +289,21 @@ Do not hand-write stubs before checking `~/src/darling/tools/darling-stub-gen`. 
 Mach-O and emits a complete `CMakeLists.txt`, headers and forwarding implementations
 (`nm -Ug` for C symbols, `class-dump` for Objective-C). It needs the genuine binary as input.
 
+**Pass `--arch` to every symbol count, or it is doubled.** These binaries are fat, and `llvm-nm`
+without `--arch` sums *all* slices. Measured on `Weather`: 17,905 undefined symbols with no
+`--arch`, against 8,961 for `arm64e` and 8,940 for `x86_64`, which add to 17,901. So check the
+shape first and always state which slice a published figure is for:
+
+```bash
+llvm-lipo -archs <binary>                     # fat? which slices?
+llvm-nm -u --arch arm64e <binary> | wc -l     # count one slice, never all of them
+```
+
+Treat every symbol and dependency count as **an order of magnitude plus a method, not a constant**.
+Two passes over the same 66 bundles here disagreed by about 2%, and a build-edge count moved three
+times in one evening. Publish the method alongside the number, say the shape is robust and the
+figure is not, and re-derive before letting a decision turn on a precise value.
+
 Check it can actually run before planning around it. Its `class-dump` path is hardcoded near the top
 of the script to a macOS-shaped `/Users/<user>/bin/class-dump`, and no `class-dump` is installed on
 this machine at all, so the Objective-C half of the generator is currently unusable here. The C
@@ -452,7 +467,8 @@ app launch" requires a launch you actually performed, and if you have not run it
 instead of implying it.
 
 For Apple's own bundled apps a stub demonstrably does **not** produce a launch. Calculator has
-eleven further blockers after `TextInputUI`, all Swift-ABI, `SwiftUI` alone binding 955 symbols. So
+eleven further blockers after `TextInputUI`, all Swift-ABI, `SwiftUI` alone binding symbols in the
+hundreds (see the per-slice caveat below before quoting a figure). So
 the honest shape is **"gets further, still fails at X"**, and naming X is worth more to a reviewer
 than the stub is. Date any satisfiability claim too: "satisfiable with zero bound symbols" is
 measured against today's binaries, and an OS update can move a framework between tiers with no
