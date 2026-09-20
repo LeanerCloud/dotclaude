@@ -54,12 +54,33 @@ true, which is the default, so a launched app that hits a group kill takes down 
 not the viewer that launched it. If the launcher *does* die in the same second, someone passed
 `setStartsNewProcessGroup:NO` - which tells the two cases apart from `coredumpctl` alone.
 
-A known instance of exactly this, worth recognising on sight: `sigexc_setup()` runs under
-`VARIANT_DYLD` at the start of every guest process, and on believing itself traced it calls
-`sys_kill(0, SIGTRAP, 0)` (`src/external/xnu/.../signal/sigexc.c:146-148`). One process wrongly
-concluding it is traced kills the whole invocation. The rate therefore tracks the number of guest
-process startups per command, not uptime, and the logs are empty because the kill lands before
-anything is written.
+There is an open instance of exactly this shape on this machine: guest commands intermittently die
+with 133 (`128 + SIGTRAP`), several processes of one invocation at a time. What is established is
+the shape, not the culprit. It happens per invocation rather than per boot, demonstrated twice
+independently, and one container yields interleaved outcomes: trap, success, and non-completion.
+
+> **SUPERSEDED: do not act on this, it is recorded so the disproof travels with the claim.** This
+> was attributed to `sigexc_setup()`, which runs under `VARIANT_DYLD` at the start of every guest
+> process and calls `sys_kill(0, SIGTRAP, 0)` on believing itself traced
+> (`src/external/xnu/.../signal/sigexc.c:146-148`). **That branch never fires.** Re-run at
+> `DSERVER_LOG_LEVEL=info`, a 25 MB darlingserver log across ten invocations carried 1090 `sigexc:`
+> lines from that exact file, proving `kern_printf` there was being captured, and *zero* `already
+> traced` lines, the line that would print immediately before that `sys_kill`. The attribution came
+> from grepping guest-side xnu, finding the only `kill(0, SIGTRAP)` there, and reporting "only sender
+> in this subtree" as "the sender". The subtree was not the search space: it never covered the
+> launcher, shellspawn, launchd, or darlingserver's own signal delivery.
+
+Two lessons generalise past this bug. **Establishing that a call site *could* produce a symptom is
+not evidence that it *did***: check the scope of your search before calling a mechanism found.
+And the `DSERVER_LOG_LEVEL=info` point above is what made the disproof possible: running at info
+first is what let a *missing* log line count as evidence instead of an artifact.
+
+The current lead, which points outside guest code entirely: `darlingserver.cpp` detaches launchd
+into its own session because "on ARM64 we observed launchd's startup broadcasting SIGTRAP, killing
+the parents". That `setsid()` protects darlingserver's own parents and does nothing for processes
+*inside* the container. Consistent with it, `sigexc: emulating default signal effects` appears in
+that log, which is Darling processing a *delivered* signal's default action: the victims are
+receiving the SIGTRAP, not raising it.
 
 On absent log lines: `kern_printf` logs at info while darlingserver's default cutoff is Error, so a
 missing line is an artifact until you have re-run with `DSERVER_LOG_LEVEL=info`. Do not treat its
