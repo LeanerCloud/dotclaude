@@ -277,6 +277,18 @@ check ownership first. Standing hazards:
 - **Announce deliberate coredumps.** Trap-patching a guest binary to get a backtrace produces `mldr`
   `SIGABRT` dumps and can trigger the desktop crash notifier. Say which dumps are yours so nobody
   diagnoses them as real crashes.
+- **Running a guest GUI app is not only a prefix concern, it touches the user's live compositor.**
+  Containers inherit `WAYLAND_DISPLAY`, so a launched app attaches real Wayland clients to the
+  session the user is actually working in, and clients that outlive their cleanup can leave it
+  degraded. Treat "launch an app to check" as an action against the desktop, not against a sandbox.
+  If a session-level incident is in progress, launching anything is exactly the wrong move; hold
+  and say so rather than gathering behavioural evidence.
+- **A test suite is not safe by virtue of being a test suite.** Before running any harness, check
+  whether its leaf steps spawn GUI clients, read `WAYLAND_DISPLAY` or `DISPLAY`, or shell out to
+  `hyprctl`, `systemctl` or a compositor tool. Suites routinely isolate `HOME` and the `XDG_*`
+  config paths while deliberately leaving `WAYLAND_DISPLAY` alone, so an otherwise well-sandboxed
+  run still lands on the live session. If you cannot establish that cheaply, do not run it. "It is
+  just tests" is the same shape of assumption as "the lock is free, so nothing is running".
 
 ## The loop
 
@@ -290,7 +302,10 @@ check ownership first. Standing hazards:
 4. Fix at root cause. Add a regression test where the component has a suite; where it does not, the
    evidence is the app getting further than it did, captured concretely.
 5. Verify by rerunning the actual failing app and showing the new outcome. A rebuild that compiles is
-   not verification. Respect the live-prefix rules above when doing it.
+   not verification. But this step launches a guest process against the user's live prefix *and*
+   their live compositor, so it is the one step in this loop that can damage something outside your
+   worktree: observe the rules above, and if the session is under a hold, stop here, open the PR on
+   the source work alone, and say in it that the behavioural evidence is outstanding.
 6. Review the diff per CLAUDE.md §1c, commit atomically, push to the `fork` remote.
 7. Open the PR, putting any labels on the creation call itself rather than a follow-up `gh pr edit`
    (CLAUDE.md §2). Check what the target repo actually defines first - `gh pr create --label` fails
