@@ -35,17 +35,34 @@ dyld calls `abort_with_payload` before a single dependent library is mapped. The
 survives in the core:
 
 ```bash
+# the core must be fully stored before it means anything
+coredumpctl info <pid> | grep -E '^\s+Storage:' | grep -q '(present)$' || exit 1
+
 core=$(mktemp -t crash-XXXXXX.core)
 trap 'rm -f "$core"' EXIT
 coredumpctl dump <pid> --output="$core"
+file -b "$core" | grep -q 'ELF.*core file' || exit 1
+
 strings "$core" | grep -E 'Library not loaded|Referenced from|Reason:|shared cache'
 ```
+
+Both guards matter, and they guard the same mistake. `Storage:` prints a state in parentheses, and
+anything other than `(present)` means the bytes you want may not be there: on a crash you were just
+notified about, `systemd-coredump` may still be writing, and `(truncated)` means the core exceeded
+its size limit and was not stored in its entirety. That limit is reachable here - Darling cores of
+688 MB have been seen against a 1 GB default, with `/etc/systemd/coredump.conf` overriding nothing.
+A truncated core loses its tail, which is exactly where the dyld payload sits.
 
 **Use the `mktemp` file, never `coredumpctl dump --output=-`.** Piping to stdout does not error, it
 silently truncates: on a 3,457,024-byte core it emitted 1,664 bytes, exit 0, nothing on stderr. The
 dyld payload string sits past that cut, so `... --output=- | strings | grep 'Library not loaded'`
 returns nothing and reads exactly like an app with no missing library. That command circulates here;
 it is wrong, and it fails in the direction that produces a confident false negative.
+
+Note the shared failure mode across all three: a stream-truncated core, a size-truncated core and a
+still-being-written core all yield an empty `grep` and a clean exit. **An empty result is never
+evidence of "no missing library"** unless both guards above passed. Re-read the core, do not
+conclude.
 
 Confirm with the memory map: if the only mapped images are `mldr`, host `libc`/`ld-linux`, Darling's
 `dyld` and the guest executable, nothing was loaded and this is class 1.
