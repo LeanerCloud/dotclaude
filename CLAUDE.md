@@ -51,6 +51,10 @@ effort (gpt-5.5 / Gemini 3.1 Pro). Keep cheapest/mid/top aligned if local model 
 > correspond to your model family. The mapping is for OpenAI- or Gemini-backed tooling consuming this
 > same file.
 
+An exact reviewer model pinned by a project-specific rule or skill section overrides this generic
+tier mapping. Do not satisfy an exact pin with a cross-provider substitute or floating model alias;
+see the `pr-lifecycle` skill's CUDly final-HEAD gate.
+
 ## Skills
 
 | Skill | Invoke when |
