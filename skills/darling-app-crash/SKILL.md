@@ -339,12 +339,30 @@ existing small one such as `RecapPerformanceTesting`, and read a couple of merge
 ## Before touching anything
 
 This machine runs many concurrent sessions over these trees. Invoke the `multi-agent-comms` skill and
-check ownership first. Standing hazards:
+check ownership first. Most of what follows is a familiar rule whose *precondition* does not hold in
+this repo, which is the shape worth watching for generally: check that a safety primitive is
+actually isolating what you assume before you rely on it. Standing hazards:
 
 - **Never write to `~/src/darling` itself.** It is the shared checkout, usually on `local/dev` with a
   large uncommitted working set that belongs to other sessions, and sometimes with broken submodule
-  gitdirs. Read it freely; branch a worktree off the VibeDarling base for any edit, following the
-  `~/src/darling-<topic>` convention the repo already uses everywhere.
+  gitdirs. Read it freely; isolate every edit, following the `~/src/darling-<topic>` convention.
+- **A worktree is NOT sufficient isolation here once submodules are involved.** "Use a worktree" is
+  sound advice in general and its precondition fails in this repo: all 149 submodule gitdirs are
+  centralized in the shared clone, so a linked worktree points at the *same* ones rather than
+  getting copies. Verify it in one command - `cat src/external/AvailabilityVersions/.git` reads
+  `gitdir: ../../../.git/modules/...`. Consequently `git submodule update`, `init`, `sync`, or any
+  `--recurse-submodules` operation run inside a worktree **moves submodule HEADs for the shared
+  clone and all 72 worktrees on it**, one of which holds another agent's only copy of uncommitted
+  work. Split by what the change needs:
+  - **Superproject source only**, touching no submodule (framework stubs qualify, since
+    `src/frameworks` and `src/private-frameworks` are plain trees): a worktree is fine. Just never
+    run a submodule command inside it, and you will not need to.
+  - **Populated submodules, a build, or any recursive operation**: use an independent clone with
+    `--reference` against the existing checkout, not a worktree. Objects are shared via alternates
+    so it is nearly free in disk and network, while refs and HEAD are yours alone. The superproject
+    clone takes about a second; initializing all 149 submodules with
+    `submodule.alternateLocation=superproject` is a one-off of roughly twenty minutes and is the
+    real setup cost.
 - **Never use bare `git stash` / `git stash pop`.** The stash stack is shared across every worktree in
   the repo, so a pop can silently take another session's work.
 - **Never write into a live prefix** such as `~/.darling-apps`, and never run `darling shutdown` or
