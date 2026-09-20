@@ -61,9 +61,19 @@ process-group topology, not by which call site sent the signal**, so it holds re
 sender turns out to be.
 
 There is an open instance of exactly this shape on this machine: guest commands intermittently die
-with 133 (`128 + SIGTRAP`), several processes of one invocation at a time. What is established is
-the shape, not the culprit. It happens per invocation rather than per boot, demonstrated twice
-independently, and one container yields interleaved outcomes: trap, success, and non-completion.
+with 133 (`128 + SIGTRAP`), several processes of one invocation at a time, and one container yields
+interleaved outcomes: trap, success, and non-completion. **What is established is the shape. Treat
+every explanation of it as a standing model, not a finding, until one carries a falsifying test** -
+two have died already, both killed by a measurement built so a negative result would mean
+something, which is the only kind that has settled anything here.
+
+The second to die is worth keeping as the worked example, because it looked quantitative. The model
+was a fixed probability per guest process startup, fitted at about 4.5%, which appeared to explain
+several run tallies at once. Test: 120 trivial children in **one** boot, counting failure lines
+rather than a top-level exit. **Zero failures.** At p=4.5% that is roughly five expected and better
+than 99% odds of at least one, so zero caps p near 2.5%, which would need 27-plus startups to
+account for a single observed failure. Ruled out with it: brew, Ruby, `exec`, bootsnap, the API
+path, and simply spawning many short-lived children. What survives is *which* programs get spawned.
 
 > **SUPERSEDED: do not act on this, it is recorded so the disproof travels with the claim.** This
 > was attributed to `sigexc_setup()`, which runs under `VARIANT_DYLD` at the start of every guest
@@ -146,8 +156,23 @@ all-clear, because one stray line put its paired-line parse permanently off by o
 nothing. It was caught only because zero *weak* deps is impossible for a real binary, not because
 anything complained. Assert a non-zero denominator and fail loudly when it is zero.
 
+**And do not read an alarming output as proof the tool works.** The closure bug above is the same
+class of parse artifact, but it failed the other way: it manufactured 9-14 findings per app and
+nearly retracted a correct result. "It told me something bad, so it is probably working" is not
+reasoning. When a tool and a direct observation disagree, the core is the observation and the
+tool is the claim.
+
 Confirm with the memory map: if the only mapped images are `mldr`, host `libc`/`ld-linux`, Darling's
 `dyld` and the guest executable, nothing was loaded and this is class 1.
+
+**Know what gdb cannot see here before you draw a conclusion from a stack.** Guest frames do not
+symbolize: they render as `0x0000000305d3e614 in ?? ()` because Darling's guest dylibs ship no
+symbols gdb can read, and most guest stacks stop unwinding after a frame or two with
+`corrupt stack?`. So the memory map, the register state and `strings` are load-bearing here and the
+backtrace mostly is not. Above all, **never conclude from a frame's absence**: a signal-handler
+frame, or any other, would very likely be invisible even if present, so "no such frame in the
+backtrace" is a fact about the method, not about the process. Answering that class of question
+needs symbolized guest frames or the thread's saved registers.
 
 ```bash
 gdb -q /usr/local/libexec/darling/usr/libexec/darling/mldr "$core" \
@@ -206,10 +231,16 @@ Rule these out before writing any stub:
   Chase it; it is usually more valuable than another stub. Measured on this prefix (2026-09-20,
   direct `LC_LOAD_DYLIB` vs `LC_LOAD_WEAK_DYLIB` only), **sixteen** apps have zero missing strong
   direct deps, Terminal and TextEdit among them. Check that list before starting a stub for an app:
-  if it is on it, a stub is the wrong tool entirely. Two limits on that measurement, both real:
-  it is direct deps only, not the transitive closure, so zero missing does **not** imply it will
-  launch; and it is measured against today's binaries, since an OS update can move a framework
-  between tiers with no signal.
+  if it is on it, a stub is the wrong tool entirely. It is measured against today's binaries, so
+  re-measure rather than cite it after an OS update; a framework can change tier with no signal.
+
+  It is also direct deps only. The obvious next step, a transitive closure, was run and reported
+  9-14 strong missing for *every* zero-missing app, which nearly retracted a correct finding. All
+  of them were phantoms: for a fat binary `llvm-objdump --dylibs-used` prints one header line **per
+  slice**, the tool stripped only the first, and the second architecture header contains `(` so it
+  survived the filter and was parsed as a dependency whose name was an absolute on-disk path, which
+  then had the prefix prepended a second time. Every path came out doubled and every one of those
+  files exists. Terminal's real closure is satisfied, which is what its core said all along.
 
   Terminal is the proof this class exists and is worth more than stubbing. It is on the
   zero-missing list, it still aborted, and its 347 MB core carries **no** `Library not loaded`
