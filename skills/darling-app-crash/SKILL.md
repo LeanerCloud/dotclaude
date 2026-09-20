@@ -256,8 +256,15 @@ generation run rather than deciding it silently.
 twenty of them. They are separate concerns, and a reviewer has to be able to take one and refuse
 another. Batching them makes that impossible and the whole set stalls on the weakest member.
 
-Do not bundle a superproject submodule-pin bump into a stub PR. Pin bumps are their own
-conversation here and several have died unmerged; attaching one to a stub sinks the stub with it.
+**A framework stub goes in the superproject, and no submodule hunt is needed.** Despite the ~149
+submodules, `src/frameworks` and `src/private-frameworks` are plain trees, not submodules: `git
+ls-tree HEAD src/` shows them as `040000 tree` where every real submodule is `160000 commit`, and
+neither appears in `.gitmodules`. So fork `cristim/darling` and PR against `VibeDarling/darling`.
+No pin is involved either, so the pin-bump caution below does not apply to stub PRs at all.
+
+(It does apply when you fix a *submodule*: land the submodule change as its own PR and leave the
+superproject pin bump out of it. Pin bumps are a separate argument here and several have died
+unmerged; attaching one sinks the fix with it.)
 
 Check for existing work before branching. Other sessions leave worktrees named
 `~/src/darling-pr-<topic>`, and a framework you are about to stub may already have one. Prior art
@@ -360,6 +367,13 @@ it did before is genuinely useful and should be described exactly that way, neve
 the framework. "These stubs compile and are well formed" is an honest claim. "These stubs make the
 app launch" requires a launch you actually performed, and if you have not run it, say so plainly
 instead of implying it.
+
+For Apple's own bundled apps a stub demonstrably does **not** produce a launch. Calculator has
+eleven further blockers after `TextInputUI`, all Swift-ABI, `SwiftUI` alone binding 955 symbols. So
+the honest shape is **"gets further, still fails at X"**, and naming X is worth more to a reviewer
+than the stub is. Date any satisfiability claim too: "satisfiable with zero bound symbols" is
+measured against today's binaries, and an OS update can move a framework between tiers with no
+signal at all.
 
 **Show the code you added is reached before claiming it helps.** Compiling is not reachability. A
 fix here was ranked the worst bug in a sweep and turned out to sit in a function no build variant
