@@ -31,18 +31,28 @@ it already.** Check that before building a reproduction. This machine has accumu
 cores recorded automatically; a fleet here ran matched pairs, alternated arms and bisected a package
 manager to find something the crash log had held from the start.
 
-Three fields in `coredumpctl info` do most of the work:
+Read three fields, **in this order**. The order matters, because no one of them is sufficient:
 
-- **`si_code`** is the cheapest discriminator available and it splits the whole problem space.
-  `SI_USER` means *something sent this signal* through `kill()` or `raise()`. Anything else means
-  *the process trapped itself*: a breakpoint, `__builtin_trap`, a pointer-authentication failure, a
-  hardware fault. One field rules out an entire class of hypotheses. A SIGTRAP with `SI_USER` is not
-  a trap instruction at all, however much it looks like one.
-- **Sibling timestamps** expose process-group kills. Several deaths within a second or two sharing
-  one command line is one invocation being killed as a group, not several independent crashes.
-  `kill(0, sig)` targets the caller's entire process group, so one process's bad decision takes down
-  the shell, the program and every child at once, silently.
-- **Command Line** gives the guest program even though `EXE` is always `mldr`.
+1. **Signal number.** SIGABRT and SIGTRAP are different populations here; do not pool them.
+2. **`si_code`.** `SI_USER` means the signal arrived through `kill()` or `raise()`. Anything else
+   means the process trapped itself: a breakpoint, `__builtin_trap`, a pointer-authentication
+   failure, a hardware fault. So a SIGTRAP with `SI_USER` is not a trap instruction, however much it
+   looks like one. **But `si_code` alone does not identify the culprit**, and treating it as decisive
+   merges two unrelated clusters: dyld's `abort_with_payload` also goes through `sys_kill`, so a
+   plain missing-framework self-abort is `SI_USER` too. Verified here on both populations.
+3. **Sibling timestamps and command lines.** This is the field that actually separates them. One
+   process dying alone is a process killing itself, such as dyld aborting on a missing dylib.
+   *Several* processes dying within a second or two sharing *one* command line is a process-group
+   kill, because `kill(0, sig)` targets the caller's whole group and takes down the shell, the
+   program and every child at once, silently.
+
+**Command Line** also gives you the guest program even though `EXE` is always `mldr`.
+
+A launcher dying alongside its child is itself a signal. `NSTask` spawns with
+`posix_spawnattr_setpgroup(&attrs, 0)` and `POSIX_SPAWN_SETPGROUP` when `startsNewProcessGroup` is
+true, which is the default, so a launched app that hits a group kill takes down its own group and
+not the viewer that launched it. If the launcher *does* die in the same second, someone passed
+`setStartsNewProcessGroup:NO` - which tells the two cases apart from `coredumpctl` alone.
 
 A known instance of exactly this, worth recognising on sight: `sigexc_setup()` runs under
 `VARIANT_DYLD` at the start of every guest process, and on believing itself traced it calls
