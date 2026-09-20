@@ -73,7 +73,27 @@ several run tallies at once. Test: 120 trivial children in **one** boot, countin
 rather than a top-level exit. **Zero failures.** At p=4.5% that is roughly five expected and better
 than 99% odds of at least one, so zero caps p near 2.5%, which would need 27-plus startups to
 account for a single observed failure. Ruled out with it: brew, Ruby, `exec`, bootsnap, the API
-path, and simply spawning many short-lived children. What survives is *which* programs get spawned.
+path, and simply spawning many short-lived children. What survived was *which* programs get spawned.
+
+**And that is where it landed, from the coredumps.** 133 and 134 turned out to be two different
+bugs sharing one trigger: asynchronous signal delivery, in practice `SIGCHLD` from a guest's own
+subprocesses. For 133, a non-main thread hits `brk #0x1` in libplatform's unfair-lock slow path
+because the guest `__ulock_wait` stub ignores `ULF_NO_ERRNO` and funnels every negative return
+through `_cerror_nocancel`, collapsing the errno to `-1`; libplatform accepts only a few specific
+values and traps on anything else. The fatal SIGTRAP on the *main* thread is downstream of that, not
+the cause. For 134, `mldr` aborts itself: `__darling_thread_rpc_socket` in
+`src/startup/mldr/elfcalls/threads.c` calls `abort()` outright when the RPC socket is gone and the
+caller is not the main thread, and only the main thread blocks signals. That explains every
+measurement: `brew config` spawns subprocesses and therefore generates `SIGCHLD`, while the 120
+trivial children spawned nothing and created no threads.
+
+Two things about how that was reached are worth more than the mechanism. It cost **no container
+runs at all**, coming from coredumps, installed binaries and read-only source, after the fleet had
+run matched pairs, alternated arms, bisected a package manager and built a 120-child probe. The
+crash logs held it the whole time, for the second time in one evening. And the "untestable without
+installing" premise that shaped much of the earlier work was simply false: the launcher honours
+`DARLING_LIBEXEC_PATH`, so a container can be pointed at a privately built `darlingserver` with no
+install at all.
 
 > **SUPERSEDED: do not act on this, it is recorded so the disproof travels with the claim.** This
 > was attributed to `sigexc_setup()`, which runs under `VARIANT_DYLD` at the start of every guest
@@ -498,16 +518,21 @@ actually isolating what you assume before you rely on it. Standing hazards:
    evidence is the app getting further than it did, captured concretely.
 
    **"Is it a bug" and "should it be fixed" are separate questions, and the second needs to know
-   what the fix turns *on*.** A correct fix that enables a never-exercised code path can be worse
-   than the benign bug it replaces. A real arithmetic bug in the guest `mremap` path was left
-   deliberately unfixed here for exactly that reason: correcting it would make `mremap` succeed,
-   which switches on an allocator fast path that has been dead in effect on every 16K host, and
-   turning on a never-run branch inside the memory allocator, untestable locally, is the worse
-   trade. That call was only available because the current failure mode had been *established*
-   rather than assumed benign: `mremap` returns `EINVAL`, `realloc` falls back to alloc/copy/free,
-   no bogus address reaches the caller. When a bug's present-day symptom is "a fast path silently
-   does not run", establish what actually happens today, then ask what the patch activates, before
-   writing it.
+   what the fix turns *on*.** A correct fix that switches on a genuinely never-exercised code path
+   can be worse than the benign bug it replaces, so establish what happens today rather than
+   assuming it is benign, then ask what the patch activates.
+
+   **But apply the right test, because the obvious one is wrong.** It is not "has this code ever run
+   *here*". It is **"has this code ever run anywhere in a configuration we trust"**. A path that is
+   dead on one architecture and load-bearing on another is not unexercised; it is something this
+   host has been missing out on, and fixing it restores parity with the better-tested
+   configuration. This distinction retired a real "do not fix" argument here. A guest `mremap`
+   arithmetic bug was defended as switching on a dead allocator fast path, until someone noticed the
+   deadness was host-specific: the expression subtracts `0x1000`, which leaves a page-aligned
+   address aligned at a 4K page size and misaligned at 16K, so the path runs on every x86_64 install
+   and is dead only on 16K hosts. Same shape for a hardcoded `PAGE_SHIFT_CONST = 12`, which is
+   simply correct on x86. Both fixes bring 16K hosts up to what x86 already has rather than
+   enabling anything new.
 5. Verify by rerunning the actual failing app and showing the new outcome. A rebuild that compiles is
    not verification. But this step launches a guest process against the user's live prefix *and*
    their live compositor, so it is the one step in this loop that can damage something outside your
