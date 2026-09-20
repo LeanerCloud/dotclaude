@@ -41,7 +41,11 @@ coredumpctl dump <pid> --output="$core"
 strings "$core" | grep -E 'Library not loaded|Referenced from|Reason:|shared cache'
 ```
 
-`coredumpctl dump --output=-` does **not** work - it needs a seekable file, so use `mktemp`.
+**Use the `mktemp` file, never `coredumpctl dump --output=-`.** Piping to stdout does not error, it
+silently truncates: on a 3,457,024-byte core it emitted 1,664 bytes, exit 0, nothing on stderr. The
+dyld payload string sits past that cut, so `... --output=- | strings | grep 'Library not loaded'`
+returns nothing and reads exactly like an app with no missing library. That command circulates here;
+it is wrong, and it fails in the direction that produces a confident false negative.
 
 Confirm with the memory map: if the only mapped images are `mldr`, host `libc`/`ld-linux`, Darling's
 `dyld` and the guest executable, nothing was loaded and this is class 1.
@@ -139,8 +143,13 @@ stub-or-reimplement.
 
 Do not hand-write stubs before checking `~/src/darling/tools/darling-stub-gen`. It takes a real
 Mach-O and emits a complete `CMakeLists.txt`, headers and forwarding implementations
-(`nm -Ug` for C symbols, `class-dump` for Objective-C). Its `class-dump` path is hardcoded near the
-top of the script, and it needs the genuine binary as input.
+(`nm -Ug` for C symbols, `class-dump` for Objective-C). It needs the genuine binary as input.
+
+Check it can actually run before planning around it. Its `class-dump` path is hardcoded near the top
+of the script to a macOS-shaped `/Users/<user>/bin/class-dump`, and no `class-dump` is installed on
+this machine at all, so the Objective-C half of the generator is currently unusable here. The C
+symbol half still works. Until a `class-dump` build exists, a stub's class and selector list has to
+come from one of the sources above rather than from the generator.
 
 Where the symbol list comes from is worth a moment's thought, because `darling-stub-gen` reads
 Apple's shipped framework binary directly. Two lower-friction sources give the same
@@ -201,15 +210,22 @@ check ownership first. Standing hazards:
    (CLAUDE.md §2). Check what the target repo actually defines first - `gh pr create --label` fails
    on a label the repo does not have:
 
+   Intersect rather than assume. The closing issue often lives in a *different* repo from the PR
+   (a Darling crash is frequently tracked on the superproject while the fix lands in a submodule),
+   and its labels need not exist in the target. Pass only the labels both sides have:
+
    ```bash
-   gh label list --repo VibeDarling/<repo> --limit 100 | cut -f1
+   comm -12 \
+     <(gh issue view <n> --repo <issue-repo> --json labels -q '.labels[].name' | sort) \
+     <(gh label list --repo VibeDarling/<repo> --limit 100 | cut -f1 | sort) \
+     | paste -sd,
    ```
 
-   The VibeDarling repos currently carry only GitHub's default label set, with no `type/*`,
-   `severity/*`, `urgency/*`, `impact/*`, `effort/*` or `priority/*`, and their merged PRs are
-   unlabelled. So there is usually nothing to mirror there, and the full `triage-labels` rubric
-   applies only once a repo defines those labels. Where it does, mirror the closing issue's labels
-   plus `triaged` on the create call. Then report the link.
+   Empty output means pass no `--label` at all, not that something went wrong. The VibeDarling repos
+   currently carry only GitHub's default label set, with no `type/*`, `severity/*`, `urgency/*`,
+   `impact/*`, `effort/*` or `priority/*`, and their merged PRs are unlabelled, so today that
+   intersection is usually empty. The full `triage-labels` rubric applies once a repo defines those
+   labels. Then report the link.
 
 Upstream `darlinghq` PRs are **not** opened from this loop. Fixes live in the VibeDarling fork unless
 the user asks for an upstream submission; it is fine to note that upstream is still affected.
