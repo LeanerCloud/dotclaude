@@ -24,6 +24,37 @@ is only the loader that hosts it.
 finds zero real instances and matches other agents' prompt text instead. Match on `ps -eo comm` or
 `/proc/<pid>/exe`.
 
+## Read the core before designing an experiment
+
+**A guest command that exits with 128+N died of signal N, and there is almost certainly a core for
+it already.** Check that before building a reproduction. This machine has accumulated 97 SIGTRAP
+cores recorded automatically; a fleet here ran matched pairs, alternated arms and bisected a package
+manager to find something the crash log had held from the start.
+
+Three fields in `coredumpctl info` do most of the work:
+
+- **`si_code`** is the cheapest discriminator available and it splits the whole problem space.
+  `SI_USER` means *something sent this signal* through `kill()` or `raise()`. Anything else means
+  *the process trapped itself*: a breakpoint, `__builtin_trap`, a pointer-authentication failure, a
+  hardware fault. One field rules out an entire class of hypotheses. A SIGTRAP with `SI_USER` is not
+  a trap instruction at all, however much it looks like one.
+- **Sibling timestamps** expose process-group kills. Several deaths within a second or two sharing
+  one command line is one invocation being killed as a group, not several independent crashes.
+  `kill(0, sig)` targets the caller's entire process group, so one process's bad decision takes down
+  the shell, the program and every child at once, silently.
+- **Command Line** gives the guest program even though `EXE` is always `mldr`.
+
+A known instance of exactly this, worth recognising on sight: `sigexc_setup()` runs under
+`VARIANT_DYLD` at the start of every guest process, and on believing itself traced it calls
+`sys_kill(0, SIGTRAP, 0)` (`src/external/xnu/.../signal/sigexc.c:146-148`). One process wrongly
+concluding it is traced kills the whole invocation. The rate therefore tracks the number of guest
+process startups per command, not uptime, and the logs are empty because the kill lands before
+anything is written.
+
+On absent log lines: `kern_printf` logs at info while darlingserver's default cutoff is Error, so a
+missing line is an artifact until you have re-run with `DSERVER_LOG_LEVEL=info`. Do not treat its
+absence as evidence.
+
 ## Classify before fixing
 
 Four failure classes reach `SIGABRT` through completely different mechanisms. Writing a framework
