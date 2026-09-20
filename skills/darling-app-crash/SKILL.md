@@ -76,10 +76,16 @@ independently, and one container yields interleaved outcomes: trap, success, and
 > in this subtree" as "the sender". The subtree was not the search space: it never covered the
 > launcher, shellspawn, launchd, or darlingserver's own signal delivery.
 
-Two lessons generalise past this bug. **Establishing that a call site *could* produce a symptom is
+Three lessons generalise past this bug. **Establishing that a call site *could* produce a symptom is
 not evidence that it *did***: check the scope of your search before calling a mechanism found.
 And the `DSERVER_LOG_LEVEL=info` point above is what made the disproof possible: running at info
 first is what let a *missing* log line count as evidence instead of an artifact.
+
+The third is the test to apply before writing "verified": **ask of each check, what would this show
+if the answer were the opposite?** If two checks would read identically either way, they are not two
+checks, they are one check counted twice, and their agreement carries no information. Several people
+re-confirming the same too-narrow premise is what happened here, and it felt like corroboration
+right up until a check that could actually discriminate was run.
 
 The current lead, which points outside guest code entirely: `darlingserver.cpp` detaches launchd
 into its own session because "on ARM64 we observed launchd's startup broadcasting SIGTRAP, killing
@@ -246,6 +252,18 @@ a smaller, more honest stub. Stub *implementations* are original either way. Thi
 established practice rather than a settled question, so raise it with the user before a large
 generation run rather than deciding it silently.
 
+**One framework per commit, per PR, and per worktree**, even when a single generator run produced
+twenty of them. They are separate concerns, and a reviewer has to be able to take one and refuse
+another. Batching them makes that impossible and the whole set stalls on the weakest member.
+
+Do not bundle a superproject submodule-pin bump into a stub PR. Pin bumps are their own
+conversation here and several have died unmerged; attaching one to a stub sinks the stub with it.
+
+Check for existing work before branching. Other sessions leave worktrees named
+`~/src/darling-pr-<topic>`, and a framework you are about to stub may already have one. Prior art
+worth reading for house style: `darling-pr-sck`, `darling-pr-sysadmin`, `darling-pr-dictionary`,
+`darling-pr-icadevices`.
+
 A stub is three files plus one line of registration:
 
 ```
@@ -336,3 +354,17 @@ the user asks for an upstream submission; it is fine to note that upstream is st
 Getting an app past its first missing library is not the same as making it run. Say which of the
 four classes the crash was, how many dependencies the bundle is still missing, and what the app
 actually did on the retry. "Stub added, builds clean" is not a working app.
+
+**Say in the PR body what the change does *not* provide.** A stub that lets an app fail later than
+it did before is genuinely useful and should be described exactly that way, never as support for
+the framework. "These stubs compile and are well formed" is an honest claim. "These stubs make the
+app launch" requires a launch you actually performed, and if you have not run it, say so plainly
+instead of implying it.
+
+**Show the code you added is reached before claiming it helps.** Compiling is not reachability. A
+fix here was ranked the worst bug in a sweep and turned out to sit in a function no build variant
+ever calls, because its only call site was inside an `#ifndef` whose macro is set at directory
+scope. `#if` guards and CMake `add_definitions` are part of the search scope, not background
+detail. The cheap check for this class is the dyld payload itself: `strings <corefile> | grep -A2
+'Library not loaded'` names the missing dylib directly, and if the name you stubbed stops appearing
+and a different one takes its place, the stub is demonstrably being reached.
