@@ -304,6 +304,14 @@ Two passes over the same 66 bundles here disagreed by about 2%, and a build-edge
 times in one evening. Publish the method alongside the number, say the shape is robust and the
 figure is not, and re-derive before letting a decision turn on a precise value.
 
+The same discipline applies to any claim you write down: **pin a property of your own code, not a
+fact about the world.** "The installed launcher is unchanged" is a statement about the machine, and
+it silently became false the moment a new runtime landed, leaving a checklist that quietly lied
+rather than refusing. "Nothing in this profile modifies the installed launcher" says the useful
+thing and stays true whatever is installed. Where you *do* intend an assertion to fire when the
+world moves, such as a binary's hash, make it refuse loudly and re-pin deliberately with the old and
+new values recorded. A provenance check that silently adopts whatever it finds is a rubber stamp.
+
 Check it can actually run before planning around it. Its `class-dump` path is hardcoded near the top
 of the script to a macOS-shaped `/Users/<user>/bin/class-dump`, and no `class-dump` is installed on
 this machine at all, so the Objective-C half of the generator is currently unusable here. The C
@@ -351,6 +359,25 @@ then one `add_subdirectory(<Name>)` in `src/private-frameworks/CMakeLists.txt`, 
 existing small one such as `RecapPerformanceTesting`, and read a couple of merged stub PRs on
 `VibeDarling/darling` for the expected form.
 
+### Objective-C is the stub language, and that is also the limit
+
+Write the implementation in Objective-C (`.m`), declaring the real class and protocol shapes in the
+header and giving methods bodies that log and return a safe default. That is overwhelmingly the
+house form: `src/private-frameworks` holds around 2,200 `.m` files against roughly two dozen `.c`,
+the C ones used where a framework exports plain functions rather than classes
+(`PerformanceAnalysis/src/functions.c` is the pattern). Depend on `system`, `objc` and `Foundation`.
+
+**But an Objective-C stub can only satisfy Objective-C and C symbols, and that is not what is
+actually blocking these apps.** Swift-ABI symbols are mangled `_$s...` and no `.m` file can provide
+them. Measured on `Weather`'s `arm64e` slice: 8,475 of its 8,961 undefined symbols are Swift
+mangled, about 95%. There are **zero** `.swift` sources anywhere in `src/private-frameworks`, so
+there is no precedent in the tree for stubbing that class at all.
+
+So the language question answers itself for the frameworks a stub can help with, and for the rest
+it is the wrong question: `Combine`, `GroupActivities`, `SwiftUI` and the `libswift*` overlays that
+dominate the blocked-app rankings need the Swift toolchain or hand-written mangled-symbol stubs, not
+Objective-C. Establish which kind of symbol you are missing before choosing to write a stub at all.
+
 ## Before touching anything
 
 This machine runs many concurrent sessions over these trees. Invoke the `multi-agent-comms` skill and
@@ -390,6 +417,30 @@ actually isolating what you assume before you rely on it. Standing hazards:
   worktree or from the shared clone. Separate filesystem paths imply an isolation the refs do not
   have. Salvaged work-in-progress is sometimes the only copy of itself on one of those branches, so
   run none of those commands inside a submodule; ask first, every time.
+- **The ban is blanket, not submodule-scoped: no `git gc`, `git prune`, `git repack` or
+  `git worktree prune` anywhere under the shared clone or its submodules.** The reason is the
+  `--reference` clone recommended above: it *borrows* objects from the parent through alternates
+  rather than copying them, so a `gc --prune` in the shared clone can delete objects a reference
+  clone depends on and break it. Confirm it yourself with
+  `cat <clone>/.git/objects/info/alternates`, which names the parent's object store outright. The
+  cost is asymmetric and worth stating plainly: such an image is roughly twenty minutes of submodule
+  init plus half an hour of build, while the disk those objects occupy is not scarce. Two kinds of
+  shared state now hang off that clone, refs in the centralized submodule gitdirs and objects in its
+  store, and both die to routine housekeeping run in the wrong directory.
+
+  That is a reason to *dissociate*, not to avoid `--reference`. Use it by lifetime: for a throwaway
+  clone you will delete within the hour, borrow freely. For anything anyone else depends on, or
+  anything expensive to rebuild, create it cheaply with `--reference` and then immediately make it
+  stand alone:
+
+  ```bash
+  git -C <yourclone> repack -a -d                  # materialise every borrowed object locally
+  rm <yourclone>/.git/objects/info/alternates
+  git -C <yourclone> fsck --connectivity-only      # must exit 0
+  ```
+
+  Run that in **your** clone only; a `repack` under the shared Darling clone or its submodules is
+  the forbidden case above. Afterwards confirm `HEAD` still matches your branch and your PR head.
 - **Ask before building.** A full Darling build is a ~20 minute one-off submodule init plus 23-46
   minutes of compiling, and someone may already have a clean reference image you can be pointed at.
   Pay that cost once for the fleet rather than once per agent.
@@ -424,6 +475,18 @@ actually isolating what you assume before you rely on it. Standing hazards:
    `~/src/<component>-pr-<topic>` for a submodule).
 4. Fix at root cause. Add a regression test where the component has a suite; where it does not, the
    evidence is the app getting further than it did, captured concretely.
+
+   **"Is it a bug" and "should it be fixed" are separate questions, and the second needs to know
+   what the fix turns *on*.** A correct fix that enables a never-exercised code path can be worse
+   than the benign bug it replaces. A real arithmetic bug in the guest `mremap` path was left
+   deliberately unfixed here for exactly that reason: correcting it would make `mremap` succeed,
+   which switches on an allocator fast path that has been dead in effect on every 16K host, and
+   turning on a never-run branch inside the memory allocator, untestable locally, is the worse
+   trade. That call was only available because the current failure mode had been *established*
+   rather than assumed benign: `mremap` returns `EINVAL`, `realloc` falls back to alloc/copy/free,
+   no bogus address reaches the caller. When a bug's present-day symptom is "a fast path silently
+   does not run", establish what actually happens today, then ask what the patch activates, before
+   writing it.
 5. Verify by rerunning the actual failing app and showing the new outcome. A rebuild that compiles is
    not verification. But this step launches a guest process against the user's live prefix *and*
    their live compositor, so it is the one step in this loop that can damage something outside your
