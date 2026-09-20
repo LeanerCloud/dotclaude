@@ -355,8 +355,11 @@ actually isolating what you assume before you rely on it. Standing hazards:
   clone and all 72 worktrees on it**, one of which holds another agent's only copy of uncommitted
   work. Split by what the change needs:
   - **Superproject source only**, touching no submodule (framework stubs qualify, since
-    `src/frameworks` and `src/private-frameworks` are plain trees): a worktree is fine. Just never
-    run a submodule command inside it, and you will not need to.
+    `src/frameworks` and `src/private-frameworks` are plain trees): a worktree is fine. What is
+    forbidden there is entering a submodule, not touching its pointer: resolve a submodule-pointer
+    conflict with `git update-index --cacheinfo 160000,<sha>,src/external/<name>`, which writes the
+    superproject index alone and never enters the submodule. Never resolve one by `cd`-ing in and
+    checking something out.
   - **Populated submodules, a build, or any recursive operation**: use an independent clone with
     `--reference` against the existing checkout, not a worktree. Objects are shared via alternates
     so it is nearly free in disk and network, while refs and HEAD are yours alone. The superproject
@@ -365,6 +368,16 @@ actually isolating what you assume before you rely on it. Standing hazards:
     real setup cost.
 - **Never use bare `git stash` / `git stash pop`.** The stash stack is shared across every worktree in
   the repo, so a pop can silently take another session's work.
+- **"Committed to a branch in a submodule" is not the safety it sounds like, and this one destroys
+  data.** Because the gitdirs are centralized, a branch created in a submodule from *any* worktree
+  lives in the **shared** ref space. It survives checkouts, but it is not isolated from a branch
+  deletion, a `git gc`, a `git prune` or a `git worktree prune` run in that submodule from any
+  worktree or from the shared clone. Separate filesystem paths imply an isolation the refs do not
+  have. Salvaged work-in-progress is sometimes the only copy of itself on one of those branches, so
+  run none of those commands inside a submodule; ask first, every time.
+- **Ask before building.** A full Darling build is a ~20 minute one-off submodule init plus 23-46
+  minutes of compiling, and someone may already have a clean reference image you can be pointed at.
+  Pay that cost once for the fleet rather than once per agent.
 - **Never write into a live prefix** such as `~/.darling-apps`, and never run `darling shutdown` or
   kill `darlingserver`/`mldr`. The user's real desktop session runs there. Free lock files are **not**
   evidence the runtime is idle - sessions outside the lock protocol run containers too. Check for a
