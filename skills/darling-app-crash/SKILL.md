@@ -36,7 +36,8 @@ survives in the core:
 
 ```bash
 # the core must be fully stored before it means anything
-coredumpctl info <pid> | grep -E '^\s+Storage:' | grep -q '(present)$' || exit 1
+# -1 pins this to the newest matching record, the one `dump` will pick
+coredumpctl info -1 <pid> | grep -E '^\s+Storage:' | grep -q '(present)$' || exit 1
 
 core=$(mktemp -t crash-XXXXXX.core)
 trap 'rm -f "$core"' EXIT
