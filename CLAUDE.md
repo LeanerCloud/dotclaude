@@ -82,6 +82,7 @@ see the `pr-lifecycle` skill's CUDly final-HEAD gate.
 | `infra-ops` | infrastructure, deployments, cloud resources, ops |
 | `project-docs` | setting up, updating, or consulting project documentation |
 | `cristi-voice` | writing or reviewing site/marketing copy, LinkedIn posts, or any prose published under Cristian's or LeanerCloud's name |
+| `playwright-verify` | after any web-app change, before declaring it done; when setting up a new web project's local run/verification harness |
 
 Read `~/.claude/projects.md` at the start of every session, and update it whenever working in a
 project not yet listed (fields: Project, Path, Stack, Description). Per-machine paths and tool
@@ -365,12 +366,13 @@ that delete, push, or touch credentials).
   does not trust the implementer, tracing each scenario against the *committed* code and probing edge
   cases: NULL/empty fields, alternate enum/provider values, cross-tenant data, the branch with no
   test. Treat every "this finally fixes it" with default skepticism.
-- **Per-change-type**: **UI/frontend** — start the dev server and use the feature in a browser, golden
-  path + edge cases; if the project deploys on push, re-verify in the deployed browser afterwards
-  (local pass ≠ deployed pass). **Backend/API** — hit the endpoint with `curl` or a test; verify
-  response shape, status codes, error paths. **Libraries/shared code** — run the suite AND exercise at
-  least one consumer. **Infrastructure/ops** — staging-first (invoke `infra-ops`). **CI/CD** —
-  simulate locally with `act` before pushing.
+- **Per-change-type**: **UI/frontend** — invoke the `playwright-verify` skill: run the prod-parity
+  local stack and drive the feature with Playwright, golden path + edge cases; if the project deploys
+  on push, re-verify in the deployed browser afterwards (local pass ≠ deployed pass). **Backend/API**
+  — hit the endpoint with `curl` or a test; verify response shape, status codes, error paths.
+  **Libraries/shared code** — run the suite AND exercise at least one consumer.
+  **Infrastructure/ops** — staging-first (invoke `infra-ops`). **CI/CD** — simulate locally with
+  `act` before pushing.
 - **When verification isn't possible** (no dev env, external dep, sandbox limit): say so explicitly.
   Don't claim success from type checks alone.
 
