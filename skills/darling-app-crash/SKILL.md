@@ -48,11 +48,17 @@ Read three fields, **in this order**. The order matters, because no one of them 
 
 **Command Line** also gives you the guest program even though `EXE` is always `mldr`.
 
+Count siblings across a second or two, not within one exact second. One cluster here is two cores at
+18:20:38 and a third at 18:20:39, so matching on an exact timestamp splits one group kill into two
+events and undercounts it.
+
 A launcher dying alongside its child is itself a signal. `NSTask` spawns with
 `posix_spawnattr_setpgroup(&attrs, 0)` and `POSIX_SPAWN_SETPGROUP` when `startsNewProcessGroup` is
-true, which is the default, so a launched app that hits a group kill takes down its own group and
-not the viewer that launched it. If the launcher *does* die in the same second, someone passed
-`setStartsNewProcessGroup:NO` - which tells the two cases apart from `coredumpctl` alone.
+true, which is the default, so a launched guest app leads its own process group: a group signal
+takes down that app's group and not the viewer that launched it. A launcher dying in the same second
+as its child therefore means someone passed `setStartsNewProcessGroup:NO`. **This discriminates by
+process-group topology, not by which call site sent the signal**, so it holds regardless of what the
+sender turns out to be.
 
 There is an open instance of exactly this shape on this machine: guest commands intermittently die
 with 133 (`128 + SIGTRAP`), several processes of one invocation at a time. What is established is
