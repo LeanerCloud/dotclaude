@@ -128,6 +128,33 @@ On absent log lines: `kern_printf` logs at info while darlingserver's default cu
 missing line is an artifact until you have re-run with `DSERVER_LOG_LEVEL=info`. Do not treat its
 absence as evidence.
 
+**Instrument guest code with `fprintf(stderr, ...)`, never `NSLog`.** What is established by source,
+and therefore true of every caller: Foundation's `__NSLogCString` (`src/NSLog.m`) emits with
+**`printf`**, so guest `NSLog` goes to *stdout*, not stderr. Two consequences follow deterministically
+from that. If you capture only stderr you will never see it. And stdout is fully buffered the moment
+it is redirected to a file or a pipe, so anything still sitting in that buffer when the process
+aborts is lost outright, which is precisely the case you are usually debugging. `stderr` is
+unbuffered and is what tooling actually captures.
+
+Observed on top of that, and it cost a real result: draw probes written with `NSLog` appeared in
+neither captured stderr nor `dserver.log`, and a report that a viewer "loads AppKit and never draws"
+was retracted once the identical probes were switched to `fprintf` and fired immediately. The draw
+path had been running the whole time.
+
+**How far that generalises is open, so do not act on it broadly.** Darling's house style for stub
+bodies is an `NSLog` announcing the call, across thousands of files. Whether those are equally
+inaudible is *not* established: a stub's log runs at a different time and in a different context
+from a draw probe, and nobody has measured one. Do not convert `NSLog` to `fprintf` across the tree
+on this basis. If it does turn out to transfer, the repair is a sink for the guest `NSLog` path that
+reaches `dserver.log`, which fixes every existing caller at once, rather than rewriting the call
+sites. What you should do today is narrow: when *you* instrument something, use `fprintf(stderr,
+...)`, because that is the channel known to fire.
+
+The generalisation is subtle enough that it has caught two people: **proving your build was loaded
+is not proving your output can be heard.** A load-time marker correctly establishes which binary is
+running, and tells you nothing about whether the probe channel works. Before reading silence as a
+finding, emit one unconditional probe on a path you *know* executes, and confirm you can see it.
+
 ## Classify before fixing
 
 Four failure classes reach `SIGABRT` through completely different mechanisms. Writing a framework
