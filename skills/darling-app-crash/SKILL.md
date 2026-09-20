@@ -185,8 +185,10 @@ check ownership first. Standing hazards:
 
 ## The loop
 
-1. Classify per the four classes above. If it is class 2, 3, or "no missing direct dependencies",
-   say so and stop; those are research, not a PR.
+1. Classify per the four classes above. Classes 2 and 3 stop here: say so and report, because a
+   shared-cache-only framework and a missing UIKit substrate are research, not a PR. Everything
+   else continues, including an app with no missing direct dependencies - that one is a class-4
+   diagnosis (transitive or runtime), and it lands as a normal PR once the cause is found.
 2. Identify the owning component and resolve its repo from `git remote`.
 3. Worktree off the VibeDarling base, named `~/src/darling-<topic>` (or
    `~/src/<component>-pr-<topic>` for a submodule).
@@ -195,8 +197,19 @@ check ownership first. Standing hazards:
 5. Verify by rerunning the actual failing app and showing the new outcome. A rebuild that compiles is
    not verification. Respect the live-prefix rules above when doing it.
 6. Review the diff per CLAUDE.md §1c, commit atomically, push to the `fork` remote.
-7. `gh pr create --repo VibeDarling/<repo>`, mirroring triage labels per the `triage-labels` skill,
-   then report the link.
+7. Open the PR, putting any labels on the creation call itself rather than a follow-up `gh pr edit`
+   (CLAUDE.md §2). Check what the target repo actually defines first - `gh pr create --label` fails
+   on a label the repo does not have:
+
+   ```bash
+   gh label list --repo VibeDarling/<repo> --limit 100 | cut -f1
+   ```
+
+   The VibeDarling repos currently carry only GitHub's default label set, with no `type/*`,
+   `severity/*`, `urgency/*`, `impact/*`, `effort/*` or `priority/*`, and their merged PRs are
+   unlabelled. So there is usually nothing to mirror there, and the full `triage-labels` rubric
+   applies only once a repo defines those labels. Where it does, mirror the closing issue's labels
+   plus `triaged` on the create call. Then report the link.
 
 Upstream `darlinghq` PRs are **not** opened from this loop. Fixes live in the VibeDarling fork unless
 the user asks for an upstream submission; it is fine to note that upstream is still affected.
