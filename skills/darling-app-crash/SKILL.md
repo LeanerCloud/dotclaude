@@ -141,6 +141,23 @@ neither captured stderr nor `dserver.log`, and a report that a viewer "loads App
 was retracted once the identical probes were switched to `fprintf` and fired immediately. The draw
 path had been running the whole time.
 
+It is also a fidelity bug, not only a diagnostics one: on real macOS `NSLog` writes to **stderr**.
+CoreFoundation's own `CFLog` already does the right thing here, reaching stderr through
+`writev(STDERR_FILENO, ...)` in `CFUtilities.c`, which is why CF diagnostics are audible while
+`NSLog` is not.
+
+**Do not mistake a CF line for proof that `NSLog` works.** The two banners are the same shape,
+`YYYY-MM-DD HH:MM:SS.mmm Name[a:b]`, and seeing one in a capture has already almost overturned this
+finding. The discriminator is the second bracket field: CF formats `getpid(), pthread_self()`, so it
+is a **thread id that varies between threads**, while `NSLog` formats `pid, uid`, so it is the
+**uid, constant on every line from a process** (`[pid:3e8]` for uid 1000). A capture full of
+`[19:19]`-style lines is CoreFoundation talking, not `NSLog`.
+
+**When you do test this, keep stdout and stderr separate. Never merge with `2>&1`.** `NSLog` output
+may still appear on *stdout* if the process exits cleanly enough to flush or writes enough to fill
+the buffer, so merged streams cannot distinguish a discarded buffer from a probe that never ran,
+which is the null-result trap this whole section is about.
+
 **How far that generalises is open, so do not act on it broadly.** Darling's house style for stub
 bodies is an `NSLog` announcing the call, across thousands of files. Whether those are equally
 inaudible is *not* established: a stub's log runs at a different time and in a different context
