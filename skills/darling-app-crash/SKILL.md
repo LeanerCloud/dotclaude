@@ -139,6 +139,13 @@ still-being-written core all yield an empty `grep` and a clean exit. **An empty 
 evidence of "no missing library"** unless both guards above passed. Re-read the core, do not
 conclude.
 
+The general form, which applies to anything you write that tallies problems: **a check that counts
+bad things needs a "did I count anything at all" guard, because a parser matching nothing reports a
+perfect score.** A dependency parser here printed `strong: 0 | weak: 0 | missing: 0`, a clean
+all-clear, because one stray line put its paired-line parse permanently off by one so it matched
+nothing. It was caught only because zero *weak* deps is impossible for a real binary, not because
+anything complained. Assert a non-zero denominator and fail loudly when it is zero.
+
 Confirm with the memory map: if the only mapped images are `mldr`, host `libc`/`ld-linux`, Darling's
 `dyld` and the guest executable, nothing was loaded and this is class 1.
 
@@ -196,7 +203,21 @@ Rule these out before writing any stub:
   component that crashed. That is the most valuable class of all - it is a concrete, fixable bug with
   a stack trace, and it lands as a normal PR.
 - **Apps with no missing direct dependencies that still fail.** The cause is transitive or runtime.
-  Chase it; it is usually more valuable than another stub.
+  Chase it; it is usually more valuable than another stub. Measured on this prefix (2026-09-20,
+  direct `LC_LOAD_DYLIB` vs `LC_LOAD_WEAK_DYLIB` only), **sixteen** apps have zero missing strong
+  direct deps, Terminal and TextEdit among them. Check that list before starting a stub for an app:
+  if it is on it, a stub is the wrong tool entirely. Two limits on that measurement, both real:
+  it is direct deps only, not the transitive closure, so zero missing does **not** imply it will
+  launch; and it is measured against today's binaries, since an OS update can move a framework
+  between tiers with no signal.
+
+  Terminal is the proof this class exists and is worth more than stubbing. It is on the
+  zero-missing list, it still aborted, and its 347 MB core carries **no** `Library not loaded`
+  payload at all. It cleared dyld, mapped Cocotron's AppKit with the Wayland backend plus
+  Foundation and CoreFoundation, spawned eight threads, and died on a *secondary* thread with an
+  uncaught `NSException`: `1234 is out of bounds of array`. That string is raised by
+  `darling-corefoundation`'s `NSArray.m`, so the crash names both the bug class and the repo that
+  owns it. Nothing a stub does would have touched it.
 
 ## Where the fix goes
 
