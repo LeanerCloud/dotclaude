@@ -304,6 +304,14 @@ Two passes over the same 66 bundles here disagreed by about 2%, and a build-edge
 times in one evening. Publish the method alongside the number, say the shape is robust and the
 figure is not, and re-derive before letting a decision turn on a precise value.
 
+**When repeated passes disagree on a quantity, publish the direction and the method, not a fourth
+number with a decimal place.** Three passes over one quantity here returned 215,162, 215,302 and
+240,600; the reviewer's first instinct was recompute, and the right call was to *delete the
+statistic*, because a fourth figure relocates the defect rather than removing it while carrying more
+authority than the one it replaced. State the direction, say the passes disagree by more than 10%,
+and point at the evidence the argument actually rests on. A wrong number supporting a claim that is
+true on every basis is inert; a freshly computed wrong one is not.
+
 The same discipline applies to any claim you write down: **pin a property of your own code, not a
 fact about the world.** "The installed launcher is unchanged" is a statement about the machine, and
 it silently became false the moment a new runtime landed, leaving a checklist that quietly lied
@@ -434,13 +442,26 @@ actually isolating what you assume before you rely on it. Standing hazards:
   stand alone:
 
   ```bash
-  git -C <yourclone> repack -a -d                  # materialise every borrowed object locally
-  rm <yourclone>/.git/objects/info/alternates
-  git -C <yourclone> fsck --connectivity-only      # must exit 0
+  # 1. GUARD FIRST. Is this a worktree rather than a clone?
+  git -C <path> rev-parse --git-common-dir
+  #    resolves under the shared clone  -> IT IS A WORKTREE. STOP. Do not continue.
+  #    resolves to <path>/.git          -> independent clone, safe to go on.
+
+  # 2. only then, and only if it is actually borrowing
+  cat <path>/.git/objects/info/alternates
+  git -C <path> repack -a -d                  # materialise every borrowed object locally
+  rm <path>/.git/objects/info/alternates
+  git -C <path> fsck --connectivity-only      # must exit 0, then confirm HEAD
   ```
 
-  Run that in **your** clone only; a `repack` under the shared Darling clone or its submodules is
-  the forbidden case above. Afterwards confirm `HEAD` still matches your branch and your PR head.
+  **Step 1 is not optional, because the absence of an alternates file does not mean "stands
+  alone".** A worktree has no alternates file and is coupled *more* tightly than a borrowing clone,
+  not less: it shares the object store outright. So an alternates check alone reports a worktree as
+  independent, and `repack -a -d` then rewrites and deletes packs in the **shared** store, the one
+  holding every dependent clone's borrowed objects and any salvaged work-in-progress living on
+  submodule branches. A warning phrased as "do not repack inside `~/src/darling`" does not save you
+  either, because the path you would type is your worktree's. Confirmed on a real worktree: no
+  alternates file, and `--git-common-dir` resolving to the shared clone's `.git`.
 - **Ask before building.** A full Darling build is a ~20 minute one-off submodule init plus 23-46
   minutes of compiling, and someone may already have a clean reference image you can be pointed at.
   Pay that cost once for the fleet rather than once per agent.
