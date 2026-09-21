@@ -187,7 +187,9 @@ Before answering architecture questions or starting non-trivial work in an unfam
 - Enter plan mode for architectural decisions and multi-commit work; a few obvious steps don't need a
   formal plan. If something goes sideways, STOP and re-plan.
 - **Plan format**: atomic tasks with explicit file paths, each independently verifiable. State what
-  changes, where, and how to prove it works.
+  changes, where, and how to prove it works. For any item whose necessity isn't self-evident, also
+  state **what breaks without it**: a task that can't answer that is a task to cut, and the answer
+  becomes the deletion probe the reviewer runs later.
 - **Plan the smallest thing that satisfies the request.** Name the caller for every parameter, option,
   and abstraction the plan introduces — if that caller is hypothetical, cut the item. Don't plan
   extensibility nobody asked for, and don't plan a helper you'd write exactly one call to.
@@ -221,7 +223,10 @@ local loop, and the pre-commit loop in `git-commit`):
   fails. Review this dimension **adversarially**: the author's local justification for a piece of
   machinery almost always holds up, so ask instead what the calling system actually does and what
   would break if the machinery were deleted. Correct, well-tested code guarding an unreachable state
-  still comes out.
+  still comes out. Where the answer is genuinely arguable, **don't argue it, run a deletion probe**
+  (invoke the `coding-standards` skill, "Deletion probes"): delete the candidate, run the
+  verification, and let the result decide. A "nothing broke" that turns out to be a coverage gap
+  rather than dead code is the most valuable finding this dimension produces.
 
 ### 1a. Reuse Before Writing — Avoid Duplication
 
@@ -265,7 +270,10 @@ gate; it does not replace either.
 1. **The implementer** (Sonnet for simpler changes, Opus for non-trivial code, per §2) implements one
    atomic task per the approved plan. Write the plan's task, not a generalised version of it. If the
    task seems to need machinery the plan didn't call for, that is a signal to re-plan rather than to
-   improvise it.
+   improvise it. Before handing the diff to review, **probe your own additions** (invoke the
+   `coding-standards` skill, "Deletion probes"): delete each piece whose necessity you couldn't state
+   in one sentence and see whether anything actually fails. Cheaper to find here than in review, and
+   what survives arrives with evidence attached.
 2. **Opus reviews the diff locally** across the six review dimensions plus Reuse (§1a) and scope
    discipline, as a dedicated reviewer subagent (set `model`) so the implementer's context stays
    clean. Escalate to Fable only for the hardest money-path / architecture calls. Emit a concrete
