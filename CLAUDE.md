@@ -311,6 +311,11 @@ PRs/agents run at once. Headlines:
 | Opus | **the default top tier.** PR planning; all review loops (§1c local review, §1 pre-commit/post-impl, adversarial money-path review); architecture/design decisions; iteration loops (CR responses, fix-push, rebases); gnarly hypothesis-driven debugging; non-trivial implementation; reading a large unfamiliar codebase from scratch; any work where understanding/weighing options is the hard part |
 | Fable | **peak reserve (~2x Opus cost).** Only when the last ~0.5% of max-effort intelligence decides the outcome — the hardest money-path adversarial reviews, the gnarliest architecture calls. |
 
+A sharper test than "when in doubt" for a task that could plausibly be either tier: is the answer
+known in advance? Opus when it isn't (diagnosis, symbol archaeology, judging whether an
+implementation is honest); Sonnet when it is (reverts, mechanical PR preparation, applying a fix
+whose design is already settled).
+
 Mechanical single steps stay Haiku/Sonnet. When in doubt, go one tier cheaper and re-spawn stronger
 if it struggles — *except* planning, review, iteration, debugging, and non-trivial implementation,
 which default to Opus.
