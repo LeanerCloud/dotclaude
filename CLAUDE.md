@@ -261,6 +261,39 @@ verification pass (three for high-stakes changes); rebase rather than merge by d
 single-commit change can stay on a feature branch in the main checkout when no other session is
 using it.
 
+**A worktree does NOT isolate submodules.** Submodule gitdirs live centrally in the main clone's
+`.git/modules`, so a linked worktree points at the same ones: running `git submodule
+update/init/sync`, or anything recursive, inside a worktree moves the **main clone's** submodule
+HEADs for every worktree on it. Superproject-only edits are fine, and so is an index-only pointer
+fix (`git update-index --cacheinfo 160000,<sha>,<path>`), which never enters the submodule. Anything
+needing populated submodules, a build, or a recursive operation gets an **independent clone with
+`--reference`** instead: objects are shared through alternates so it costs almost nothing, while refs
+and HEAD are not, keeping the blast radius to your own clone. Note the clone then depends on the
+reference repo's object store, so never `git gc`/`prune`/`repack` the tree it borrows from.
+
+### 1b-bis. Multi-Repo Integration Builds
+
+Assembling unmerged work across several repos, building it, and testing the result has its own
+failure modes, all of which fail *silently*:
+
+- **Enumerate loudly.** A loop over repos, PRs or submodules must surface failures, not print only
+  successes. Default branches differ (`main` vs `master`), queries fail, repos get missed. Report
+  counts as "what I found", never as "what exists", and re-check before claiming completeness.
+- **One clean build exit is not a complete build.** After new targets appear, the first run may
+  regenerate the build graph and execute the old one, exiting 0 with work still pending. Ask the
+  build system what remains (`ninja -n`) before believing it.
+- **Say which layer is under test.** A component built from integration branches running against
+  stock system libraries is not "the integrated stack". Name the parts that are, and the parts that
+  are not.
+- **Prefer testing a private runtime over installing one.** A locally built runtime exercised from a
+  disposable location beats replacing the machine's. When a project guards that path (setuid
+  binaries commonly ignore environment overrides under `AT_SECURE`), treat the guard as correct and
+  find a supported route rather than defeating it.
+- **Never install or publish from a tree with uncommitted changes.** The artifact becomes
+  unreproducible by anyone the moment that working tree is cleaned. Commit first, even to a
+  throwaway branch, so the artifact is attributable to a SHA; record what was actually built rather
+  than what should have been.
+
 ### 1c. Local Review Loop — Opus Reviews Every Implementation Change
 
 Every change the implementer produces is reviewed locally by Opus before it counts as done. This runs
