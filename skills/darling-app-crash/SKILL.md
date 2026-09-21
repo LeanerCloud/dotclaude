@@ -8,328 +8,134 @@ description: What to do when a crash turns out to be a macOS app running under D
 
 # Crashes in macOS apps running under Darling
 
-The `diagnose-crash` skill establishes what crashed and why. This one picks up where it ends for one
-specific case: the crashing process is Darling's Mach-O loader running a macOS program. Those are not
-upstream Arch or Omarchy bugs and they are not reported anywhere. They are fixed here, in the Darling
-sources under `~/src`, and shipped as PRs against the **VibeDarling** fork.
+`diagnose-crash` establishes what crashed. This skill covers one case it hands off: the crashing
+process is Darling's Mach-O loader running a macOS program. These are not Arch or Omarchy bugs and
+are reported nowhere. They are fixed in the Darling sources under `~/src` and shipped as PRs against
+the **VibeDarling** fork.
 
-## Recognising one
+## Recognise it
 
 `coredumpctl info` shows a process named `mldr` whose executable is
-`/usr/local/libexec/darling/usr/libexec/darling/mldr`, while **Command Line** shows a macOS path
-(`/Applications/Weather.app/Contents/MacOS/Weather`). The command line is the guest program; `mldr`
-is only the loader that hosts it.
+`/usr/local/libexec/darling/usr/libexec/darling/mldr`, while **Command Line** shows a macOS path.
+The command line is the guest program; `mldr` is only the loader hosting it. `mldr` rewrites its own
+cmdline, so **`ps aux | grep mldr` finds no real instances** and matches other agents' prompt text
+instead: match on `ps -eo comm` or `/proc/<pid>/exe`.
 
-`mldr` rewrites its own cmdline to the guest program name. **`ps aux | grep mldr` is worthless** - it
-finds zero real instances and matches other agents' prompt text instead. Match on `ps -eo comm` or
-`/proc/<pid>/exe`.
+A guest command exiting with 128+N died of signal N, and a core almost certainly exists already.
+Find it before building a reproduction.
 
-## Read the core before designing an experiment
+## Triage the core, in this order
 
-**A guest command that exits with 128+N died of signal N, and there is almost certainly a core for
-it already.** Check that before building a reproduction. This machine has accumulated 97 SIGTRAP
-cores recorded automatically; a fleet here ran matched pairs, alternated arms and bisected a package
-manager to find something the crash log had held from the start.
+1. **Signal.** SIGABRT and SIGTRAP are different populations here; do not pool them.
+2. **`si_code`.** `SI_USER` means the signal arrived through `kill()`/`raise()`; anything else means
+   the process trapped itself. **`si_code` alone does not separate the clusters** - dyld's
+   `abort_with_payload` also goes through `sys_kill`, so a missing-framework self-abort is `SI_USER`
+   too.
+3. **Sibling timestamps and command lines**, the field that actually separates them. One process
+   dying alone killed itself (dyld aborting on a missing dylib). *Several* dying within a second or
+   two under one command line is a process-group kill: `kill(0, sig)` silently takes the caller's
+   whole group. Count across a second or two, not one exact second.
 
-Read three fields, **in this order**. The order matters, because no one of them is sufficient:
+A launcher dying alongside its child means someone passed `setStartsNewProcessGroup:NO`; `NSTask`
+otherwise gives the child its own group, which a group signal does not escape.
 
-1. **Signal number.** SIGABRT and SIGTRAP are different populations here; do not pool them.
-2. **`si_code`.** `SI_USER` means the signal arrived through `kill()` or `raise()`. Anything else
-   means the process trapped itself: a breakpoint, `__builtin_trap`, a pointer-authentication
-   failure, a hardware fault. So a SIGTRAP with `SI_USER` is not a trap instruction, however much it
-   looks like one. **But `si_code` alone does not identify the culprit**, and treating it as decisive
-   merges two unrelated clusters: dyld's `abort_with_payload` also goes through `sys_kill`, so a
-   plain missing-framework self-abort is `SI_USER` too. Verified here on both populations.
-3. **Sibling timestamps and command lines.** This is the field that actually separates them. One
-   process dying alone is a process killing itself, such as dyld aborting on a missing dylib.
-   *Several* processes dying within a second or two sharing *one* command line is a process-group
-   kill, because `kill(0, sig)` targets the caller's whole group and takes down the shell, the
-   program and every child at once, silently.
+Two resolved exit codes, both triggered by asynchronous signal delivery, in practice `SIGCHLD` from
+the guest's own subprocesses:
 
-**Command Line** also gives you the guest program even though `EXE` is always `mldr`.
-
-Count siblings across a second or two, not within one exact second. One cluster here is two cores at
-18:20:38 and a third at 18:20:39, so matching on an exact timestamp splits one group kill into two
-events and undercounts it.
-
-A launcher dying alongside its child is itself a signal. `NSTask` spawns with
-`posix_spawnattr_setpgroup(&attrs, 0)` and `POSIX_SPAWN_SETPGROUP` when `startsNewProcessGroup` is
-true, which is the default, so a launched guest app leads its own process group: a group signal
-takes down that app's group and not the viewer that launched it. A launcher dying in the same second
-as its child therefore means someone passed `setStartsNewProcessGroup:NO`. **This discriminates by
-process-group topology, not by which call site sent the signal**, so it holds regardless of what the
-sender turns out to be.
-
-There is an open instance of exactly this shape on this machine: guest commands intermittently die
-with 133 (`128 + SIGTRAP`), several processes of one invocation at a time, and one container yields
-interleaved outcomes: trap, success, and non-completion. **What is established is the shape. Treat
-every explanation of it as a standing model, not a finding, until one carries a falsifying test** -
-two have died already, both killed by a measurement built so a negative result would mean
-something, which is the only kind that has settled anything here.
-
-The second to die is worth keeping as the worked example, because it looked quantitative. The model
-was a fixed probability per guest process startup, fitted at about 4.5%, which appeared to explain
-several run tallies at once. Test: 120 trivial children in **one** boot, counting failure lines
-rather than a top-level exit. **Zero failures.** At p=4.5% that is roughly five expected and better
-than 99% odds of at least one, so zero caps p near 2.5%, which would need 27-plus startups to
-account for a single observed failure. Ruled out with it: brew, Ruby, `exec`, bootsnap, the API
-path, and simply spawning many short-lived children. What survived was *which* programs get spawned.
-
-**And that is where it landed, from the coredumps.** 133 and 134 turned out to be two different
-bugs sharing one trigger: asynchronous signal delivery, in practice `SIGCHLD` from a guest's own
-subprocesses. For 133, a non-main thread hits `brk #0x1` in libplatform's unfair-lock slow path
-because the guest `__ulock_wait` stub ignores `ULF_NO_ERRNO` and funnels every negative return
-through `_cerror_nocancel`, collapsing the errno to `-1`; libplatform accepts only a few specific
-values and traps on anything else. The fatal SIGTRAP on the *main* thread is downstream of that, not
-the cause. For 134, `mldr` aborts itself: `__darling_thread_rpc_socket` in
-`src/startup/mldr/elfcalls/threads.c` calls `abort()` outright when the RPC socket is gone and the
-caller is not the main thread, and only the main thread blocks signals. That explains every
-measurement: `brew config` spawns subprocesses and therefore generates `SIGCHLD`, while the 120
-trivial children spawned nothing and created no threads.
-
-Two things about how that was reached are worth more than the mechanism. It cost **no container
-runs at all**, coming from coredumps, installed binaries and read-only source, after the fleet had
-run matched pairs, alternated arms, bisected a package manager and built a 120-child probe. The
-crash logs held it the whole time, for the second time in one evening. And the "untestable without
-installing" premise that shaped much of the earlier work was simply false: the launcher honours
-`DARLING_LIBEXEC_PATH`, so a container can be pointed at a privately built `darlingserver` with no
-install at all.
-
-> **SUPERSEDED: do not act on this, it is recorded so the disproof travels with the claim.** This
-> was attributed to `sigexc_setup()`, which runs under `VARIANT_DYLD` at the start of every guest
-> process and calls `sys_kill(0, SIGTRAP, 0)` on believing itself traced
-> (`src/external/xnu/.../signal/sigexc.c:146-148`). **That branch never fires.** Re-run at
-> `DSERVER_LOG_LEVEL=info`, a 25 MB darlingserver log across ten invocations carried 1090 `sigexc:`
-> lines from that exact file, proving `kern_printf` there was being captured, and *zero* `already
-> traced` lines, the line that would print immediately before that `sys_kill`. The attribution came
-> from grepping guest-side xnu, finding the only `kill(0, SIGTRAP)` there, and reporting "only sender
-> in this subtree" as "the sender". The subtree was not the search space: it never covered the
-> launcher, shellspawn, launchd, or darlingserver's own signal delivery.
-
-Three lessons generalise past this bug. **Establishing that a call site *could* produce a symptom is
-not evidence that it *did***: check the scope of your search before calling a mechanism found.
-And the `DSERVER_LOG_LEVEL=info` point above is what made the disproof possible: running at info
-first is what let a *missing* log line count as evidence instead of an artifact.
-
-The third is the test to apply before writing "verified": **ask of each check, what would this show
-if the answer were the opposite?** If two checks would read identically either way, they are not two
-checks, they are one check counted twice, and their agreement carries no information. Several people
-re-confirming the same too-narrow premise is what happened here, and it felt like corroboration
-right up until a check that could actually discriminate was run.
-
-The current lead, which points outside guest code entirely: `darlingserver.cpp` detaches launchd
-into its own session because "on ARM64 we observed launchd's startup broadcasting SIGTRAP, killing
-the parents". That `setsid()` protects darlingserver's own parents and does nothing for processes
-*inside* the container. Consistent with it, `sigexc: emulating default signal effects` appears in
-that log, which is Darling processing a *delivered* signal's default action: the victims are
-receiving the SIGTRAP, not raising it.
-
-On absent log lines: `kern_printf` logs at info while darlingserver's default cutoff is Error, so a
-missing line is an artifact until you have re-run with `DSERVER_LOG_LEVEL=info`. Do not treat its
-absence as evidence.
-
-**Instrument guest code with `fprintf(stderr, ...)`, never `NSLog`.** What is established by source,
-and therefore true of every caller: Foundation's `__NSLogCString` (`src/NSLog.m`) emits with
-**`printf`**, so guest `NSLog` goes to *stdout*, not stderr. Two consequences follow deterministically
-from that. If you capture only stderr you will never see it. And stdout is fully buffered the moment
-it is redirected to a file or a pipe, so anything still sitting in that buffer when the process
-aborts is lost outright, which is precisely the case you are usually debugging. `stderr` is
-unbuffered and is what tooling actually captures.
-
-Observed on top of that, and it cost a real result: draw probes written with `NSLog` appeared in
-neither captured stderr nor `dserver.log`, and a report that a viewer "loads AppKit and never draws"
-was retracted once the identical probes were switched to `fprintf` and fired immediately. The draw
-path had been running the whole time.
-
-It is also a fidelity bug, not only a diagnostics one: on real macOS `NSLog` writes to **stderr**.
-CoreFoundation's own `CFLog` already does the right thing here, reaching stderr through
-`writev(STDERR_FILENO, ...)` in `CFUtilities.c`, which is why CF diagnostics are audible while
-`NSLog` is not.
-
-**Do not mistake a CF line for proof that `NSLog` works.** The two banners are the same shape,
-`YYYY-MM-DD HH:MM:SS.mmm Name[a:b]`, and seeing one in a capture has already almost overturned this
-finding. The discriminator is the second bracket field: CF formats `getpid(), pthread_self()`, so it
-is a **thread id that varies between threads**, while `NSLog` formats `pid, uid`, so it is the
-**uid, constant on every line from a process** (`[pid:3e8]` for uid 1000). A capture full of
-`[19:19]`-style lines is CoreFoundation talking, not `NSLog`.
-
-**When you do test this, keep stdout and stderr separate. Never merge with `2>&1`.** `NSLog` output
-may still appear on *stdout* if the process exits cleanly enough to flush or writes enough to fill
-the buffer, so merged streams cannot distinguish a discarded buffer from a probe that never ran,
-which is the null-result trap this whole section is about.
-
-**How far that generalises is open, so do not act on it broadly.** Darling's house style for stub
-bodies is an `NSLog` announcing the call, across thousands of files. Whether those are equally
-inaudible is *not* established: a stub's log runs at a different time and in a different context
-from a draw probe, and nobody has measured one. Do not convert `NSLog` to `fprintf` across the tree
-on this basis. If it does turn out to transfer, the repair is a sink for the guest `NSLog` path that
-reaches `dserver.log`, which fixes every existing caller at once, rather than rewriting the call
-sites. What you should do today is narrow: when *you* instrument something, use `fprintf(stderr,
-...)`, because that is the channel known to fire.
-
-The generalisation is subtle enough that it has caught two people: **proving your build was loaded
-is not proving your output can be heard.** A load-time marker correctly establishes which binary is
-running, and tells you nothing about whether the probe channel works. Before reading silence as a
-finding, emit one unconditional probe on a path you *know* executes, and confirm you can see it.
+- **133** (`128+SIGTRAP`): a **non-main** thread hits `brk #0x1` in libplatform's unfair-lock slow
+  path, because the guest `__ulock_wait` stub ignores `ULF_NO_ERRNO`, so negative returns go through
+  `_cerror_nocancel` and collapse to `-1`, and libplatform traps on anything but a few specific
+  values. The fatal SIGTRAP on the main thread is downstream of that.
+- **134** (`128+SIGABRT`): `__darling_thread_rpc_socket` (`src/startup/mldr/elfcalls/threads.c`)
+  calls `abort()` when the RPC socket is gone and the caller is not the main thread; only the main
+  thread blocks signals.
 
 ## Classify before fixing
 
-Four failure classes reach `SIGABRT` through completely different mechanisms. Writing a framework
-stub for a crash from class 2 or 3 wastes a day. Work down this list.
+Four classes reach `SIGABRT` through different mechanisms. A stub written for class 2, 3 or 4 wastes
+a day.
 
-### 1. Missing dylib (dyld aborts during load)
+### 1. Missing dylib - dyld aborts during load
 
-dyld calls `abort_with_payload` before a single dependent library is mapped. The payload string
-survives in the core:
+**Both discriminators must hold: a dyld `Library not loaded` payload in the core, AND `TID == PID`
+in `coredumpctl info` (dyld aborts on the main thread, before any other exists).** Either absent
+means look elsewhere.
 
 ```bash
-# the core must be fully stored before it means anything
-# -1 pins this to the newest matching record, the one `dump` will pick
 coredumpctl info -1 <pid> | grep -E '^\s+Storage:' | grep -q '(present)$' || exit 1
-
-core=$(mktemp -t crash-XXXXXX.core)
-trap 'rm -f "$core"' EXIT
+core=$(mktemp -t crash-XXXXXX.core); trap 'rm -f "$core"' EXIT
 coredumpctl dump <pid> --output="$core"
-file -b "$core" | grep -q 'ELF.*core file' || exit 1
-
 strings "$core" | grep -E 'Library not loaded|Referenced from|Reason:|shared cache'
 ```
 
-Both guards matter, and they guard the same mistake. `Storage:` prints a state in parentheses, and
-anything other than `(present)` means the bytes you want may not be there: on a crash you were just
-notified about, `systemd-coredump` may still be writing, and `(truncated)` means the core exceeded
-its size limit and was not stored in its entirety. That limit is reachable here - Darling cores of
-688 MB have been seen against a 1 GB default, with `/etc/systemd/coredump.conf` overriding nothing.
-A truncated core loses its tail, which is exactly where the dyld payload sits.
+**Never pipe `coredumpctl dump --output=-`.** It truncates silently to about 2 KB at exit 0 with
+nothing on stderr, and the payload sits past the cut, so the pipeline returns nothing and reads
+exactly like an app with no missing library; a `(truncated)` core and a still-being-written one fail
+identically. **An empty result is never evidence of "no missing library"** unless `Storage:` read
+`(present)` and the dump went to a file.
 
-**Use the `mktemp` file, never `coredumpctl dump --output=-`.** Piping to stdout does not error, it
-silently truncates: on a 3,457,024-byte core it emitted 1,664 bytes, exit 0, nothing on stderr. The
-dyld payload string sits past that cut, so `... --output=- | strings | grep 'Library not loaded'`
-returns nothing and reads exactly like an app with no missing library. That command circulates here;
-it is wrong, and it fails in the direction that produces a confident false negative.
+Confirm with the memory map (`gdb -q <mldr> "$core" -batch -ex 'set debuginfod enabled off' -ex
+'info proc mappings'`): only `mldr`, host `libc`/`ld-linux`, Darling's `dyld` and the guest
+executable mapped means nothing loaded, and this is class 1. Guest frames do not symbolize and most
+guest stacks stop unwinding after a frame or two, so the map, the registers and `strings` are
+load-bearing and the backtrace is not. **Never conclude from a frame's absence** - it would likely
+be invisible even if present.
 
-Note the shared failure mode across all three: a stream-truncated core, a size-truncated core and a
-still-being-written core all yield an empty `grep` and a clean exit. **An empty result is never
-evidence of "no missing library"** unless both guards above passed. Re-read the core, do not
-conclude.
+**The first missing name is rarely the whole story**, because dyld reports the first unresolved
+dependency and stops. Get the bundle's full gap with
+`llvm-objdump --macho --dylibs-used <app>/Contents/MacOS/<binary>`: Apple's apps are typically
+missing dozens of direct dependencies, and stubbing the one name dyld printed usually just moves the
+error to the next.
 
-The general form, which applies to anything you write that tallies problems: **a check that counts
-bad things needs a "did I count anything at all" guard, because a parser matching nothing reports a
-perfect score.** A dependency parser here printed `strong: 0 | weak: 0 | missing: 0`, a clean
-all-clear, because one stray line put its paired-line parse permanently off by one so it matched
-nothing. It was caught only because zero *weak* deps is impossible for a real binary, not because
-anything complained. Assert a non-zero denominator and fail loudly when it is zero.
+### 2. Shared-cache-only frameworks
 
-**And do not read an alarming output as proof the tool works.** The closure bug above is the same
-class of parse artifact, but it failed the other way: it manufactured 9-14 findings per app and
-nearly retracted a correct result. "It told me something bad, so it is probably working" is not
-reasoning. When a tool and a direct observation disagree, the core is the observation and the
-tool is the claim.
-
-Confirm with the memory map: if the only mapped images are `mldr`, host `libc`/`ld-linux`, Darling's
-`dyld` and the guest executable, nothing was loaded and this is class 1.
-
-**Know what gdb cannot see here before you draw a conclusion from a stack.** Guest frames do not
-symbolize: they render as `0x0000000305d3e614 in ?? ()` because Darling's guest dylibs ship no
-symbols gdb can read, and most guest stacks stop unwinding after a frame or two with
-`corrupt stack?`. So the memory map, the register state and `strings` are load-bearing here and the
-backtrace mostly is not. Above all, **never conclude from a frame's absence**: a signal-handler
-frame, or any other, would very likely be invisible even if present, so "no such frame in the
-backtrace" is a fact about the method, not about the process. Answering that class of question
-needs symbolized guest frames or the thread's saved registers.
-
-```bash
-gdb -q /usr/local/libexec/darling/usr/libexec/darling/mldr "$core" \
-  -batch -ex 'set debuginfod enabled off' -ex 'info proc mappings'
-```
-
-**The first missing name is rarely the whole story.** dyld reports the first unresolved dependency
-and stops. Before scoping any work, get the full gap for that bundle:
-
-```bash
-llvm-objdump --macho --dylibs-used <app>/Contents/MacOS/<binary>
-```
-
-Apple's own apps are typically missing dozens of their direct dependencies. A stub for the one name
-dyld happened to print usually just moves the error to the next name. Count first, then decide
-whether the app is worth it - apps missing only a handful of direct dependencies are the ones where a
-stub actually produces a launch.
-
-### 2. Shared-cache-only frameworks (class 1 that cannot be fixed by copying)
-
-If the error says `dyld: No shared cache present`, note what that implies. Since Big Sur, most Apple
-system frameworks exist **only inside the dyld shared cache** and have no file on disk at all, so
-they cannot be copied off a Mac no matter how complete the prefix looks. They have to be stubbed,
-reimplemented, or reached through the cache itself.
-
-`~/src/macos-frameworks` is the standing experiment for that third option: run Apple's real
-`/usr/lib/dyld` against the extracted cache with Darling as the XNU emulator underneath. Read
-`patches/README.md` and `patches/README-apple-dyld-trial.md` there before proposing a large stubbing
-campaign - it reached phase 1 already and the measured gap is 178 BSD syscalls and 10 Mach traps, not
-an unbounded amount of work.
+`dyld: No shared cache present`. Since Big Sur most Apple system frameworks exist **only** inside the
+dyld shared cache with no file on disk, so they cannot be copied off a Mac however complete the
+prefix looks. Stub, reimplement, or go through the cache - `~/src/macos-frameworks` is the standing
+experiment for the third, and its `patches/README.md` comes before any stubbing campaign.
 
 ### 3. Mac Catalyst apps
 
-A missing image under `/System/iOSSupport/System/Library/...` means the app is Catalyst and wants a
-UIKit substrate, not an AppKit one. `add_framework()` accepts an `IOSSUPPORT` flag
-(`cmake/darling_framework.cmake`), but no framework in the tree passes it, there is no UIKit
-anywhere, and prefixes have no `/System/iOSSupport` directory. Report these as a separate class;
-do not fold them in with the AppKit apps.
-
-Note the trap: the framework may already exist under `/System/Library/PrivateFrameworks`. Catalyst
-apps will still not find it, because they look under the iOSSupport prefix.
+A missing image under `/System/iOSSupport/System/Library/...` means the app wants a UIKit substrate.
+`add_framework()`'s `IOSSUPPORT` flag is passed by nothing in the tree, there is no UIKit, and
+prefixes have no `/System/iOSSupport`. Trap: the framework may already exist under
+`/System/Library/PrivateFrameworks` and Catalyst apps still will not find it.
 
 ### 4. Not a missing framework at all
 
-Rule these out before writing any stub:
+- **Page-size mismatch.** Darling has reported `hw.pagesize` as 4096 on 16K-page hosts, so anything
+  aligning `mmap`/`mprotect` to the reported size gets `EINVAL`. Compare `getconf PAGESIZE` with
+  what the guest reports before blaming a library.
+- **A real bug in Darling's own code** - the most valuable class, and a normal PR. An app that maps
+  AppKit and Foundation and *then* dies is a defect in the component that crashed. Terminal: zero
+  missing direct deps, no `Library not loaded` payload at all, died on a secondary thread with
+  `1234 is out of bounds of array`, which `darling-corefoundation`'s `NSArray.m` raises.
+- **An app with no missing direct dependencies that still fails**: transitive or runtime, and worth
+  chasing. Re-measure the zero-missing set rather than citing an earlier one; an OS update moves
+  frameworks between tiers with no signal.
 
-- **Page-size mismatch.** Darling has reported `hw.pagesize` as 4096 on hosts using 16K pages, so
-  anything aligning `mmap`/`mprotect` to the reported size gets `EINVAL`. Signature: `EINVAL`, a
-  silent non-zero exit, or an abort during early allocation rather than at symbol lookup. Check
-  `getconf PAGESIZE` on the host against what the guest reports before blaming a library.
-- **A real bug in Darling's own code.** An app that maps AppKit, Foundation and friends and *then*
-  dies (uncaught `NSException`, assertion, segfault in a Darling frame) is a defect in the
-  component that crashed. That is the most valuable class of all - it is a concrete, fixable bug with
-  a stack trace, and it lands as a normal PR.
-- **Apps with no missing direct dependencies that still fail.** The cause is transitive or runtime.
-  Chase it; it is usually more valuable than another stub. Measured on this prefix (2026-09-20,
-  direct `LC_LOAD_DYLIB` vs `LC_LOAD_WEAK_DYLIB` only), **sixteen** apps have zero missing strong
-  direct deps, Terminal and TextEdit among them. Check that list before starting a stub for an app:
-  if it is on it, a stub is the wrong tool entirely. It is measured against today's binaries, so
-  re-measure rather than cite it after an OS update; a framework can change tier with no signal.
+## Instrumenting guest code
 
-  It is also direct deps only. The obvious next step, a transitive closure, was run and reported
-  9-14 strong missing for *every* zero-missing app, which nearly retracted a correct finding. All
-  of them were phantoms: for a fat binary `llvm-objdump --dylibs-used` prints one header line **per
-  slice**, the tool stripped only the first, and the second architecture header contains `(` so it
-  survived the filter and was parsed as a dependency whose name was an absolute on-disk path, which
-  then had the prefix prepended a second time. Every path came out doubled and every one of those
-  files exists. Terminal's real closure is satisfied, which is what its core said all along.
+**Probe with `fprintf(stderr, ...)`, never `NSLog`.** Foundation's `__NSLogCString` (`src/NSLog.m`)
+emits with `printf`, so guest `NSLog` goes to *stdout*, which is fully buffered once redirected to a
+file or pipe - and whatever sits in that buffer when the process aborts is lost, which is exactly
+the case you are debugging. `NSLog` probes produced a retracted "loads AppKit and never draws"
+report here; the draw path had been running all along. Keep the streams separate and **never merge
+with `2>&1`**, or you cannot tell a discarded buffer from a probe that never ran.
 
-  Terminal is the proof this class exists and is worth more than stubbing. It is on the
-  zero-missing list, it still aborted, and its 347 MB core carries **no** `Library not loaded`
-  payload at all. It cleared dyld, mapped Cocotron's AppKit with the Wayland backend plus
-  Foundation and CoreFoundation, spawned eight threads, and died on a *secondary* thread with an
-  uncaught `NSException`: `1234 is out of bounds of array`. That string is raised by
-  `darling-corefoundation`'s `NSArray.m`, so the crash names both the bug class and the repo that
-  owns it. Nothing a stub does would have touched it.
+A CoreFoundation line is not proof `NSLog` works: the banners match, but CF's second bracket field
+is `pthread_self()` and varies per thread while `NSLog`'s is the uid, constant.
+
+`kern_printf` logs at info while darlingserver's default cutoff is Error, so a missing line is an
+artifact until you re-run at `DSERVER_LOG_LEVEL=info`. A container can be pointed at a privately
+built `darlingserver` through `DARLING_LIBEXEC_PATH`, with no install.
 
 ## Where the fix goes
 
-Darling is a superproject of per-component submodules. Find the component that owns the crashing
-code, then let git tell you the repo rather than guessing:
-
-```bash
-git -C ~/src/darling/src/external/<component> remote get-url origin   # VibeDarling/<repo>
-git -C ~/src/darling/src/external/<component> remote get-url fork     # cristim/<repo>
-```
-
-**One exception, and it has bitten before:** in the *superproject* (`~/src/darling`) `origin` is
-`darlinghq/darling`, not VibeDarling. Do not read that remote and conclude the PR goes upstream: a
-darlinghq PR opened that way had to be closed and redone. Superproject PRs go to
-`VibeDarling/darling` like everything else.
-
-Rough routing:
+Darling is a superproject of per-component submodules. Find the owning component, then let git name
+the repo: `git -C ~/src/darling/src/external/<component> remote get-url origin` (VibeDarling) or
+`... get-url fork` (cristim). **Exception:** in the *superproject* `origin` is `darlinghq/darling`.
+Do not read that and open a PR upstream - one opened that way had to be closed and redone.
 
 | Crashing in | Component | Repo |
 |---|---|---|
@@ -340,297 +146,118 @@ Rough routing:
 | dyld / image loading | `src/external/dyld` | `VibeDarling/darling-dyld` |
 | the server, process lifecycle | `src/external/darlingserver` | `VibeDarling/darlingserver` |
 | Objective-C runtime | `src/external/objc4` | `VibeDarling/darling-objc4` |
-| new/changed framework stubs, CMake, `src/frameworks`, `src/private-frameworks` | the superproject itself | `VibeDarling/darling` |
+| framework stubs, CMake, `src/frameworks`, `src/private-frameworks` | the superproject | `VibeDarling/darling` |
 
-Cocotron supplies the whole AppKit layer, so "is there OSS we can reuse" is already answered yes
-there. Foundation is a separate component (Apportable-derived; its README corrects the stale GitHub
-claim that it tracks gnustep). Apple's *private* frameworks have no OSS equivalents; those are
-stub-or-reimplement.
+Cocotron supplies the whole AppKit layer; Foundation is separate (Apportable-derived, not gnustep);
+Apple's *private* frameworks have no OSS equivalent, so stub or reimplement. The `NS*` row is a
+starting point, not a rule - several `NS*` classes live in `corefoundation` (`NSArray.m` among
+them), so `git grep` the symbol across both before branching. When you fix a *submodule*, land it as
+its own PR and leave the superproject pin bump out; pin bumps are a separate argument and several
+have died unmerged.
 
-### Stubbing a private framework
+### Stubbing a framework
 
-Do not hand-write stubs before checking `~/src/darling/tools/darling-stub-gen`. It takes a real
-Mach-O and emits a complete `CMakeLists.txt`, headers and forwarding implementations
-(`nm -Ug` for C symbols, `class-dump` for Objective-C). It needs the genuine binary as input.
+**Establish which kind of symbol is missing before deciding to stub at all.** An Objective-C stub
+satisfies only Objective-C and C symbols; Swift-ABI symbols are mangled `_$s...` and no `.m` file
+provides them. On `Weather`'s `arm64e` slice, 8,475 of 8,961 undefined symbols are Swift, and
+`src/private-frameworks` has zero `.swift` sources - `SwiftUI`, `Combine`, `GroupActivities` and the
+`libswift*` overlays dominate the blocked-app rankings and are not stubbable this way.
 
-**Pass `--arch` to every symbol count, or it is doubled.** These binaries are fat, and `llvm-nm`
-without `--arch` sums *all* slices. Measured on `Weather`: 17,905 undefined symbols with no
-`--arch`, against 8,961 for `arm64e` and 8,940 for `x86_64`, which add to 17,901. So check the
-shape first and always state which slice a published figure is for:
+**Pass `--arch` to every symbol count or it doubles**: these binaries are fat and `llvm-nm` sums all
+slices (17,905 without, against 8,961 and 8,940 per slice). `llvm-objdump --dylibs-used` likewise
+prints one header line *per slice*, so a parser stripping only the first invents phantom
+dependencies.
 
-```bash
-llvm-lipo -archs <binary>                     # fat? which slices?
-llvm-nm -u --arch arm64e <binary> | wc -l     # count one slice, never all of them
-```
+`~/src/darling/tools/darling-stub-gen` generates stubs from a real Mach-O, but its `class-dump` path
+is hardcoded to a macOS-shaped `/Users/<user>/bin/class-dump` and none is installed here, so only
+its C-symbol half runs.
 
-Treat every symbol and dependency count as **an order of magnitude plus a method, not a constant**.
-Two passes over the same 66 bundles here disagreed by about 2%, and a build-edge count moved three
-times in one evening. Publish the method alongside the number, say the shape is robust and the
-figure is not, and re-derive before letting a decision turn on a precise value.
-
-**When repeated passes disagree on a quantity, publish the direction and the method, not a fourth
-number with a decimal place.** Three passes over one quantity here returned 215,162, 215,302 and
-240,600; the reviewer's first instinct was recompute, and the right call was to *delete the
-statistic*, because a fourth figure relocates the defect rather than removing it while carrying more
-authority than the one it replaced. State the direction, say the passes disagree by more than 10%,
-and point at the evidence the argument actually rests on. A wrong number supporting a claim that is
-true on every basis is inert; a freshly computed wrong one is not.
-
-The same discipline applies to any claim you write down: **pin a property of your own code, not a
-fact about the world.** "The installed launcher is unchanged" is a statement about the machine, and
-it silently became false the moment a new runtime landed, leaving a checklist that quietly lied
-rather than refusing. "Nothing in this profile modifies the installed launcher" says the useful
-thing and stays true whatever is installed. Where you *do* intend an assertion to fire when the
-world moves, such as a binary's hash, make it refuse loudly and re-pin deliberately with the old and
-new values recorded. A provenance check that silently adopts whatever it finds is a rubber stamp.
-
-Check it can actually run before planning around it. Its `class-dump` path is hardcoded near the top
-of the script to a macOS-shaped `/Users/<user>/bin/class-dump`, and no `class-dump` is installed on
-this machine at all, so the Objective-C half of the generator is currently unusable here. The C
-symbol half still works. Until a `class-dump` build exists, a stub's class and selector list has to
-come from one of the sources above rather than from the generator.
-
-Where the symbol list comes from is worth a moment's thought, because `darling-stub-gen` reads
-Apple's shipped framework binary directly. Two lower-friction sources give the same
-symbol-and-selector surface: the `.tbd` text stubs in an installed Xcode SDK, which Apple ships
-specifically for third-party linking, and `nm -u` on the consuming app itself, which reveals only
-what that app actually calls and touches no Apple framework binary. The latter also tends to produce
-a smaller, more honest stub. Stub *implementations* are original either way. This is Darling's
-established practice rather than a settled question, so raise it with the user before a large
-generation run rather than deciding it silently.
-
-**One framework per commit, per PR, and per worktree**, even when a single generator run produced
-twenty of them. They are separate concerns, and a reviewer has to be able to take one and refuse
-another. Batching them makes that impossible and the whole set stalls on the weakest member.
-
-**A framework stub goes in the superproject, and no submodule hunt is needed.** Despite the ~149
-submodules, `src/frameworks` and `src/private-frameworks` are plain trees, not submodules: `git
-ls-tree HEAD src/` shows them as `040000 tree` where every real submodule is `160000 commit`, and
-neither appears in `.gitmodules`. So fork `cristim/darling` and PR against `VibeDarling/darling`.
-No pin is involved either, so the pin-bump caution below does not apply to stub PRs at all.
-
-(It does apply when you fix a *submodule*: land the submodule change as its own PR and leave the
-superproject pin bump out of it. Pin bumps are a separate argument here and several have died
-unmerged; attaching one sinks the fix with it.)
-
-Check for existing work before branching. Other sessions leave worktrees named
-`~/src/darling-pr-<topic>`, and a framework you are about to stub may already have one. Prior art
-worth reading for house style: `darling-pr-sck`, `darling-pr-sysadmin`, `darling-pr-dictionary`,
-`darling-pr-icadevices`.
-
-A stub is three files plus one line of registration:
+A stub is **3 files, 1 registration line, and 4 committed symlinks**:
 
 ```
-src/private-frameworks/<Name>/CMakeLists.txt          remove_sdk_framework -> generate_sdk_framework -> add_framework
+src/private-frameworks/<Name>/CMakeLists.txt   remove_sdk_framework -> generate_sdk_framework -> add_framework
 src/private-frameworks/<Name>/include/<Name>/<Name>.h
 src/private-frameworks/<Name>/src/<Name>.m
+  + add_subdirectory(<Name>) in src/private-frameworks/CMakeLists.txt, in the matching COMPONENT_*
+    block (plain stubs: COMPONENT_gui_stubs)
+  and four symlinks, paths relative to the superproject root, with
+  SDK = Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library:
+framework-private-include/<Name>                 -> ../$SDK/PrivateFrameworks/<Name>.framework/Headers
+$SDK/PrivateFrameworks/<Name>.framework/Headers  -> Versions/A/Headers
+$SDK/PrivateFrameworks/<Name>.framework/Versions/A/Headers
+                                                 -> src/private-frameworks/<Name>/include/<Name>
+$SDK/PrivateFrameworks/<Name>.framework/Versions/Current -> A
 ```
 
-then one `add_subdirectory(<Name>)` in `src/private-frameworks/CMakeLists.txt`, inside the
-`COMPONENT_*` block that matches (plain stubs go in `COMPONENT_gui_stubs`). Copy the shape from an
-existing small one such as `RecapPerformanceTesting`, and read a couple of merged stub PRs on
-`VibeDarling/darling` for the expected form.
+Those four are **tracked files at mode 120000, committed, not generated by the build**; omitting
+them is two failed builds. Public frameworks take the identical shape with `framework-include/` and
+`$SDK/Frameworks/`. Confirm the shape against a real one before copying:
+`git ls-files -s | awk '$1=="120000"' | grep GameController`.
 
-### Objective-C is the stub language, and that is also the limit
+**A stub goes in the superproject and needs no submodule hunt**: `src/frameworks` and
+`src/private-frameworks` are plain trees, not submodules (`git ls-tree HEAD src/` shows `040000
+tree`), so fork `cristim/darling` and PR against `VibeDarling/darling`. **One framework per commit,
+per PR, and per worktree**, even when one generator run produced twenty.
 
-Write the implementation in Objective-C (`.m`), declaring the real class and protocol shapes in the
-header and giving methods bodies that log and return a safe default. That is overwhelmingly the
-house form: `src/private-frameworks` holds around 2,200 `.m` files against roughly two dozen `.c`,
-the C ones used where a framework exports plain functions rather than classes
-(`PerformanceAnalysis/src/functions.c` is the pattern). Depend on `system`, `objc` and `Foundation`.
+## Shared-tree hazards
 
-**But an Objective-C stub can only satisfy Objective-C and C symbols, and that is not what is
-actually blocking these apps.** Swift-ABI symbols are mangled `_$s...` and no `.m` file can provide
-them. Measured on `Weather`'s `arm64e` slice: 8,475 of its 8,961 undefined symbols are Swift
-mangled, about 95%. There are **zero** `.swift` sources anywhere in `src/private-frameworks`, so
-there is no precedent in the tree for stubbing that class at all.
+Many sessions run over these trees at once; invoke `multi-agent-comms` and check ownership first.
 
-So the language question answers itself for the frameworks a stub can help with, and for the rest
-it is the wrong question: `Combine`, `GroupActivities`, `SwiftUI` and the `libswift*` overlays that
-dominate the blocked-app rankings need the Swift toolchain or hand-written mangled-symbol stubs, not
-Objective-C. Establish which kind of symbol you are missing before choosing to write a stub at all.
-
-## Before touching anything
-
-This machine runs many concurrent sessions over these trees. Invoke the `multi-agent-comms` skill and
-check ownership first. Most of what follows is a familiar rule whose *precondition* does not hold in
-this repo, which is the shape worth watching for generally: check that a safety primitive is
-actually isolating what you assume before you rely on it. Standing hazards:
-
-- **Never write to `~/src/darling` itself.** It is the shared checkout, usually on `local/dev` with a
-  large uncommitted working set that belongs to other sessions, and sometimes with broken submodule
-  gitdirs. Read it freely; isolate every edit, following the `~/src/darling-<topic>` convention.
-- **A worktree is NOT sufficient isolation here once submodules are involved.** "Use a worktree" is
-  sound advice in general and its precondition fails in this repo: all 149 submodule gitdirs are
-  centralized in the shared clone, so a linked worktree points at the *same* ones rather than
-  getting copies. Verify it in one command - `cat src/external/AvailabilityVersions/.git` reads
-  `gitdir: ../../../.git/modules/...`. Consequently `git submodule update`, `init`, `sync`, or any
-  `--recurse-submodules` operation run inside a worktree **moves submodule HEADs for the shared
-  clone and all 72 worktrees on it**, one of which holds another agent's only copy of uncommitted
-  work. Split by what the change needs:
-  - **Superproject source only**, touching no submodule (framework stubs qualify, since
-    `src/frameworks` and `src/private-frameworks` are plain trees): a worktree is fine. What is
-    forbidden there is entering a submodule, not touching its pointer: resolve a submodule-pointer
-    conflict with `git update-index --cacheinfo 160000,<sha>,src/external/<name>`, which writes the
-    superproject index alone and never enters the submodule. Never resolve one by `cd`-ing in and
-    checking something out.
-  - **Populated submodules, a build, or any recursive operation**: use an independent clone with
-    `--reference` against the existing checkout, not a worktree. Objects are shared via alternates
-    so it is nearly free in disk and network, while refs and HEAD are yours alone. The superproject
-    clone takes about a second; initializing all 149 submodules with
-    `submodule.alternateLocation=superproject` is a one-off of roughly twenty minutes and is the
-    real setup cost.
-- **Never use bare `git stash` / `git stash pop`.** The stash stack is shared across every worktree in
-  the repo, so a pop can silently take another session's work.
-- **"Committed to a branch in a submodule" is not the safety it sounds like, and this one destroys
-  data.** Because the gitdirs are centralized, a branch created in a submodule from *any* worktree
-  lives in the **shared** ref space. It survives checkouts, but it is not isolated from a branch
-  deletion, a `git gc`, a `git prune` or a `git worktree prune` run in that submodule from any
-  worktree or from the shared clone. Separate filesystem paths imply an isolation the refs do not
-  have. Salvaged work-in-progress is sometimes the only copy of itself on one of those branches, so
-  run none of those commands inside a submodule; ask first, every time.
-- **The ban is blanket, not submodule-scoped: no `git gc`, `git prune`, `git repack` or
-  `git worktree prune` anywhere under the shared clone or its submodules.** The reason is the
-  `--reference` clone recommended above: it *borrows* objects from the parent through alternates
-  rather than copying them, so a `gc --prune` in the shared clone can delete objects a reference
-  clone depends on and break it. Confirm it yourself with
-  `cat <clone>/.git/objects/info/alternates`, which names the parent's object store outright. The
-  cost is asymmetric and worth stating plainly: such an image is roughly twenty minutes of submodule
-  init plus half an hour of build, while the disk those objects occupy is not scarce. Two kinds of
-  shared state now hang off that clone, refs in the centralized submodule gitdirs and objects in its
-  store, and both die to routine housekeeping run in the wrong directory.
-
-  That is a reason to *dissociate*, not to avoid `--reference`. Use it by lifetime: for a throwaway
-  clone you will delete within the hour, borrow freely. For anything anyone else depends on, or
-  anything expensive to rebuild, create it cheaply with `--reference` and then immediately make it
-  stand alone:
-
-  ```bash
-  # 1. GUARD FIRST. Is this a worktree rather than a clone?
-  git -C <path> rev-parse --git-common-dir
-  #    resolves under the shared clone  -> IT IS A WORKTREE. STOP. Do not continue.
-  #    resolves to <path>/.git          -> independent clone, safe to go on.
-
-  # 2. only then, and only if it is actually borrowing
-  cat <path>/.git/objects/info/alternates
-  git -C <path> repack -a -d                  # materialise every borrowed object locally
-  rm <path>/.git/objects/info/alternates
-  git -C <path> fsck --connectivity-only      # must exit 0, then confirm HEAD
-  ```
-
-  **Step 1 is not optional, because the absence of an alternates file does not mean "stands
-  alone".** A worktree has no alternates file and is coupled *more* tightly than a borrowing clone,
-  not less: it shares the object store outright. So an alternates check alone reports a worktree as
-  independent, and `repack -a -d` then rewrites and deletes packs in the **shared** store, the one
-  holding every dependent clone's borrowed objects and any salvaged work-in-progress living on
-  submodule branches. A warning phrased as "do not repack inside `~/src/darling`" does not save you
-  either, because the path you would type is your worktree's. Confirmed on a real worktree: no
-  alternates file, and `--git-common-dir` resolving to the shared clone's `.git`.
-- **Ask before building.** A full Darling build is a ~20 minute one-off submodule init plus 23-46
-  minutes of compiling, and someone may already have a clean reference image you can be pointed at.
-  Pay that cost once for the fleet rather than once per agent.
-- **Never write into a live prefix** such as `~/.darling-apps`, and never run `darling shutdown` or
-  kill `darlingserver`/`mldr`. The user's real desktop session runs there. Free lock files are **not**
-  evidence the runtime is idle - sessions outside the lock protocol run containers too. Check for a
-  live `darlingserver` at the moment of use, not once at the start.
-- **Announce deliberate coredumps.** Trap-patching a guest binary to get a backtrace produces `mldr`
-  `SIGABRT` dumps and can trigger the desktop crash notifier. Say which dumps are yours so nobody
-  diagnoses them as real crashes.
-- **Running a guest GUI app is not only a prefix concern, it touches the user's live compositor.**
-  Containers inherit `WAYLAND_DISPLAY`, so a launched app attaches real Wayland clients to the
-  session the user is actually working in, and clients that outlive their cleanup can leave it
-  degraded. Treat "launch an app to check" as an action against the desktop, not against a sandbox.
-  If a session-level incident is in progress, launching anything is exactly the wrong move; hold
-  and say so rather than gathering behavioural evidence.
-- **A test suite is not safe by virtue of being a test suite.** Before running any harness, check
-  whether its leaf steps spawn GUI clients, read `WAYLAND_DISPLAY` or `DISPLAY`, or shell out to
-  `hyprctl`, `systemctl` or a compositor tool. Suites routinely isolate `HOME` and the `XDG_*`
-  config paths while deliberately leaving `WAYLAND_DISPLAY` alone, so an otherwise well-sandboxed
-  run still lands on the live session. If you cannot establish that cheaply, do not run it. "It is
-  just tests" is the same shape of assumption as "the lock is free, so nothing is running".
+- **Never write to `~/src/darling` itself.** It is the shared checkout, usually on `local/dev` with
+  other sessions' uncommitted work. Isolate every edit as `~/src/darling-<topic>`.
+- **A worktree is not isolation once submodules are involved.** All 149 submodule gitdirs are
+  centralized in the shared clone (`cat src/external/AvailabilityVersions/.git` shows `gitdir:
+  ../../../.git/modules/...`), so `git submodule update|init|sync` or any `--recurse-submodules` run
+  in a worktree moves submodule HEADs for the shared clone and every worktree on it. Superproject-
+  only work, framework stubs included, is fine in a worktree: resolve a submodule pointer with
+  `git update-index --cacheinfo 160000,<sha>,<path>`, never by `cd`-ing in. For populated
+  submodules, a build, or anything recursive, use an independent `--reference` clone.
+- **No `git gc`, `prune`, `repack`, `worktree prune`, or bare `git stash`/`stash pop` under the
+  shared clone or its submodules.** The stash stack and the submodule ref space are shared across
+  every worktree, and reference clones borrow objects through alternates, so each of these can
+  destroy another session's only copy of something. Ask first, every time. "Do not run it in
+  `~/src/darling`" is not the guard, because the path you would type is your worktree's and a
+  worktree has no alternates file while sharing the object store outright:
+  `git -C <path> rev-parse --git-common-dir` resolving under the shared clone is what identifies one.
+- **Never write into a live prefix** such as `~/.darling-apps`, and never `darling shutdown` or kill
+  `darlingserver`/`mldr`. Free lock files are not evidence the runtime is idle.
+- **Launching a guest GUI app attaches real clients to the user's compositor**, since containers
+  inherit `WAYLAND_DISPLAY` - test suites included, as they isolate `HOME` and `XDG_*` but not that.
+  Announce deliberate coredumps, so nobody diagnoses your trap-patched binary as a real crash.
+- **Ask before building**: a ~20 minute submodule init plus 23-46 minutes of compiling, and someone
+  may already have a reference image.
 
 ## The loop
 
-1. Classify per the four classes above. Classes 2 and 3 stop here: say so and report, because a
-   shared-cache-only framework and a missing UIKit substrate are research, not a PR. Everything
-   else continues, including an app with no missing direct dependencies - that one is a class-4
-   diagnosis (transitive or runtime), and it lands as a normal PR once the cause is found.
-2. Identify the owning component and resolve its repo from `git remote`.
-3. Worktree off the VibeDarling base, named `~/src/darling-<topic>` (or
-   `~/src/<component>-pr-<topic>` for a submodule).
-4. Fix at root cause. Add a regression test where the component has a suite; where it does not, the
+1. Classify. Classes 2 and 3 stop here and get reported as research, not a PR.
+2. Resolve the owning component's repo from `git remote`.
+3. Worktree or `--reference` clone off the VibeDarling base as `~/src/darling-<topic>` (or
+   `~/src/<component>-pr-<topic>`). Check for an existing one - another session may hold it.
+4. Fix at root cause, with a regression test where the component has a suite; where it does not, the
    evidence is the app getting further than it did, captured concretely.
 
-   **"Is it a bug" and "should it be fixed" are separate questions, and the second needs to know
-   what the fix turns *on*.** A correct fix that switches on a genuinely never-exercised code path
-   can be worse than the benign bug it replaces, so establish what happens today rather than
-   assuming it is benign, then ask what the patch activates.
+   **A fix that switches on a genuinely never-run path can be worse than the benign bug it
+   replaces**, so establish today's failure mode rather than assuming it is benign. The test is not
+   "has this run *here*" but "has it run anywhere in a configuration we trust": a path dead on 16K
+   hosts and live on every x86_64 install is not unexercised, and fixing it restores parity.
+5. Verify by rerunning the actual failing app; a rebuild that compiles is not verification. This is
+   the one step reaching outside your worktree, into the live prefix and compositor, so if the
+   session is under a hold, stop here, open the PR on the source alone, and say in it that the
+   behavioural evidence is outstanding.
+6. Review per CLAUDE.md §1c, commit atomically, push to the `fork` remote.
+7. Open the PR with any labels on the creation call itself (CLAUDE.md §2). The closing issue is
+   often in a *different* repo from the PR, so pass `--repo` to `gh issue view` explicitly. Only
+   labels both repos define can be applied, and VibeDarling repos carry only GitHub's default set
+   today, so that intersection is usually empty: pass no `--label`.
 
-   **But apply the right test, because the obvious one is wrong.** It is not "has this code ever run
-   *here*". It is **"has this code ever run anywhere in a configuration we trust"**. A path that is
-   dead on one architecture and load-bearing on another is not unexercised; it is something this
-   host has been missing out on, and fixing it restores parity with the better-tested
-   configuration. This distinction retired a real "do not fix" argument here. A guest `mremap`
-   arithmetic bug was defended as switching on a dead allocator fast path, until someone noticed the
-   deadness was host-specific: the expression subtracts `0x1000`, which leaves a page-aligned
-   address aligned at a 4K page size and misaligned at 16K, so the path runs on every x86_64 install
-   and is dead only on 16K hosts. Same shape for a hardcoded `PAGE_SHIFT_CONST = 12`, which is
-   simply correct on x86. Both fixes bring 16K hosts up to what x86 already has rather than
-   enabling anything new.
-5. Verify by rerunning the actual failing app and showing the new outcome. A rebuild that compiles is
-   not verification. But this step launches a guest process against the user's live prefix *and*
-   their live compositor, so it is the one step in this loop that can damage something outside your
-   worktree: observe the rules above, and if the session is under a hold, stop here, open the PR on
-   the source work alone, and say in it that the behavioural evidence is outstanding.
-6. Review the diff per CLAUDE.md §1c, commit atomically, push to the `fork` remote.
-7. Open the PR, putting any labels on the creation call itself rather than a follow-up `gh pr edit`
-   (CLAUDE.md §2). Check what the target repo actually defines first - `gh pr create --label` fails
-   on a label the repo does not have:
-
-   Intersect rather than assume. The closing issue often lives in a *different* repo from the PR
-   (a Darling crash is frequently tracked on the superproject while the fix lands in a submodule),
-   and its labels need not exist in the target. Pass only the labels both sides have:
-
-   ```bash
-   comm -12 \
-     <(gh issue view <n> --repo <issue-repo> --json labels -q '.labels[].name' | sort) \
-     <(gh label list --repo VibeDarling/<repo> --limit 100 | cut -f1 | sort) \
-     | paste -sd,
-   ```
-
-   Empty output means pass no `--label` at all, not that something went wrong. The VibeDarling repos
-   currently carry only GitHub's default label set, with no `type/*`, `severity/*`, `urgency/*`,
-   `impact/*`, `effort/*` or `priority/*`, and their merged PRs are unlabelled, so today that
-   intersection is usually empty. The full `triage-labels` rubric applies once a repo defines those
-   labels. Then report the link.
-
-Upstream `darlinghq` PRs are **not** opened from this loop. Fixes live in the VibeDarling fork unless
-the user asks for an upstream submission; it is fine to note that upstream is still affected.
+Upstream `darlinghq` PRs are not opened from this loop unless the user asks.
 
 ## What not to claim
 
-Getting an app past its first missing library is not the same as making it run. Say which of the
-four classes the crash was, how many dependencies the bundle is still missing, and what the app
-actually did on the retry. "Stub added, builds clean" is not a working app.
+A stub does not make an app launch. The honest shape is **"gets further, still fails at X"**, and
+naming X is worth more to a reviewer than the stub is: Calculator has eleven further blockers after
+`TextInputUI`, all Swift-ABI.
 
-**Say in the PR body what the change does *not* provide.** A stub that lets an app fail later than
-it did before is genuinely useful and should be described exactly that way, never as support for
-the framework. "These stubs compile and are well formed" is an honest claim. "These stubs make the
-app launch" requires a launch you actually performed, and if you have not run it, say so plainly
-instead of implying it.
-
-For Apple's own bundled apps a stub demonstrably does **not** produce a launch. Calculator has
-eleven further blockers after `TextInputUI`, all Swift-ABI, `SwiftUI` alone binding symbols in the
-hundreds (see the per-slice caveat below before quoting a figure). So
-the honest shape is **"gets further, still fails at X"**, and naming X is worth more to a reviewer
-than the stub is. Date any satisfiability claim too: "satisfiable with zero bound symbols" is
-measured against today's binaries, and an OS update can move a framework between tiers with no
-signal at all.
-
-**Show the code you added is reached before claiming it helps.** Compiling is not reachability. A
-fix here was ranked the worst bug in a sweep and turned out to sit in a function no build variant
-ever calls, because its only call site was inside an `#ifndef` whose macro is set at directory
-scope. `#if` guards and CMake `add_definitions` are part of the search scope, not background
-detail. The cheap check for this class is the dyld payload itself: `strings <corefile> | grep -A2
-'Library not loaded'` names the missing dylib directly, and if the name you stubbed stops appearing
-and a different one takes its place, the stub is demonstrably being reached.
+**Compiling is not reachability.** Show the code is reached: if the name you stubbed stops appearing
+in `strings <core> | grep -A2 'Library not loaded'` and a different one takes its place, the stub is
+demonstrably being used.
