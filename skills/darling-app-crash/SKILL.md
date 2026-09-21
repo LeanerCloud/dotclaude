@@ -236,10 +236,16 @@ Many sessions run over these trees at once; invoke `multi-agent-comms` and check
 4. Fix at root cause, with a regression test where the component has a suite; where it does not, the
    evidence is the app getting further than it did, captured concretely.
 
-   **A fix that switches on a genuinely never-run path can be worse than the benign bug it
-   replaces**, so establish today's failure mode rather than assuming it is benign. The test is not
-   "has this run *here*" but "has it run anywhere in a configuration we trust": a path dead on 16K
-   hosts and live on every x86_64 install is not unexercised, and fixing it restores parity.
+   **A fix that switches on a broken path can be worse than the bug it replaces**, so establish
+   what happens today rather than assuming it is benign, and ask what the patch turns *on*. "Has
+   this run elsewhere" is not the test either, because running is not working: read the path.
+   Darling's guest `mremap` is the case. It looked like a page-size bug dead on 16K hosts and live
+   on x86_64, so fixing the arithmetic alone looked like restoring parity. It is not: the realloc
+   branch calls `mremap(*address - 0x1000, ...)` and *falls through* with no return, so a successful
+   in-place extension returns an address that by construction differs from `*address`, and the later
+   `fixed_no_overwrite` guard then `munmap`s the extended region and reports `KERN_NO_SPACE`. The
+   4K path corrupts rather than works, and the arithmetic fix alone would have switched that
+   corruption on for 16K hosts. The early return is part of the fix, not scope creep.
 5. Verify by rerunning the actual failing app; a rebuild that compiles is not verification. This is
    the one step reaching outside your worktree, into the live prefix and compositor, so if the
    session is under a hold, stop here, open the PR on the source alone, and say in it that the
