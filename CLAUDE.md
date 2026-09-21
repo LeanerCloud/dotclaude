@@ -78,7 +78,6 @@ see the `pr-lifecycle` skill's CUDly final-HEAD gate.
 | `triage-labels` | in a repo that uses the rubric: creating an issue or PR, or updating an untriaged one you own or were asked to work on |
 | `triage-pass` | "triage", "prioritize the backlog", "go over open issues" |
 | `work-selection` | "what should I work on next?" |
-| `darling-app-crash` | a crash turns out to be a macOS app under Darling (`mldr`), or diagnosing why one fails |
 | `infra-ops` | infrastructure, deployments, cloud resources, ops |
 | `project-docs` | setting up, updating, or consulting project documentation |
 | `cristi-voice` | writing or reviewing site/marketing copy, LinkedIn posts, or any prose published under Cristian's or LeanerCloud's name |
