@@ -55,7 +55,7 @@ This rule has no exemptions — even "just this once" multiline commands count. 
 
 ### Review scripts before running them
 
-Before *executing* any script written to `.claude/scripts/` or `/tmp/claude/`, review it and fix what you find; re-review after fixes until a pass is clean. Scripts that delete, move or overwrite files, push, or touch credentials need **3 consecutive clean passes**: a buggy one-off script can still `rm -rf` the wrong directory or leak a token.
+Before *executing* any script written to `.claude/scripts/` or `/tmp/claude/`, run **2 review passes** over it and fix what they find, then run it. Two passes, including for scripts that delete, move or overwrite files, push, or touch credentials: one rule, no exceptions. Treat those two passes as a floor, not a ceiling, and on the destructive categories spend them on exactly that risk: a buggy one-off script can still `rm -rf` the wrong directory or leak a token.
 
 Each pass checks the same four dimensions:
 
@@ -64,7 +64,7 @@ Each pass checks the same four dimensions:
 - **Security**: no shell-injection from unquoted variables, no `eval` of untrusted input, no destructive ops on unvalidated paths, no leaked secrets in `set -x` output.
 - **Bugs**: race conditions, missing error handling, resource leaks, broken assumptions about cwd/env.
 
-Fix every issue found; for the destructive categories above, a fix resets the clean-pass counter. The cost of a 30-second review is far less than the cost of a destructive bug.
+Fix every issue found. No counter resets; after the second pass, run it. The cost of a 30-second review is far less than the cost of a destructive bug.
 
 ## Auto-fixing formatters/linters: match the CI-pinned version, or don't run them
 

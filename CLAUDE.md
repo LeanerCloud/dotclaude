@@ -19,7 +19,7 @@ skill"**. Discovery paths and the portability contract are in [`skills/README.md
    functionality. Exact fit: reuse. Close fit (~80%): refactor existing code (flag the scope change
    in the plan). Never silently copy-paste. (§1a)
 4. **Delegate to subagents** — Offload research, parallel exploration, and focused subtasks to keep
-   the main context clean. Match model tier (Haiku/Sonnet/Opus/Fable) to task complexity. Reuse a
+   the main context clean. Match model tier (Haiku/Sonnet/Opus) to task complexity. Reuse a
    context-warm agent (`SendMessage`) before spawning a fresh one when the follow-up touches the same
    files. (§2)
 5. **Capture every correction** — When the user corrects an approach, immediately save a memory entry
@@ -42,10 +42,9 @@ skill"**. Discovery paths and the portability contract are in [`skills/README.md
 
 This document may be used by OpenAI or Gemini tooling. When it names Anthropic tiers, use the
 corresponding tiers in the same role: Haiku -> gpt-5.4-mini -> Gemini 3.1 Flash-Lite; Sonnet ->
-gpt-5.4 -> Gemini 3.1 Flash; Opus (the default top tier — planning, review, iteration, debugging,
-non-trivial implementation, see §1c and §2) -> gpt-5.5 -> Gemini 3.1 Pro; Fable (peak reserve, ~2x
-Opus cost, only when the last-0.5% of max-effort intelligence decides it) -> the top tier at max
-effort (gpt-5.5 / Gemini 3.1 Pro). Keep cheapest/mid/top aligned if local model names change.
+gpt-5.4 -> Gemini 3.1 Flash; Opus (the top tier — planning, review, iteration, debugging,
+non-trivial implementation, and every adversarial review, see §1c and §2) -> gpt-5.5 -> Gemini 3.1
+Pro. Keep cheapest/mid/top aligned if local model names change.
 
 > **If you're running on an Anthropic model**, **ignore this mapping** — the tier names below already
 > correspond to your model family. The mapping is for OpenAI- or Gemini-backed tooling consuming this
@@ -194,16 +193,17 @@ Before answering architecture questions or starting non-trivial work in an unfam
   extensibility nobody asked for, and don't plan a helper you'd write exactly one call to.
 - **User checkpoint**: for multi-commit plans, cross-cutting refactors, or anything touching shared
   infrastructure, share the plan before implementing.
-- **Plan review loop — MANDATORY gate before implementation starts**: review the plan, fix every
-  issue, re-review until **a pass finds nothing**. For high-stakes plans (money or data-mutation
-  paths, security or auth, migrations, fixes to previously failed fixes) require **three consecutive
-  clean passes** (any finding restarts the count at zero). Do NOT create the §1b worktree, enter
-  ExitPlanMode, or write code until this passes.
+- **Plan review loop — MANDATORY gate before implementation starts**: run **2 adversarial review
+  passes** over the plan, act on what they find, then go with it. Two passes, whatever the stakes:
+  not three, and not "re-review until a pass finds nothing", which on a long plan never converges.
+  Keep the SAME reviewer across both passes (`SendMessage`, §2) instead of respawning a fresh one,
+  and close the loop by talking with it until you and it agree the plan is good. Do NOT create the
+  §1b worktree, enter ExitPlanMode, or write code before those two passes are done.
   Each pass covers: the six review dimensions (below); Reuse (§1a); scope discipline (only what was
   asked?); blast radius (callers, tests, migrations, downstream consumers all listed?); unknowns
   (verify "verify-first" items NOW, not at implementation time). Per-pass findings go in the plan as a
   short "review pass N" note. The `review-and-implement` skill drives this loop.
-- Only after the review is clean: implement in distinct atomic commits, writing tests as you go.
+- Only after those two passes: implement in distinct atomic commits, writing tests as you go.
 - **⚠️ MANDATORY post-implementation review — NO EXCEPTIONS**: after implementing, review ALL changes
   before reporting done. Hard gate; never skip or defer. Fix every issue, re-review, don't declare
   done until clean.
@@ -255,8 +255,8 @@ a dedicated git worktree branched off the current branch; never commit in-progre
 the branch you started from. **Invoke the `worktrees` skill** for the full protocol. Headlines: the
 plan must have passed the §1 review before the worktree exists; the authoritative plan lives at
 `~/.claude/projects/<project>/plans/<slug>.md` so a crash mid-implementation is recoverable; the
-merge gate is all plan items implemented + a clean §1 post-implementation review + a clean
-verification pass (three for high-stakes changes); rebase rather than merge by default. A small
+merge gate is all plan items implemented + a clean §1 post-implementation review + 2 verification
+passes acted on, whatever the stakes; rebase rather than merge by default. A small
 single-commit change can stay on a feature branch in the main checkout when no other session is
 using it.
 
@@ -275,18 +275,20 @@ gate; it does not replace either.
    what survives arrives with evidence attached.
 2. **Opus reviews the diff locally** across the six review dimensions plus Reuse (§1a) and scope
    discipline, as a dedicated reviewer subagent (set `model`) so the implementer's context stays
-   clean. Escalate to Fable only for the hardest money-path / architecture calls. Emit a concrete
-   findings list (`file:line` + what's wrong + suggested fix), or an explicit "no actionable
-   findings".
+   clean. Emit a concrete findings list (`file:line` + what's wrong + suggested fix), or an explicit
+   "no actionable findings".
 3. **The implementer addresses** every finding. Mechanical fixes stay with the implementer; a finding
    needing a design call escalates that item to Opus, then the decided fix goes back down.
-4. **Opus re-reviews.** Repeat 3-4 until a pass returns no actionable findings — a clean pass, not
-   "the obvious ones are fixed".
+4. **Opus reviews a second time**, then you go with it. Two passes total, so don't keep re-reviewing
+   for a pass that returns nothing. Rather than firing off further rounds, talk the remaining
+   findings through with the reviewer until you and it agree the change is good, and proceed on that
+   agreement.
 
 Reviewer and implementer are distinct roles, ideally distinct agents (review the diff as if a stranger
 wrote it). Log per-round findings in the plan file. Review per task as it lands, don't batch. Across
-rounds keep the SAME implementer and SAME reviewer alive and continue them via `SendMessage` (§2), so
-round N+1 costs only the delta.
+both passes and the conversation that closes them keep the SAME implementer and SAME reviewer alive
+and continue them via `SendMessage` (§2), so the second pass costs only the delta and the reviewer
+keeps the context it needs to agree.
 
 ### 2. Subagent Strategy
 
@@ -315,8 +317,7 @@ PRs/agents run at once. Headlines:
 |------|---------|
 | Haiku | renames, typo/format fixes, mechanical edits with a clear spec, simple lookups, single-command runs, tightly-specified function/test, small single-file review, documented API migration, rubric classification, short summaries |
 | Sonnet | PR implementation of simpler, decided-shape changes; focused multi-file changes with a decided shape; functions with 1-2 design choices; refactors with a clear target |
-| Opus | **the default top tier.** PR planning; all review loops (§1c local review, §1 pre-commit/post-impl, adversarial money-path review); architecture/design decisions; iteration loops (CR responses, fix-push, rebases); gnarly hypothesis-driven debugging; non-trivial implementation; reading a large unfamiliar codebase from scratch; any work where understanding/weighing options is the hard part |
-| Fable | **peak reserve (~2x Opus cost).** Only when the last ~0.5% of max-effort intelligence decides the outcome — the hardest money-path adversarial reviews, the gnarliest architecture calls. |
+| Opus | **the top tier.** PR planning; all review loops (§1c local review, §1 pre-commit/post-impl, adversarial money-path review); architecture/design decisions; iteration loops (CR responses, fix-push, rebases); gnarly hypothesis-driven debugging; non-trivial implementation; reading a large unfamiliar codebase from scratch; any work where understanding/weighing options is the hard part. Nothing escalates above it: the hardest money-path adversarial reviews and gnarliest architecture calls run here too. |
 
 A sharper test than "when in doubt" for a task that could plausibly be either tier: is the answer
 known in advance? Opus when it isn't (diagnosis, symbol archaeology, judging whether an
@@ -337,8 +338,8 @@ it). Part of the open-PR step, not a follow-up.
 tools (`Read`, `Edit`, `Write`, `Glob`, `Grep`, `NotebookEdit`) over Bash for file ops; avoid
 approval-triggering Bash patterns (composed commands, compound `cd &&`, `sudo`/`rm -rf`/`chmod`,
 piping into `bash`, `eval`); **any multiline shell MUST be a script file** in `.claude/scripts/`
-(persistent) or `/tmp/claude/` (throw-away), reviewed before executing (3 clean passes for scripts
-that delete, push, or touch credentials).
+(persistent) or `/tmp/claude/` (throw-away), reviewed before executing (2 passes, including for
+scripts that delete, push, or touch credentials).
 
 ### 3. Self-Improvement Loop
 
@@ -446,8 +447,8 @@ auto-memory after corrections.
   (the opposite of the never-destroy-`.git` rule, tenet 9). **Exceptions (do NOT init)**: the home dir
   itself, system temp / scratchpad, `~/Downloads`/`~/Desktop` and similar scratch locations.
 - **Before staging a commit, invoke `git-commit`** — conventional commits, atomic commits, and the
-  mandatory pre-commit review loop that runs until a pass is clean (3 clean passes for high-stakes
-  diffs). Never use heredoc-based `git commit -m`.
+  mandatory pre-commit review loop of 2 passes, whatever the stakes. Never use heredoc-based
+  `git commit -m`.
 - **After every `git push`, invoke `ci-watch`** — one background watcher per workflow run, fixing
   failures autonomously.
 - **When opening a PR, invoke `pr-lifecycle`**; when a CodeRabbit review is in flight, invoke

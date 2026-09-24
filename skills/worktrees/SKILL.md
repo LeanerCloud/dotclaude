@@ -13,7 +13,7 @@ This file is the full worktree-isolation protocol: when to create one, how to pe
 
 ## Preconditions and creation
 
-- **Precondition — plan has passed the §1 review gate** (three clean passes for high-stakes plans). The worktree is the commitment to implement. Don't create one while the plan is still being iterated on, or it becomes a dumping ground for exploratory edits made on an unverified plan (and once commits start landing, reviewing the plan becomes fighting the code's momentum instead of shaping its design). If the plan needs more revision, stay on the base branch, revise, re-review, then come back.
+- **Precondition — plan has passed the §1 review gate** (2 adversarial review passes, acted on). The worktree is the commitment to implement. Don't create one while the plan is still being iterated on, or it becomes a dumping ground for exploratory edits made on an unverified plan (and once commits start landing, reviewing the plan becomes fighting the code's momentum instead of shaping its design). If the plan needs more revision, stay on the base branch, revise, re-review, then come back.
 - **Record the base branch** (the branch checked out when the task starts — e.g., `feat/multicloud-web-frontend`, `main`) in the plan. That's what you'll rebase/merge onto at the end. If the base branch is `main` or another protected branch, still use a worktree — PR discipline from the `git-commit` skill applies on top.
 - **Create the worktree after the plan review gate passes**, before the first commit:
   ```bash
@@ -58,7 +58,7 @@ Paste verbatim below the header — copy-paste, don't paraphrase, so every plan 
 **Merge gate — ALL must hold before rebasing onto `base_branch:`**:
 - Every item in this plan is implemented (tick each line).
 - The CLAUDE.md §1 post-implementation review is clean.
-- **A verification pass finds no gaps** (three consecutive clean passes for high-stakes changes). A pass covers tests, lint/typecheck, the §4 per-change-type verification (UI smoke, API curl, etc.), and a re-read of the diff against the plan. Any finding → fix and verify again. Partial credit does not exist.
+- **2 verification passes are done and acted on** (two, whatever the stakes). A pass covers tests, lint/typecheck, the §4 per-change-type verification (UI smoke, API curl, etc.), and a re-read of the diff against the plan. Fix what each pass finds; don't keep re-verifying for a pass that finds nothing.
 
 **On completion**: rebase onto `base_branch:`, push, `git worktree remove` the worktree, flip `status:` to `merged`, then delete (or archive) this plan file. If the PR merges out-of-band (a human or another agent's `merge-watch` merges it after this session is gone), any later session reclaims this worktree via the sweep in the `worktrees` skill ("Reclaiming worktrees after the PR merges or closes").
 
@@ -118,7 +118,7 @@ ALL of these must hold before rebasing/merging back onto the base branch:
 
 1. Every item in the plan is implemented (cross-check the plan line-by-line).
 2. The §1 post-implementation review is complete and clean.
-3. **A verification pass finds no gaps** (three consecutive clean passes for high-stakes changes: money or data-mutation paths, security, migrations, fixes to previously failed fixes). A pass covers: tests, lint/typecheck, the §4 per-change-type verification (UI smoke, API curl, etc.), and a re-read of the diff against the plan. If any pass surfaces anything — missing behaviour, regression, hack, duplication, security concern — fix it and verify again; for high-stakes changes **restart the count at zero**. Partial credit does not exist.
+3. **2 verification passes are done and acted on** (two, whatever the stakes). A pass covers: tests, lint/typecheck, the §4 per-change-type verification (UI smoke, API curl, etc.), and a re-read of the diff against the plan. Fix whatever a pass surfaces (missing behaviour, regression, hack, duplication, security concern), but don't restart a counter: after the second pass, go with it.
 
 ## Rebase and cleanup
 
