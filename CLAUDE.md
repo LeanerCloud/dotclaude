@@ -19,7 +19,7 @@ skill"**. Discovery paths and the portability contract are in [`skills/README.md
    functionality. Exact fit: reuse. Close fit (~80%): refactor existing code (flag the scope change
    in the plan). Never silently copy-paste. (§1a)
 4. **Delegate to subagents** — Offload research, parallel exploration, and focused subtasks to keep
-   the main context clean. Match model tier (Haiku/Sonnet/Opus/Fable) to task complexity. Reuse a
+   the main context clean. Match model tier (Haiku/Sonnet/Opus) to task complexity. Reuse a
    context-warm agent (`SendMessage`) before spawning a fresh one when the follow-up touches the same
    files. (§2)
 5. **Capture every correction** — When the user corrects an approach, immediately save a memory entry
@@ -43,9 +43,8 @@ skill"**. Discovery paths and the portability contract are in [`skills/README.md
 This document may be used by OpenAI or Gemini tooling. When it names Anthropic tiers, use the
 corresponding tiers in the same role: Haiku -> gpt-5.4-mini -> Gemini 3.1 Flash-Lite; Sonnet ->
 gpt-5.4 -> Gemini 3.1 Flash; Opus (the default top tier — planning, review, iteration, debugging,
-non-trivial implementation, see §1c and §2) -> gpt-5.5 -> Gemini 3.1 Pro; Fable (peak reserve, ~2x
-Opus cost, only when the last-0.5% of max-effort intelligence decides it) -> the top tier at max
-effort (gpt-5.5 / Gemini 3.1 Pro). Keep cheapest/mid/top aligned if local model names change.
+non-trivial implementation, and the hardest money-path adversarial reviews and architecture calls,
+see §1c and §2) -> gpt-5.5 -> Gemini 3.1 Pro. Keep cheapest/top aligned if local model names change.
 
 > **If you're running on an Anthropic model**, **ignore this mapping** — the tier names below already
 > correspond to your model family. The mapping is for OpenAI- or Gemini-backed tooling consuming this
@@ -275,9 +274,8 @@ gate; it does not replace either.
    what survives arrives with evidence attached.
 2. **Opus reviews the diff locally** across the six review dimensions plus Reuse (§1a) and scope
    discipline, as a dedicated reviewer subagent (set `model`) so the implementer's context stays
-   clean. Escalate to Fable only for the hardest money-path / architecture calls. Emit a concrete
-   findings list (`file:line` + what's wrong + suggested fix), or an explicit "no actionable
-   findings".
+   clean, including for the hardest money-path / architecture calls. Emit a concrete findings list
+   (`file:line` + what's wrong + suggested fix), or an explicit "no actionable findings".
 3. **The implementer addresses** every finding. Mechanical fixes stay with the implementer; a finding
    needing a design call escalates that item to Opus, then the decided fix goes back down.
 4. **Opus re-reviews.** Repeat 3-4 until a pass returns no actionable findings — a clean pass, not
@@ -315,8 +313,7 @@ PRs/agents run at once. Headlines:
 |------|---------|
 | Haiku | renames, typo/format fixes, mechanical edits with a clear spec, simple lookups, single-command runs, tightly-specified function/test, small single-file review, documented API migration, rubric classification, short summaries |
 | Sonnet | PR implementation of simpler, decided-shape changes; focused multi-file changes with a decided shape; functions with 1-2 design choices; refactors with a clear target |
-| Opus | **the default top tier.** PR planning; all review loops (§1c local review, §1 pre-commit/post-impl, adversarial money-path review); architecture/design decisions; iteration loops (CR responses, fix-push, rebases); gnarly hypothesis-driven debugging; non-trivial implementation; reading a large unfamiliar codebase from scratch; any work where understanding/weighing options is the hard part |
-| Fable | **peak reserve (~2x Opus cost).** Only when the last ~0.5% of max-effort intelligence decides the outcome — the hardest money-path adversarial reviews, the gnarliest architecture calls. |
+| Opus | **the default top tier.** PR planning; all review loops (§1c local review, §1 pre-commit/post-impl, adversarial money-path review); architecture/design decisions, including the gnarliest calls; iteration loops (CR responses, fix-push, rebases); gnarly hypothesis-driven debugging; non-trivial implementation; reading a large unfamiliar codebase from scratch; any work where understanding/weighing options is the hard part |
 
 A sharper test than "when in doubt" for a task that could plausibly be either tier: is the answer
 known in advance? Opus when it isn't (diagnosis, symbol archaeology, judging whether an

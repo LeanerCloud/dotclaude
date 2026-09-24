@@ -63,9 +63,9 @@ After CI is green and CodeRabbit's loop has settled, hand off to the user. Spawn
 
 For CUDly, require all of these before merge:
 
-- An independent, read-only Claude reviewer running the exact model slug `claude-fable-5-1` has
+- An independent, read-only Claude reviewer running the exact model slug `claude-opus-5-5` has
   adversarially reviewed the full PR diff at the final HEAD SHA and has no unresolved actionable
-  findings. Invoke it with `claude -p --model claude-fable-5-1 --safe-mode --restricted --strict-mcp-config --tools Read --output-format json`, never with
+  findings. Invoke it with `claude -p --model claude-opus-5-5 --safe-mode --restricted --strict-mcp-config --tools Read --output-format json`, never with
   `--dangerously-skip-permissions`, so read-only means no file edits and no git, GitHub, or other
   external mutations. This review
   satisfies the generic adversarial-clean gate; its verdict must identify what it attacked, list the
@@ -74,11 +74,11 @@ For CUDly, require all of these before merge:
   links `git rev-parse HEAD`, `git status --porcelain`, and `git diff --name-only <base>...HEAD`
   output proving a clean final-HEAD worktree and the file set supplied to the reviewer, plus the verdict
   and returned-model metadata from that same restricted JSON invocation. The command proves the requested
-  model, and its result's `modelUsage` map must contain a `claude-fable-5-1` entry whose
-  `canonicalModel` is `claude-fable-5-1` and whose `outputTokens` is nonzero. An invocation path that
+  model, and its result's `modelUsage` map must contain a `claude-opus-5-5` entry whose
+  `canonicalModel` is `claude-opus-5-5` and whose `outputTokens` is nonzero. An invocation path that
   exposes no returned-model metadata cannot satisfy this evidence requirement. A GPT substitute,
   generic tier equivalent, or
-  floating Fable alias does not satisfy this gate.
+  floating model alias does not satisfy this gate.
 - CodeRabbit has returned a substantive clean review covering the final HEAD, with no unresolved
   actionable findings and every Nitpick fixed or justified.
 - CI passes for the exact final HEAD.
