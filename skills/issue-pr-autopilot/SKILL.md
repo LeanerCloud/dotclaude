@@ -122,18 +122,12 @@ Both are currently **disabled** (pending validation).
 > set the worker's nominal minute later than the planner's server-assigned minute
 > (accepting the server may re-pin it too).
 
-> **Frontier-judgement escalation is manual.** The planner runs on Opus (the default
-> top tier, ~Opus-5-class): it cannot escalate to the Fable peak reserve mid-run,
-> because a routine is pinned to a single model for the whole fire and has no
-> Agent/Task tool. Opus 5 lands within ~0.5% of Fable 5's peak at roughly half the
-> cost, so Opus is the right default here and Fable is not worth a permanent second
-> routine. If a specific issue genuinely needs frontier judgement (a gnarly
-> architecture call or a high-stakes money-path plan), a **human** re-plans it
-> out-of-band on Fable — e.g. do one manual `run` of the planner with its model
-> temporarily set to the latest Fable id, or draft the plan branch by hand — then
-> let the normal worker fire pick it up via the `plan-ready` label. Do NOT add a
-> standing Fable planner routine for this; it would burn run-budget (see
-> "Run-budget") for the rare case.
+> **The planner runs on Opus, the top tier**, and a routine is pinned to a single
+> model for the whole fire with no Agent/Task tool. There is no tier above Opus to
+> escalate to mid-run, so a gnarly architecture call or high-stakes money-path plan
+> needs no special routing: the planner is already on the strongest model. If one
+> still wants a human in the loop, re-plan it out-of-band by hand, then let the
+> normal worker fire pick it up via the `plan-ready` label.
 
 > **Earlier exploration routines:** `cudly-autopilot-plan-30` and
 > `cudly-autopilot-worker-45` were created during design exploration and are no

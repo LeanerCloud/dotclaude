@@ -39,7 +39,7 @@ Spawn a background `Agent` named `cr-watch-<pr-#>` (`model: haiku` — polling, 
 
 When CodeRabbit's review arrives, the watcher reads each suggestion and triages it into one of three buckets:
 
-- **Actionable** (real bug, security concern, missing test, broken type, valid code-smell with a clear fix): fix in a new commit on the same branch. Each fix commit follows the §"Mandatory pre-commit review loop": review until a pass is clean (3 clean passes for high-stakes diffs), no shortcuts. Push triggers a fresh CI watcher pass per §"Post-push CI watcher".
+- **Actionable** (real bug, security concern, missing test, broken type, valid code-smell with a clear fix): fix in a new commit on the same branch. Each fix commit follows the §"Mandatory pre-commit review loop": 2 review passes, whatever the stakes, no shortcuts. Push triggers a fresh CI watcher pass per §"Post-push CI watcher".
 - **Stylistic preference contrary to project conventions** (or a trade-off that was already considered during implementation): reply on the PR comment with a brief justification linking to the convention in `CLAUDE.md` or the relevant code; do NOT commit a change.
 - **Genuine nitpick** (minor, unambiguously safe to apply, not contrary to convention): fix it. **Batch nitpicks into one commit** rather than one-commit-per-nitpick — single-line fix commits create review noise and inflate the history without buying anything.
 
