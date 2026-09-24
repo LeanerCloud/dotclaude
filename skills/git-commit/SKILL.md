@@ -47,7 +47,7 @@ This is the first thing to check, because everything else here is worthless with
 
 Before every commit, enter a review loop (same discipline as the plan review loop). Do NOT commit after a pass that found issues: fix them and re-review until **a pass finds zero issues**. For high-stakes diffs (money or data-mutation paths, security or auth, migrations, or a fix for a previously failed fix) iterate until **3 consecutive review passes find zero issues**. Do NOT skip, shortcut, or batch this step. The goal is to land clean commits in the first place, so the history doesn't need fix-up commits.
 
-**Review on Opus, as comprehensively as possible — CodeRabbit's lens is the floor, not the ceiling.** This review is judgement-heavy, so run it at Opus tier (the §1c local review loop and the plan-review gate are its analogues — both Opus per `CLAUDE.md` §2); escalate to the Fable reserve only for the hardest / highest-stakes money-path diffs. The six dimensions above are the baseline; then go wider than any single reviewer would. Review as CodeRabbit would (its Actionable / Nitpick categories, the project's CR config, recurring past CR findings) AND as a demanding staff engineer would, across at least:
+**Review on Opus, as comprehensively as possible — CodeRabbit's lens is the floor, not the ceiling.** This review is judgement-heavy, so run it at Opus tier (the §1c local review loop and the plan-review gate are its analogues — both Opus per `CLAUDE.md` §2), including for the hardest / highest-stakes money-path diffs. The six dimensions above are the baseline; then go wider than any single reviewer would. Review as CodeRabbit would (its Actionable / Nitpick categories, the project's CR config, recurring past CR findings) AND as a demanding staff engineer would, across at least:
 
 - **Architecture & design fit** — does the change belong where it landed, follow the module's patterns, and avoid leaking abstractions?
 - **Type design & invariants** — are illegal states unrepresentable, invariants expressed in types rather than asserted at runtime, encapsulation intact?
@@ -93,7 +93,7 @@ For staged changes touching multiple concerns (Go + TS + Terraform) or any subst
 - `pr-review-toolkit:comment-analyzer` — comment accuracy and rot, especially after large doc/comment edits.
 - `pr-review-toolkit:code-simplifier` — clarity, dead code, and duplication that can be collapsed.
 
-Spawn each on the appropriate tier (the review judgement itself is Opus-class, with Fable held in reserve for the hardest money-path diffs; mechanical single-file diffs can drop to Sonnet), aggregate the findings, dedupe overlaps, and resolve every actionable item before the commit lands.
+Spawn each on the appropriate tier (the review judgement itself is Opus-class, including for the hardest money-path diffs; mechanical single-file diffs can drop to Sonnet), aggregate the findings, dedupe overlaps, and resolve every actionable item before the commit lands.
 
 ### Fix before committing, never after
 
