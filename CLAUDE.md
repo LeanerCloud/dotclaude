@@ -256,7 +256,9 @@ the branch you started from. **Invoke the `worktrees` skill** for the full proto
 plan must have passed the §1 review before the worktree exists; the authoritative plan lives at
 `~/.claude/projects/<project>/plans/<slug>.md` so a crash mid-implementation is recoverable; the
 merge gate is all plan items implemented + a clean §1 post-implementation review + 2 verification
-passes acted on, whatever the stakes; rebase rather than merge by default. A small
+passes acted on, whatever the stakes; rebase rather than merge by default. A linked worktree does not
+isolate submodules either, so `git submodule update` inside one moves the main clone's submodule
+HEADs for every worktree on it. A small
 single-commit change can stay on a feature branch in the main checkout when no other session is
 using it.
 
@@ -289,6 +291,29 @@ wrote it). Log per-round findings in the plan file. Review per task as it lands,
 both passes and the conversation that closes them keep the SAME implementer and SAME reviewer alive
 and continue them via `SendMessage` (§2), so the second pass costs only the delta and the reviewer
 keeps the context it needs to agree.
+
+### 1d. Multi-Repo Integration Builds
+
+Assembling unmerged work across several repos, building it, and testing the result has its own
+failure modes, all of which fail *silently*:
+
+- **Enumerate loudly.** A loop over repos, PRs or submodules must surface failures, not print only
+  successes. Default branches differ (`main` vs `master`), queries fail, repos get missed. Report
+  counts as "what I found", never as "what exists", and re-check before claiming completeness.
+- **One clean build exit is not a complete build.** After new targets appear, the first run may
+  regenerate the build graph and execute the old one, exiting 0 with work still pending. Ask the
+  build system what remains (`ninja -n`) before believing it.
+- **Say which layer is under test.** A component built from integration branches running against
+  stock system libraries is not "the integrated stack". Name the parts that are, and the parts that
+  are not.
+- **Prefer testing a private runtime over installing one.** A locally built runtime exercised from a
+  disposable location beats replacing the machine's. When a project guards that path (setuid
+  binaries commonly ignore environment overrides under `AT_SECURE`), treat the guard as correct and
+  find a supported route rather than defeating it.
+- **Never install or publish from a tree with uncommitted changes.** The artifact becomes
+  unreproducible by anyone the moment that working tree is cleaned. Commit first, even to a
+  throwaway branch, so the artifact is attributable to a SHA; record what was actually built rather
+  than what should have been.
 
 ### 2. Subagent Strategy
 
