@@ -79,6 +79,10 @@ ln -s ~/.claude/projects/<project>/plans/<slug>.md <worktree>/plan.md
 
 Add `plan.md` to the worktree's `.git/info/exclude` (per-clone, local-only — keeps it untracked without touching the committed `.gitignore`). Update the plan file in place as the work evolves — it's the single source of truth; `plan.md` inside the worktree is just a convenient handle.
 
+### Submodules are not isolated
+
+Submodule gitdirs live centrally in the main clone's `.git/modules`, so a linked worktree points at the same ones: running `git submodule update/init/sync`, or anything recursive, inside a worktree moves the **main clone's** submodule HEADs for every worktree on it. Superproject-only edits are fine, and so is an index-only pointer fix (`git update-index --cacheinfo 160000,<sha>,<path>`), which never enters the submodule. Anything needing populated submodules, a build, or a recursive operation gets an **independent clone with `--reference`** instead: objects are shared through alternates so it costs almost nothing, while refs and HEAD are not, keeping the blast radius to your own clone. Note the clone then depends on the reference repo's object store, so never `git gc`/`prune`/`repack` the tree it borrows from.
+
 ## PID lifecycle — writes are the ownership protocol
 
 - On plan creation: set `pid:` to the current Claude process PID (the shell's `$$` from the same terminal the session runs in), `host:` to `$(hostname)`, `pid_updated:` to now.
