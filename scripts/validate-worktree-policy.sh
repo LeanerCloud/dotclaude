@@ -87,6 +87,18 @@ if files="$(git -C "$repo_root" "${grep_args[@]}" -l -F 'worktree' -- "${pathspe
     if violations="$(read_path "$file" | LC_ALL=C awk -v file="$file" '
       BEGIN { squote = sprintf("%c", 39) }
 
+      # Record a word twice: raw, so the destination can be read with its
+      # quotes intact, and quote-stripped, so a command word still matches when
+      # it is written as 'git' or "worktree".
+      function save_word(value) {
+        nt++
+        tok[nt] = value
+        own[nt] = nc
+        word[nt] = value
+        gsub(squote, "", word[nt])
+        gsub(/["`]/, "", word[nt])
+      }
+
       # Split a logical command into shell words. Words are never allowed to
       # span a comment or a command separator, so one worktree add can neither
       # hide nor invent another. tok[i] is the i-th word, own[i] the command
@@ -113,12 +125,12 @@ if files="$(git -C "$repo_root" "${grep_args[@]}" -l -F 'worktree' -- "${pathspe
           }
           if (ch == "#" && word_start) break
           if (ch ~ /[[:space:]]/) {
-            if (cur != "") { nt++; tok[nt] = cur; own[nt] = nc; cur = "" }
+            if (cur != "") { save_word(cur); cur = "" }
             word_start = 1
             continue
           }
           if (ch ~ /[;&|`]/) {
-            if (cur != "") { nt++; tok[nt] = cur; own[nt] = nc; cur = "" }
+            if (cur != "") { save_word(cur); cur = "" }
             nc++
             word_start = 1
             continue
@@ -126,18 +138,18 @@ if files="$(git -C "$repo_root" "${grep_args[@]}" -l -F 'worktree' -- "${pathspe
           cur = cur ch
           word_start = 0
         }
-        if (cur != "") { nt++; tok[nt] = cur; own[nt] = nc }
+        if (cur != "") save_word(cur)
       }
 
       # Report every unsafe destination in one command. The destination is the
       # first word after `worktree add` that is not an option, so options git
       # documents as taking a value (git worktree add --help) are stepped over,
       # and a `--` ends option parsing the way git ends it.
-      function check_command(lo, hi,   i, j, t, dest, saw_git, quoted_tilde, past_options) {
+      function check_command(lo, hi,   i, j, t, dest, saw_git, quoted_tilde, past_options, lead) {
         for (i = lo; i + 1 <= hi; i++) {
-          if (tok[i] != "worktree" || tok[i + 1] != "add") continue
+          if (word[i] != "worktree" || word[i + 1] != "add") continue
           saw_git = 0
-          for (j = lo; j < i; j++) if (tok[j] == "git") saw_git = 1
+          for (j = lo; j < i; j++) if (word[j] == "git") saw_git = 1
           if (!saw_git) continue
           dest = ""
           past_options = 0
@@ -157,11 +169,16 @@ if files="$(git -C "$repo_root" "${grep_args[@]}" -l -F 'worktree' -- "${pathspe
             break
           }
           if (dest == "") continue
-          quoted_tilde = dest ~ /^"~/
+          # Read the quote before stripping it: the shell expands neither a
+          # single-quoted nor a double-quoted ~, and a single-quoted $HOME
+          # stays literal too, so single quotes are deliberately left on dest
+          # rather than stripped.
+          lead = substr(dest, 1, 1)
+          quoted_tilde = (lead == "\"" || lead == squote || lead == "`") && substr(dest, 2, 1) == "~"
           gsub(/^["`]+/, "", dest)
           gsub(/["`]+$/, "", dest)
           if (quoted_tilde) {
-            print file ":" start_line ": double-quoted tilde is not expanded: " dest
+            print file ":" start_line ": quoted tilde is not expanded: " dest
           } else if (dest ~ /(^|\/)\.\.(\/|$)/) {
             print file ":" start_line ": worktree destination escapes the durable root: " dest
           } else if (dest !~ /^\$\{?HOME\}?\/[.]claude\/worktrees\// && dest !~ /^~\/[.]claude\/worktrees\//) {
