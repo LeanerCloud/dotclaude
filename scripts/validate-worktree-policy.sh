@@ -113,6 +113,16 @@ if files="$(git -C "$repo_root" "${grep_args[@]}" -l -F 'worktree' -- "${pathspe
         for (i = 1; i <= length(text); i++) {
           ch = substr(text, i, 1)
           if (q != "") {
+            # Inside double quotes a backslash escapes the next character, so
+            # an escaped \" must not be taken for the closing quote. Left
+            # unhandled, the word closes early, a following # reads as a
+            # comment, and a real command after it goes unseen. Inside single
+            # quotes a backslash is literal, as the shell treats it.
+            if (q == "\"" && ch == "\\" && i < length(text)) {
+              cur = cur ch substr(text, i + 1, 1)
+              i++
+              continue
+            }
             if (ch == q) q = ""
             cur = cur ch
             continue
