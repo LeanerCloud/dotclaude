@@ -81,14 +81,82 @@ assert_not_contains skills/pr-iterate/SKILL.md '.worktrees/<repo>/<slug>' 'PR it
 
 if files="$(git -C "$repo_root" "${grep_args[@]}" -l -F 'worktree' -- "${pathspecs[@]}")"; then
   while IFS= read -r file; do
-    if violations="$(read_path "$file" | awk -v file="$file" '
-      function flush(   re, dest, rest, match_text, quoted_tilde) {
-        re = "git[[:space:]]+[^;&|`]*worktree[[:space:]]+add[[:space:]]+[^[:space:];&|`]+"
-        rest = command
-        while (match(rest, re)) {
-          match_text = substr(rest, RSTART, RLENGTH)
-          dest = match_text
-          sub(/^.*worktree[[:space:]]+add[[:space:]]+/, "", dest)
+    # LC_ALL=C: the scanner walks text one byte at a time, and every byte it
+    # tests for is ASCII, so a multibyte locale would only make substr split
+    # UTF-8 sequences and fail the conversion.
+    if violations="$(read_path "$file" | LC_ALL=C awk -v file="$file" '
+      BEGIN { squote = sprintf("%c", 39) }
+
+      # Split a logical command into shell words. Words are never allowed to
+      # span a comment or a command separator, so one worktree add can neither
+      # hide nor invent another. tok[i] is the i-th word, own[i] the command
+      # it belongs to. A # starting a word comments out the rest of the line,
+      # which is what the shell would run.
+      function scan(text,   i, ch, cur, q, word_start) {
+        nt = 0
+        nc = 1
+        cur = ""
+        q = ""
+        word_start = 1
+        for (i = 1; i <= length(text); i++) {
+          ch = substr(text, i, 1)
+          if (q != "") {
+            if (ch == q) q = ""
+            cur = cur ch
+            continue
+          }
+          if (ch == "\"" || ch == squote) {
+            q = ch
+            cur = cur ch
+            word_start = 0
+            continue
+          }
+          if (ch == "#" && word_start) break
+          if (ch ~ /[[:space:]]/) {
+            if (cur != "") { nt++; tok[nt] = cur; own[nt] = nc; cur = "" }
+            word_start = 1
+            continue
+          }
+          if (ch ~ /[;&|`]/) {
+            if (cur != "") { nt++; tok[nt] = cur; own[nt] = nc; cur = "" }
+            nc++
+            word_start = 1
+            continue
+          }
+          cur = cur ch
+          word_start = 0
+        }
+        if (cur != "") { nt++; tok[nt] = cur; own[nt] = nc }
+      }
+
+      # Report every unsafe destination in one command. The destination is the
+      # first word after `worktree add` that is not an option, so options git
+      # documents as taking a value (git worktree add --help) are stepped over,
+      # and a `--` ends option parsing the way git ends it.
+      function check_command(lo, hi,   i, j, t, dest, saw_git, quoted_tilde, past_options) {
+        for (i = lo; i + 1 <= hi; i++) {
+          if (tok[i] != "worktree" || tok[i + 1] != "add") continue
+          saw_git = 0
+          for (j = lo; j < i; j++) if (tok[j] == "git") saw_git = 1
+          if (!saw_git) continue
+          dest = ""
+          past_options = 0
+          for (j = i + 2; j <= hi; j++) {
+            t = tok[j]
+            if (!past_options) {
+              if (t == "--") {
+                past_options = 1
+                continue
+              }
+              if (t ~ /^-/) {
+                if (t == "-b" || t == "-B" || t == "--reason") j++
+                continue
+              }
+            }
+            dest = t
+            break
+          }
+          if (dest == "") continue
           quoted_tilde = dest ~ /^"~/
           gsub(/^["`]+/, "", dest)
           gsub(/["`]+$/, "", dest)
@@ -99,7 +167,17 @@ if files="$(git -C "$repo_root" "${grep_args[@]}" -l -F 'worktree' -- "${pathspe
           } else if (dest !~ /^\$\{?HOME\}?\/[.]claude\/worktrees\// && dest !~ /^~\/[.]claude\/worktrees\//) {
             print file ":" start_line ": worktree destination is " dest
           }
-          rest = substr(rest, RSTART + RLENGTH)
+        }
+      }
+
+      function flush(   lo, hi) {
+        scan(command)
+        lo = 1
+        while (lo <= nt) {
+          hi = lo
+          while (hi + 1 <= nt && own[hi + 1] == own[lo]) hi++
+          check_command(lo, hi)
+          lo = hi + 1
         }
         command = ""
       }
@@ -121,7 +199,7 @@ if files="$(git -C "$repo_root" "${grep_args[@]}" -l -F 'worktree' -- "${pathspe
     ')"; then
       if [ -n "$violations" ]; then
         while IFS= read -r violation; do
-          fail "$violation; expected the destination immediately after worktree add to start with \$HOME/.claude/worktrees/"
+          fail "$violation; expected the worktree destination to be under \$HOME/.claude/worktrees/"
         done <<< "$violations"
       fi
     else
