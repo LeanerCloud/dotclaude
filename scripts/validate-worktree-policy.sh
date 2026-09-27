@@ -88,8 +88,9 @@ if files="$(git -C "$repo_root" "${grep_args[@]}" -l -F 'worktree' -- "${pathspe
       BEGIN { squote = sprintf("%c", 39) }
 
       # Record a word twice: raw, so the destination can be read with its
-      # quotes intact, and quote-stripped, so a command word still matches when
-      # it is written as 'git' or "worktree".
+      # quotes and escapes intact, and normalized, so a command word still
+      # matches when it is written as 'git', "worktree" or g\it, all of which
+      # the shell runs as the plain word.
       function save_word(value) {
         nt++
         tok[nt] = value
@@ -97,6 +98,7 @@ if files="$(git -C "$repo_root" "${grep_args[@]}" -l -F 'worktree' -- "${pathspe
         word[nt] = value
         gsub(squote, "", word[nt])
         gsub(/["`]/, "", word[nt])
+        gsub(/\\/, "", word[nt])
       }
 
       # Does an unescaped double quote appear after position i?
