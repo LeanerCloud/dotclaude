@@ -36,9 +36,11 @@ Everything already owned by another file is cross-referenced, not restated:
 | Matching the CI-pinned tool version | the `tool-usage` skill |
 | Cron routines, RemoteTrigger bodies, run budget | the `issue-pr-autopilot` skill |
 
-Paths below use placeholders: `<repo>` is the main checkout, `<wt>` a
-worktree root (this repo conventionally puts them under a scratch dir such
-as `$TMPDIR/claude/`).
+Paths below use placeholders: `<repo>` is the main checkout, `<repo-name>` its
+directory name, and `<wt>` a durable worktree path under
+`$HOME/.claude/worktrees/<repo-name>-<slug>`. Never use `/tmp`, `$TMPDIR`, or
+another reboot-cleared directory for a worktree that carries implementation or
+plan state.
 
 ---
 

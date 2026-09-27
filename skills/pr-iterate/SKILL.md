@@ -140,7 +140,10 @@ depends on another's merge order. Serialize when PRs form a stack (#A -> #B reba
 
 ### Collision and lock concerns
 
-1. Worktree paths are independent per PR (`.worktrees/<repo>/<slug>`).
+1. Worktree paths are independent per PR
+   (`"$HOME/.claude/worktrees/<repo-name>-<slug>"`, where `<repo-name>` is the
+   checkout's directory name). Never place a persistent PR worktree under `/tmp`,
+   `$TMPDIR`, or another reboot-cleared directory.
 2. The push lock `/tmp/agent-locks/<repo>-git-push-<branch-key>.lock` (`<branch-key>` is the branch
    name with every `/` replaced by `-`; held with `flock`, or `lockf` on macOS, per the
    `multi-agent-comms` skill) serializes every push to that PR branch, including
@@ -168,8 +171,8 @@ depends on another's merge order. Serialize when PRs form a stack (#A -> #B reba
 2. Find the worktree: `git -C <repo-root> worktree list`, match by branch name. The on-disk
    path may not match the branch verbatim - git is path-agnostic; only the branch matters.
    If no worktree exists, create one off the existing remote branch:
-   `git -C <repo-root> fetch origin <branch>` then
-   `git -C <repo-root> worktree add .worktrees/<repo>/<slug> <branch>` (do NOT create a fresh branch).
+   `git -C <repo-root> fetch origin <branch>`, `mkdir -p "$HOME/.claude/worktrees"`, then
+   `git -C <repo-root> worktree add "$HOME/.claude/worktrees/<repo-name>-<slug>" <branch>` (do NOT create a fresh branch).
 3. Pull CR signal into `/tmp/claude/`:
    ```
    gh api repos/<owner>/<repo>/pulls/<N>/reviews \
