@@ -99,11 +99,30 @@ if files="$(git -C "$repo_root" "${grep_args[@]}" -l -F 'worktree' -- "${pathspe
         gsub(/["`]/, "", word[nt])
       }
 
-      # Split a logical command into shell words. Words are never allowed to
-      # span a comment or a command separator, so one worktree add can neither
-      # hide nor invent another. tok[i] is the i-th word, own[i] the command
-      # it belongs to. A # starting a word comments out the rest of the line,
-      # which is what the shell would run.
+      # Does an unescaped double quote appear after position i?
+      function closes_dquote(text, i,   j, ch) {
+        for (j = i + 1; j <= length(text); j++) {
+          ch = substr(text, j, 1)
+          if (ch == "\\") { j++; continue }
+          if (ch == "\"") return 1
+        }
+        return 0
+      }
+
+      # Split a logical command into shell words, breaking at command
+      # separators and at a # that starts a word, so one worktree add can
+      # neither hide nor invent another. tok[i] is the i-th word, own[i] the
+      # command it belongs to.
+      #
+      # Quotes are handled asymmetrically, on purpose. A double quote opens a
+      # span only when an unescaped one follows it, which keeps a # inside a
+      # quoted path from starting a comment and stops an unbalanced quote in
+      # prose from swallowing the separators and the commands behind it. A
+      # single quote is always a literal: an apostrophe in prose is far
+      # commoner here than a single-quoted path, and an unpaired one would
+      # otherwise absorb the rest of the line. A single-quoted destination
+      # still fails the durable-root test, because the shell expands neither
+      # $HOME nor ~ inside single quotes.
       function scan(text,   i, ch, cur, q, word_start) {
         nt = 0
         nc = 1
@@ -113,12 +132,7 @@ if files="$(git -C "$repo_root" "${grep_args[@]}" -l -F 'worktree' -- "${pathspe
         for (i = 1; i <= length(text); i++) {
           ch = substr(text, i, 1)
           if (q != "") {
-            # Inside double quotes a backslash escapes the next character, so
-            # an escaped \" must not be taken for the closing quote. Left
-            # unhandled, the word closes early, a following # reads as a
-            # comment, and a real command after it goes unseen. Inside single
-            # quotes a backslash is literal, as the shell treats it.
-            if (q == "\"" && ch == "\\" && i < length(text)) {
+            if (ch == "\\" && i < length(text)) {
               cur = cur ch substr(text, i + 1, 1)
               i++
               continue
@@ -127,7 +141,13 @@ if files="$(git -C "$repo_root" "${grep_args[@]}" -l -F 'worktree' -- "${pathspe
             cur = cur ch
             continue
           }
-          if (ch == "\"" || ch == squote) {
+          if (ch == "\\" && i < length(text)) {
+            cur = cur ch substr(text, i + 1, 1)
+            i++
+            word_start = 0
+            continue
+          }
+          if (ch == "\"" && closes_dquote(text, i)) {
             q = ch
             cur = cur ch
             word_start = 0
