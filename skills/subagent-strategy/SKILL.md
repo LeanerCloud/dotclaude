@@ -98,8 +98,7 @@ What this buys beyond cached reads:
 **When in doubt, go one tier cheaper and see if it's good enough** — for implementation, research, and mechanical work; re-spawn stronger if it struggles. *Exception*: planning, review, iteration, debugging, and non-trivial implementation default to Opus; step down only when the specific step is clearly mechanical, and never step up: Opus is the ceiling, peak-critical work included. The cost of a stalled agent that needs main-session takeover exceeds the up-front Opus delta. The main conversation's model is user-set and fixed mid-session; this rule only governs `Agent` spawns.
 
 An exact reviewer model pinned by a project-specific rule or skill section overrides this rubric.
-See the `pr-lifecycle` skill's CUDly final-HEAD gate for its pinned reviewer and separate verification
-role.
+Project-specific review gates live in each project's `CLAUDE.md`.
 
 ## Label-mirroring on PR creation
 
