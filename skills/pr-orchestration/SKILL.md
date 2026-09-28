@@ -25,7 +25,7 @@ Everything already owned by another file is cross-referenced, not restated:
 | Commit conventions | the `git-commit` skill |
 | Review-bot loop | the `cr-loop` skill |
 | CI watchers | the `ci-watch` skill |
-| Merge mechanics and project-specific final-HEAD gates | the `pr-lifecycle` skill |
+| Merge mechanics | the `pr-lifecycle` skill (project-specific gates: the project's `CLAUDE.md`) |
 | Rate limits | the `rate-limit-retry` skill |
 | Worktree isolation, staleness/disappearance, crash recovery, post-merge reclaim | the `worktrees` skill |
 | Model-tier selection, reviewer independence, subsystem pooling, agent reuse | the `subagent-strategy` skill |

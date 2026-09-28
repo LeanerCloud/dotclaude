@@ -31,8 +31,8 @@ Non-Anthropic hosts map Haiku/Sonnet/Opus to their cheapest/mid/top tier in the 
 `subagent-strategy` skill §"Model rubric" names them).
 
 An exact reviewer model pinned by a project-specific rule or skill section overrides this generic
-tier mapping. Do not satisfy an exact pin with a cross-provider substitute or floating model alias;
-see the `pr-lifecycle` skill's CUDly final-HEAD gate.
+tier mapping. Do not satisfy an exact pin with a cross-provider substitute or floating model alias.
+Project-specific review gates live in each project's `CLAUDE.md`.
 
 ## Skills
 
