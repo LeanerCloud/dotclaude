@@ -18,7 +18,7 @@ the codebase knowledge graph (`compass-out/`).
 
 ## Reference runs of the post-PR review loop
 
-`git-workflow.md` §"Capture follow-up tasks as new GitHub issues" mentions that
+The `pr-lifecycle` skill §7 "Capture follow-up tasks as new GitHub issues" notes that
 prior successful runs of the loop make good templates for issue shape. List
 them here for your own projects, e.g.:
 

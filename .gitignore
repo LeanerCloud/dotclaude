@@ -43,7 +43,7 @@ gh-pr-status-cache.json
 # Per-project memory (persisted per working directory)
 projects/
 
-# Local scratch scripts and commit-message buffer (see tool-usage.md, git-workflow.md)
+# Local scratch scripts and commit-message buffer (see the tool-usage skill)
 .claude/
 
 # Plugin install dir (managed by settings.json enabledPlugins)
