@@ -301,44 +301,27 @@ issues, skip the rest with a brief reason.
 
 ## Phase 5b - CR rate-limit handling
 
-The general rules (detection wordings, cooldown parsing, `full review` on recovery) belong to the
-`cr-loop` and `rate-limit-retry` skills; what follows is only what this fan-out adds on top - the
-wave-level marker file that stops N parallel agents from each re-tripping an org-level limit.
+Detection (both rate-limit wordings, billing messages, no-review and unreachable states), cooldown
+parsing and the `@coderabbitai full review` recovery command are the `cr-loop` skill §2; retry
+scheduling is the `rate-limit-retry` skill. What follows is only what this fan-out adds: the
+wave-level marker that stops N parallel agents from each re-tripping an org-level limit.
 
-After every `@coderabbitai review` ping, CR may respond with a rate-limit message instead of a
-review. Two asymmetric cases:
-
-| State | Trigger | Action |
-|---|---|---|
-| A. Normal review | CR posts a review body within ~5 min | Phase 3 (normal loop) |
-| B. Triggered, no body | "Review triggered" but no review after 10 min | Keep polling |
-| C. Per-hour rate limit | "exceeded the limit ... Please wait **N minutes** before retrying" | Parse duration, schedule wakeup retry |
-| D. Org credits exhausted | "out of usage credits" / "billing" (NO duration) | STOP and report; do NOT retry |
-| E. No activity | No CR comment of any kind after 15 min | Report "CR unreachable"; no auto-retry |
-
-### Case A (per-hour rate limit) - AUTO-RETRYABLE
-Parse the wait duration (hours/minutes/seconds). Cap at 3900s. Add a 60s buffer. Write the
-wave-level marker file, then `ScheduleWakeup({delay_seconds, reason, prompt: "/pr-iterate <N>"})`.
-Do NOT keep the session open polling. Fallback if ScheduleWakeup is unavailable: emit a clear
-human-readable handoff with the local resume time.
-
-### Case B (org credits exhausted) - NOT AUTO-RETRYABLE
-Stop. Post a one-time PR comment (NOT a re-ping). Write the `BILLING_BLOCKED` marker. Mark the
-PR `ready-for-merge-without-CR` (if CLEAN + green) or `blocked-on-cr-billing`.
+- **Per-hour rate limit (auto-retryable):** write the deadline marker, then
+  `ScheduleWakeup({delay_seconds, reason, prompt: "/pr-iterate <N>"})` for the cooldown from
+  `cr-loop` §2. Do NOT keep the session open polling. If ScheduleWakeup is unavailable, emit a
+  clear human-readable handoff with the local resume time.
+- **Org credits exhausted (not auto-retryable):** stop. Post a one-time PR comment (NOT a
+  re-ping). Write the `BILLING_BLOCKED` marker. Mark the PR `ready-for-merge-without-CR` (if
+  CLEAN + green) or `blocked-on-cr-billing`.
 
 ### Wave-level coordination (multi-PR)
 CR's rate-limit is org-level. Marker file `~/.claude/agent-comms/cr-rate-limit-deadline.txt`:
-Case A content = the UTC ISO-8601 deadline; Case B content = literal `BILLING_BLOCKED`. Every
+per-hour content = the UTC ISO-8601 deadline; credits content = literal `BILLING_BLOCKED`. Every
 agent checks the marker before a re-ping; if still within the window, skip the ping and schedule
 a wakeup. Create the directory first (`mkdir -p ~/.claude/agent-comms`; nothing else creates it
 now), then write a temp file in that same directory and `mv` it over the marker; a temp file on
 another filesystem (e.g. `/tmp`) makes the `mv` a non-atomic copy. First agent after the deadline removes the
-stale Case-A marker; Case-B markers persist until manually cleared.
-
-### Rate-limit recovery review command
-On rate-limit recovery, re-request with `@coderabbitai full review` (NOT the incremental
-`@coderabbitai review`), because a throttled incremental pass silently skips the in-flight
-commits and yields a false-clean.
+stale deadline marker; `BILLING_BLOCKED` markers persist until manually cleared.
 
 ## Phase 6 - Cleanup / report (never self-merge)
 
@@ -383,9 +366,5 @@ Once ALL THREE are true: CR's latest review says `Actionable comments posted: 0`
 
 ## Reconciliation sweep (before declaring PR work done)
 
-Before declaring the iteration done for a session, sweep every PR you touched: each must be in a
-clean terminal CR state (latest review `Actionable comments posted: 0`, CI green, `mergeStateStatus
-CLEAN`), OR still have a live follow-up mechanism (a local `cr-watch`, or - in the scheduled
-runtime - remain in the tracked in-flight set so the next fire re-examines it), OR be closed.
-Re-arm / re-ping any that silently fell out of the loop. A re-ping with no follow-up mechanism is
-a defect.
+Run the `pr-lifecycle` skill's reconciliation sweep over every PR you touched before declaring the
+iteration done for a session.
