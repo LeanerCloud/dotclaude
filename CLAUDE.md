@@ -384,7 +384,8 @@ PRs/agents run at once. Headlines:
 - Use subagents liberally to keep the main context clean; one focused task per subagent. **Brief them
   fully** — they start cold: goal, relevant context, expected output format, length cap.
 - **Reuse a live agent before spawning a new one** (`SendMessage`) when it already holds the relevant
-  files, diff, or investigation thread. Do NOT reuse when independence is the point (adversarial
+  files, diff, or investigation thread and its context is still small (roughly under 100K tokens); a
+  new task gets a fresh agent, even in the same repo. Do NOT reuse when independence is the point (adversarial
   verification, fresh-eyes review), when a different tier is needed, or when its context is polluted.
 - **In `Workflow` scripts, batch same-file work into one agent** — `agent()` calls always start cold.
 - **When NOT to use subagents**: tight debugging loops where each iteration informs the next, work
@@ -395,6 +396,9 @@ PRs/agents run at once. Headlines:
   a watcher that emits an `idle_notification` is "waiting for more," not "done" — `TaskStop` any still
   parked once its PR reaches a terminal state. Run in the **foreground only** when the very next step
   truly needs that result, or for the carve-outs above.
+- **Token budget: every call re-sends the agent's whole context.** One issue per fresh implementer,
+  at most 3-4 working agents unless the user asks for more, CI waits in a background shell (never an
+  agent poll loop), and tests/lint print only failures. Details: `pr-orchestration` §4.
 - **Delegate to the cheapest sufficient tier — actively, not just when in doubt.** The main session is
   usually the most expensive option.
 - **Set the `model` parameter on EVERY `Agent` call — never rely on inheritance.**

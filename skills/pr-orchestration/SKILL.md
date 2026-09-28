@@ -55,7 +55,7 @@ by preference.
 | Subagents | yes, that is the whole design | **no** - a routine is one flat agent, single model, no `Agent` tool |
 | Tier split | per-agent, live (top tier reviews, a tier down implements) | across *separate routines* handing off through GitHub state |
 | Coordination state | orchestrator context + task list + the `multi-agent-comms` skill locks | GitHub labels only |
-| Watchers | background `Agent`s per push and per PR | the next cron fire *is* the watcher |
+| Watchers | background shell watchers per push (CI), `Agent`s per PR (review) | the next cron fire *is* the watcher |
 | Good for | a backlog you are actively working, high-stakes money paths | steady unattended drip, backlogs nobody is watching |
 
 They compose: the scheduled variant can open a PR an interactive session
@@ -161,9 +161,38 @@ the `cr-loop` skill. **Always check freshness before pushing** (the `worktrees` 
 
 Tier selection is owned by the `subagent-strategy` skill (§"Delegate to the
 cheapest sufficient tier", §"Routine PR-shipping splits across tiers"); do
-not re-derive it here or in the `issue-pr-autopilot` skill. Three controls are
-specific to running many items at once:
+not re-derive it here or in the `issue-pr-autopilot` skill.
 
+Every tool call re-sends the agent's whole context, so an agent costs
+roughly its context size times its call count, and output tokens are
+negligible by comparison. A 2026-09-28 burndown that handed each worker 7
+to 10 issues and ran about 35 agents at once re-read over 2.7 billion
+cached tokens: workers grew to about 350K tokens, so each later issue cost
+several times the first.
+The controls:
+
+- **One issue per fresh implementer.** Never hand one agent a batch. Reap it
+  (`TaskStop`) once its deliverable lands: PR open and CI terminal. Later
+  rounds on that same PR may resume it; a new issue gets a new agent. Standing
+  rosters (the `subagent-strategy` skill) are for reviewers, whose per-round
+  delta is small. Every agent also starts at a fixed floor of about 75K
+  tokens (system prompt, CLAUDE.md files, memory index, tool and agent-type
+  schemas) that is re-sent on every call, so split a task expected to need
+  more than about 80 tool calls into separate fresh agents (for example
+  migration, then rebase, then tests), and keep the always-loaded surface
+  small: unused agent definitions and irrelevant CLAUDE.md sections cost on
+  every call of every agent. Measured 2026-09-28: single-PR agents started
+  at 75K; a 146-call rework peaked at 238K, while 26 to 50-call reviews
+  peaked at 120K to 150K.
+- **Cap concurrency at 3 to 4 working agents** unless the user asks for more.
+  Background shell watchers do not count; agents do.
+- **Waiting costs nothing only in a shell.** CI and other long waits run as
+  one background shell watcher per the `ci-watch` skill, never as a polling
+  loop inside an agent, where each poll is a full-context call.
+- **The orchestrator stays lean.** Its context is re-read on every agent
+  notification: ask agents for short verdicts rather than transcripts, do not
+  read diffs or logs yourself, and reap idle agents as soon as they reach a
+  terminal state.
 - **A cheap preflight gate** before any expensive phase, so a quiet backlog
   costs almost nothing.
 - **Top-tier reasoning only on the bounded planning and review phases**; the
