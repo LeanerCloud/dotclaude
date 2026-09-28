@@ -24,34 +24,16 @@ Read this file end-to-end before doing anything. The skill NEVER opens a brand-n
 PR and NEVER merges - it only edits existing PRs (resolve conflicts, address CR
 findings, push, re-ping CR) and reports when a PR is ready for the human to merge.
 
-## Model tier policy - required
+## Agent layout
 
-**Pattern: plan = Opus, impl = Sonnet, parse = Haiku.** Every `Agent` dispatch this
-skill makes MUST pass an explicit `model:` parameter - never rely on inheritance from
-the calling session. This follows the global CLAUDE.md rules:
-
-- **"Delegate to the cheapest sufficient tier - actively, not just when in doubt."**
-  Every Opus dispatch below is justified because the step requires judgement / holding
-  many constraints in working memory; everything else drops to Sonnet or Haiku.
-- **"Set the `model` parameter on EVERY `Agent` call - never rely on inheritance."**
-- **"Routine PR-shipping splits across tiers: planning + iteration loops on Opus,
-  implementation on Sonnet."**
-
-### Phase-to-model mapping
-
-| Work | Model | Why |
-|---|---|---|
-| **Phase 1 triage** - read PR metadata, find worktree, decide entry phase | **Opus** | Hold the full PR shape + history + invariants while choosing the right entry phase. |
-| **Phase 1 CR-comment parsing** - extract findings into a structured list | **Haiku** | Pure text-extraction / classification against a known rubric. |
-| **Phase 2 rebase + conflict resolution** | **Opus** | Judgement on semantic divergence vs additive-merge. |
-| **Phase 3 per-finding triage** (fix / skip-stale / out-of-scope-issue / CR-misread) | **Opus** | Each finding needs a real judgement. |
-| **Phase 3 implementation** - applying the fix per finding | **Sonnet** | Once the plan is decided, the diff is mechanical. |
-| **Phase 4 push + re-ping mechanics** | **Sonnet** (or main session) | Mechanical: lock, push, comment, unlock. |
-| **Phase 5 iteration check** (wait for CR's next pass) | **Background shell wait** per `cr-loop` §2, then **Haiku** to parse | No model polls; on exit, parse the new CR review body for "Actionable comments posted: 0" or extract new findings. |
-| **Phase 6 cleanup report** | **Main session** | One-shot summary. |
-
-The main session reads each subagent's output, then dispatches the next phase's agent
-with the right `model:`. The main session itself stays in plan/dispatch mode.
+Set `model` on every dispatch; tiers per the `subagent-strategy` skill. Per PR, one
+orchestrator agent on the planning tier does Phase 1 triage, CR parsing, rebase and conflict
+judgement, per-finding disposition, and the Phase 4 push inline. It dispatches one fresh
+implementer on the implementation tier only when a decided fix is non-trivial (a batch of
+fixes for that PR goes to the same implementer; a mechanical one-liner the orchestrator
+applies itself). Phase 5 waits run as a background shell per `cr-loop` §2, never as a polling
+agent; the orchestrator parses the new review when the shell exits. This follows
+`pr-orchestration` §"Cost control": each extra agent re-sends a full cold context.
 
 ## Runtime-adaptive operation (local session vs constrained/remote agent)
 
@@ -59,7 +41,7 @@ This skill runs in two very different runtimes. **Detect which by tool availabil
 (is the `Agent`/`Task` tool present?) and adapt:
 
 - **Local interactive session** (has `Agent`/`Task`, persistent across turns, can
-  `ScheduleWakeup`): use everything below as written - fan out per-PR Opus orchestrators,
+  `ScheduleWakeup`): use everything below as written - fan out per-PR orchestrators,
   spawn `cr-watch-<pr-#>` / `ci-watch-<sha>-<wf>` background agents, schedule wakeups for
   CR responses. This is the default.
 - **Constrained / remote agent** (NO `Agent`/`Task` tool, bounded single session, e.g. the
@@ -83,7 +65,7 @@ in both runtimes.
 ## Multi-PR fan-out mode
 
 The skill accepts one OR many PR numbers as positional args. When >1 PR is given, the
-main session **fans out one Opus orchestrator agent per PR in a single parallel-dispatch
+main session **fans out one orchestrator agent per PR in a single parallel-dispatch
 message** rather than running them sequentially.
 
 ### Arg-shape acceptance (parsed in Phase 0)
@@ -121,8 +103,8 @@ the whole input if any token fails. Zero tokens after parsing triggers auto-disc
 
 ### Parallelism cap and wave logic
 
-**Hard cap: 6 parallel `Agent` dispatches per wave.** N<=6 no stacks -> single wave.
-N>6 -> sequential waves of 6. Stacks -> bottom-of-stack + non-stacked first, then up.
+**Hard cap: 4 parallel `Agent` dispatches per wave** (`pr-orchestration` §"Cost control").
+N<=4 no stacks -> single wave. N>4 -> sequential waves of 4. Stacks -> bottom-of-stack + non-stacked first, then up.
 
 ### When to fan out vs serialize
 
@@ -155,11 +137,10 @@ depends on another's merge order. Serialize when PRs form a stack (#A -> #B reba
 ## Phase 0 - Inputs
 
 - Skill arguments: zero or more PR numbers (positional). Zero -> auto-discover + gate.
-  Single -> Phase 1-6 in main session. Multi -> fan-out (cap 6/wave).
+  Single -> Phase 1-6 in main session. Multi -> fan-out (cap 4/wave).
 - Repo derived from cwd (`gh repo view --json nameWithOwner --jq .nameWithOwner`).
-- Per the user's standing rules: delegate the actual implementation to a Sonnet subagent;
-  no `--yes` on project CLIs; no mid-loop confirmation prompts (EXCEPTION: the zero-arg
-  auto-discovery y/n gate is a pre-loop guard, allowed).
+- No mid-loop confirmation prompts (EXCEPTION: the zero-arg auto-discovery y/n gate is a
+  pre-loop guard, allowed).
 - The per-PR agent prompt template lives at `per-pr-agent-prompt.template.md` (same dir)
   with `{{PR_NUMBER}}` substituted. **If that file is absent, fall back to:** "Run Phase 1
   through Phase 6 of this SKILL.md for PR #<N>. Honor every hard constraint in the body."
@@ -334,24 +315,17 @@ Once ALL THREE are true: CR's latest review says `Actionable comments posted: 0`
 
 ## Hard constraints (always)
 
+Global rules (commit format, pre-commit, em-dashes, self-merge, push lock, label mirror) come
+from `CLAUDE.md` and the skills it routes to. The ones specific to this loop:
+
 - NEVER post `@coderabbitai review` without first running the dedup guard (no user-authored
-  re-ping in the last 5 minutes).
+  re-ping in the last 5 minutes); use `full review` on rate-limit recovery.
 - NEVER dispatch a list-iteration agent (iterating over N>1 PRs/issues with side-effects) on
   `model: haiku` - use sonnet or opus (haiku mis-indexes bash arrays and re-targets the same item).
 - ALWAYS `echo "pinged #<N>"` after each successful re-ping when iterating multiple PRs.
-- NEVER `git push --no-verify` or any pre-commit bypass.
-- NEVER heredoc `git commit -m` - always `git commit -F <path>` from `/tmp/claude/`.
-- NEVER add `Co-Authored-By: claude-flow` or any Anthropic/Claude mention to commits.
-- NEVER use em-dashes (U+2014) in code, comments, commit messages, PR bodies, or comments.
-- NEVER self-merge - the user merges.
 - NEVER silently drop a CR finding - always fix / mark-stale-with-SHA / file-follow-up-issue.
-- NEVER use `@coderabbitai resolve` - always `@coderabbitai review` (or `full review` on recovery).
-- NEVER push to a shared branch (e.g. `feat/*`, `main`) - only the PR's own branch.
-- NEVER pass `--yes` to any project CLI.
-- ALWAYS run the push under `flock` / `lockf` on `/tmp/agent-locks/<repo>-git-push-<branch-key>.lock`.
-- ALWAYS delegate the actual implementation to a Sonnet subagent; main session plans/dispatches.
-- ALWAYS file out-of-scope CR findings as separate triaged issues with the full label set.
-- ALWAYS run pre-commit hooks; on transient `tflint --init` 403 or stash collision, sleep 2 min, retry.
+- On a transient `tflint --init` 403 or pre-commit stash collision, sleep 2 min and retry.
+- NEVER push anything but the PR's own branch (never `main` or a shared `feat/*` branch).
 - ALWAYS mirror the closing-issue triage labels onto the PR if not already mirrored. On a
   non-default base branch, find that closing issue via the body-reference detection above, not
   `closingIssuesReferences`.
