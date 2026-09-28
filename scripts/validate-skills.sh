@@ -5,11 +5,21 @@
 # — no warning, the skill simply never exists. This hook turns that silent skip into a loud failure.
 set -euo pipefail
 
-skills_dir="${1:-$(cd "$(dirname "$0")/.." && pwd)/skills}"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/skill-source.sh
+. "$script_dir/lib/skill-source.sh"
+
+skills_dir="${1:-$(dirname "$script_dir")/skills}"
 
 # Codex renders the whole skill list into at most ~8000 characters and silently shortens
 # descriptions past that, degrading selection with no warning. The total is the constraint that
 # actually bites; the per-skill cap is a sanity bound so one skill cannot eat the budget.
+#
+# Only skills this repo authors count toward the total, because only those are exported to Codex and
+# Gemini: the imported third-party skills (skills/UPSTREAM.md) are Claude Code only, and
+# setup-agent-symlinks.sh applies the same rule. Structural checks still run over every skill: a
+# malformed imported SKILL.md is invisible to Claude Code too. An over-long description on a
+# symlinked skill is upstream's to fix, so it warns rather than fails.
 max_description=400
 max_total=7000
 total=0
@@ -18,6 +28,10 @@ failures=0
 fail() {
   echo "error: $1" >&2
   failures=$((failures + 1))
+}
+
+warn() {
+  echo "warn: $1" >&2
 }
 
 if [ ! -d "$skills_dir" ]; then
@@ -76,12 +90,20 @@ for skill_path in "$skills_dir"/*/; do
   description="${description#[-+]}"
   description="${description# }"
 
+  imported=false
+  skill_is_imported "$skill_path" && imported=true
+
   if [ -z "$description" ]; then
     fail "$skill_name: frontmatter has no 'description:' field"
   elif [ "${#description}" -gt "$max_description" ]; then
-    fail "$skill_name: description is ${#description} chars, over the $max_description-char cap"
+    if [ "$imported" = true ]; then
+      warn "$skill_name: description is ${#description} chars, over the $max_description-char cap - upstream's to fix"
+    else
+      fail "$skill_name: description is ${#description} chars, over the $max_description-char cap"
+    fi
   fi
 
+  [ "$imported" = true ] && continue
   total=$((total + ${#description} + ${#skill_name} + 4))
 done
 
@@ -89,7 +111,7 @@ if [ "$total" -gt "$max_total" ]; then
   fail "skill list renders to $total chars, over the $max_total budget — Codex truncates near 8000"
 fi
 
-echo "skill list: $total / $max_total chars"
+echo "exported skill list: $total / $max_total chars"
 
 if [ "$failures" -gt 0 ]; then
   echo "$failures skill validation error(s)" >&2

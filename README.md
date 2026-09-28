@@ -52,6 +52,7 @@ successor skills, so older references keep resolving.
 |------|---------|
 | [`scripts/setup-agent-symlinks.sh`](scripts/setup-agent-symlinks.sh) | Link each skill into `~/.agents/skills/` (read by Codex and Gemini) and the root config into `~/.codex` and `~/.gemini`. |
 | [`scripts/validate-skills.sh`](scripts/validate-skills.sh) | Pre-commit check that every skill stays discoverable by all three tools. |
+| [`scripts/import-upstream-skills.sh`](scripts/import-upstream-skills.sh) | Re-sync the curated third-party skills from their submodules under [`upstreams/`](upstreams/). What is imported and why: [`skills/UPSTREAM.md`](skills/UPSTREAM.md). |
 | [`scripts/bootstrap-triage-labels.sh`](scripts/bootstrap-triage-labels.sh) | Create the full triage-rubric label set in a repo, once, before its first triage pass. Idempotent; never deletes a label. |
 | [`agents/`](agents/) | Submodule pointing to [`contains-studio/agents`](https://github.com/contains-studio/agents) — a curated agent library. |
 | [`local-paths.md.example`](local-paths.md.example) | Template for `local-paths.md`, per-machine paths and tool locations referenced from the rule files (e.g. the Compass binary). |
@@ -91,8 +92,9 @@ successor skills, so older references keep resolving.
    ```bash
    ~/.claude/scripts/setup-agent-symlinks.sh
    ```
-   This symlinks every skill into `~/.agents/skills/`, which Codex reads as its user scope and
-   Gemini reads as an alias of `~/.gemini/skills/`. Claude Code reads `~/.claude/skills/` directly,
+   This symlinks every native skill into `~/.agents/skills/`, which Codex reads as its user scope
+   and Gemini reads as an alias of `~/.gemini/skills/`. Imported skills stay Claude Code only (see
+   [`skills/README.md`](skills/README.md)). Claude Code reads `~/.claude/skills/` directly,
    so there is one canonical copy and no duplication. Verify with `gemini skills list` and
    `codex debug prompt-input`.
 

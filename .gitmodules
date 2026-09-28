@@ -1,3 +1,27 @@
 [submodule "agents"]
 	path = agents
 	url = https://github.com/cristim/agents.git
+[submodule "upstreams/cursor-plugins"]
+	path = upstreams/cursor-plugins
+	url = https://github.com/cursor/plugins.git
+	shallow = true
+[submodule "upstreams/superpowers"]
+	path = upstreams/superpowers
+	url = https://github.com/obra/superpowers.git
+	shallow = true
+[submodule "upstreams/anthropic-skills"]
+	path = upstreams/anthropic-skills
+	url = https://github.com/anthropics/skills.git
+	shallow = true
+[submodule "upstreams/terraform-skill"]
+	path = upstreams/terraform-skill
+	url = https://github.com/antonbabenko/terraform-skill.git
+	shallow = true
+[submodule "upstreams/owasp-security"]
+	path = upstreams/owasp-security
+	url = https://github.com/agamm/claude-code-owasp.git
+	shallow = true
+[submodule "upstreams/gstack"]
+	path = upstreams/gstack
+	url = https://github.com/garrytan/gstack.git
+	shallow = true

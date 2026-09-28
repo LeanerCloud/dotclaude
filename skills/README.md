@@ -20,6 +20,18 @@ constraint on how they're written, not a happy accident — the rules below are 
 three. Run `scripts/setup-agent-symlinks.sh` to create `~/.agents/skills/<name>` symlinks pointing
 back here. Nothing is copied and nothing is duplicated.
 
+## Two kinds of skill in this directory
+
+A plain directory is a skill written for this repo. A symlink into `../upstreams/`, or a
+`GENERATED-TRAMPOLINE` stub, is a skill curated from a third-party suite and pinned as a git
+submodule. [`UPSTREAM.md`](UPSTREAM.md) is the manifest: what was taken, what was rejected, and why.
+`scripts/import-upstream-skills.sh` re-syncs them and never touches a local fork.
+
+Imported skills are **Claude Code only**. Codex renders its whole skill list into ~8000 characters
+and shortens descriptions past that, so exporting 30-odd extra skills would silently degrade
+selection for all of them. `setup-agent-symlinks.sh` skips them and `validate-skills.sh` counts only
+the native set against the budget below.
+
 ## Writing a portable skill
 
 **Frontmatter must open the file and must set both fields.** Gemini *silently skips* a `SKILL.md`

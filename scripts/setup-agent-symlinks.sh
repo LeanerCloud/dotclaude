@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# shellcheck source=scripts/lib/skill-source.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/skill-source.sh"
+
 usage() {
   cat <<'USAGE'
 Usage: setup-agent-symlinks.sh [--home DIR] [--claude-dir DIR]
@@ -124,9 +127,19 @@ link_skills() {
   mkdir -p "$agents_skills_dir"
 
   found=0
+  skipped=0
   for skill_path in "$claude_dir"/skills/*/; do
     [ -f "$skill_path/SKILL.md" ] || continue
     skill_name="$(basename "$skill_path")"
+
+    # Imported skills (skills/UPSTREAM.md) stay Claude Code only: Codex renders its whole skill list
+    # into ~8000 characters and shortens descriptions past that, so exporting 30-odd extra skills
+    # would degrade selection for every skill, including these ones.
+    if skill_is_imported "$skill_path"; then
+      skipped=$((skipped + 1))
+      continue
+    fi
+
     link_one "${skill_path%/}" "$agents_skills_dir/$skill_name"
     found=$((found + 1))
   done
@@ -153,7 +166,7 @@ link_skills() {
     esac
   done
 
-  echo "linked $found skill(s) into $agents_skills_dir"
+  echo "linked $found skill(s) into $agents_skills_dir ($skipped imported skill(s) left Claude-only)"
 }
 
 link_shared_docs "$codex_dir"

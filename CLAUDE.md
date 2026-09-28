@@ -56,6 +56,8 @@ see the `pr-lifecycle` skill's CUDly final-HEAD gate.
 
 ## Skills
 
+### Written here
+
 | Skill | Invoke when |
 |-------|-------------|
 | `coding-standards` | writing or reviewing code; first visit to any project; before launching a user-facing app |
@@ -81,6 +83,65 @@ see the `pr-lifecycle` skill's CUDly final-HEAD gate.
 | `project-docs` | setting up, updating, or consulting project documentation |
 | `cristi-voice` | writing or reviewing site/marketing copy, LinkedIn posts, or any prose published under Cristian's or LeanerCloud's name |
 | `playwright-verify` | after any web-app change, before declaring it done; when setting up a new web project's local run/verification harness |
+
+### Imported
+
+Curated from pstack, cursor-team-kit, superpowers, gstack, `anthropics/skills`, `terraform-skill`
+and `claude-code-owasp`, pinned as submodules under `~/.claude/upstreams/`. What was taken, what was
+rejected and why: [`skills/UPSTREAM.md`](skills/UPSTREAM.md). These are **Claude Code only** - Codex
+truncates its skill list near 8000 characters, so `setup-agent-symlinks.sh` exports only the table
+above. Where an imported skill contradicts this file, **this file wins**.
+
+| Skill | Invoke when |
+|-------|-------------|
+| `brainstorming` | the requirement is still vague - before any plan exists |
+| `office-hours` | deciding whether the thing is worth building at all |
+| `how` / `why` / `teach` | how a subsystem runs / why it was built that way / explaining either to a person |
+| `architect` | settling types, signatures and module shape before code |
+| `arena` | one attempt would lock in the wrong shape - run N in parallel, graft the best |
+| `systematic-debugging` | any bug, test failure or unexpected behaviour, **before** proposing a fix |
+| `tdd` | a bug with a cheap local test target, or an explicit ask for a failing test first |
+| `blast-radius` | what a change could break beyond the diff - proven by running code |
+| `interrogate` | adversarial multi-lens review of a diff (§4's independent reviewer) |
+| `thermo-nuclear-code-quality-review` | the harshest maintainability pass on abstraction quality and file sprawl |
+| `owasp-security` / `cso` | security review of code / threat-modelling a system |
+| `verify-this` | one claim needs fresh local evidence, baseline vs treatment |
+| `verification-before-completion` | about to say done, fixed, or passing |
+| `create-verification-skill` / `maintain-verification-skill` | a repo has no scripted way to drive its real app / that script has drifted |
+| `figure-it-out` / `show-me-your-work` | a large migration or unattended run / the decision trail it must leave |
+| `technical-writing` / `unslop` / `deslop` | writing docs, RFCs or PR text / cutting AI tells from prose / from a diff |
+| `typescript-best-practices` / `terraform-skill` | depth under `conventions` for TS / Terraform |
+| `mcp-builder` | authoring an MCP server |
+| `reflect` / `writing-skills` | turning a long task's lessons into skill edits / writing the skill |
+| `health` / `retro` | code-quality dashboard / weekly engineering retrospective |
+
+The pstack and cursor-team-kit skills were written for Cursor. Resolve every Cursor primitive they
+name (`Task` tool, `~/.cursor/rules/pstack-models.mdc`, Cursor model slugs, `.cursor/skills/`)
+through [`upstreams/HOST-MAPPING.md`](upstreams/HOST-MAPPING.md); the model roster their multi-model
+fan-outs read is [`pstack-models.md`](pstack-models.md).
+
+### Chains for common tasks
+
+Skills compose. The routing above answers "which one"; this answers "in what order".
+
+- **Non-trivial change** - `brainstorming` (if the ask is vague) → `how`/`why` (§0, map before
+  changing) → `architect` (settle the shape) → §1 plan + `review-and-implement` → `worktrees` →
+  `tdd` where a cheap test target exists → `blast-radius` → `review-staged-diff` → `deslop` →
+  `git-commit` → `ci-watch` → `pr-lifecycle` → `cr-loop`.
+- **Bug report** - `systematic-debugging` (root cause first, §6) → `tdd` (regression test that fails
+  pre-fix) → `blast-radius` → `verification-before-completion` → `git-commit`.
+- **Understanding unfamiliar code** - Compass (§0) → `how` → `why` → `teach` if a person needs it.
+- **Review before it lands** - `review-staged-diff` always;
+  `thermo-nuclear-code-quality-review` when the concern is maintainability; `interrogate` on money,
+  auth or tenant-isolation paths; `owasp-security` when the diff touches input, auth or secrets.
+- **Proving it works (§4)** - `verify-this` for a single claim, `playwright-verify` for a web-app
+  change, `create-verification-skill` once per repo so later sessions inherit the harness,
+  `verification-before-completion` as the last gate before saying done.
+- **Wide design space** - `arena` instead of one attempt, then `interrogate` the winner.
+- **Large migration or unattended run** - `figure-it-out` for the playbook, `show-me-your-work` for
+  the decision trail, `pr-orchestration` for the fan-out.
+- **After a long task** - `reflect` to route the transcript's lessons into concrete skill edits,
+  `writing-skills` to write them, plus the §3 memory entry.
 
 Read `~/.claude/projects.md` at the start of every session, and update it whenever working in a
 project not yet listed (fields: Project, Path, Stack, Description). Per-machine paths and tool
