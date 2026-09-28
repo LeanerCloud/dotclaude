@@ -251,16 +251,16 @@ the job or ~80% of it. Duplication is far easier to prevent than to clean up.
 ### 1b. Worktree Isolation Per Change
 
 Multi-commit or long-running work, and any work in a checkout another session may be using, happens in
-a dedicated git worktree branched off the current branch; never commit in-progress work directly on
-the branch you started from. **Invoke the `worktrees` skill** for the full protocol. Headlines: the
-plan must have passed the §1 review before the worktree exists; the authoritative plan lives at
-`~/.claude/projects/<project>/plans/<slug>.md` so a crash mid-implementation is recoverable; the
-merge gate is all plan items implemented + a clean §1 post-implementation review + 2 verification
-passes acted on, whatever the stakes; rebase rather than merge by default. A linked worktree does not
-isolate submodules either, so `git submodule update` inside one moves the main clone's submodule
-HEADs for every worktree on it. A small
-single-commit change can stay on a feature branch in the main checkout when no other session is
-using it.
+a dedicated git worktree under `~/.claude/worktrees/`, branched off the current branch; never commit
+in-progress work directly on the branch you started from. Never create a persistent worktree under
+`/tmp`, `$TMPDIR`, or another directory cleared at reboot. **Invoke the `worktrees` skill** for the
+full protocol. Headlines: the plan must have passed the §1 review before the worktree exists; the
+authoritative plan lives at `~/.claude/projects/<project>/plans/<slug>.md` so a crash
+mid-implementation is recoverable; the merge gate is all plan items implemented + a clean §1
+post-implementation review + 2 verification passes acted on, whatever the stakes; rebase rather than
+merge by default. A linked worktree does not isolate submodules either, so `git submodule update`
+inside one moves the main clone's submodule HEADs for every worktree on it. A small single-commit
+change can stay on a feature branch in the main checkout when no other session is using it.
 
 ### 1c. Local Review Loop — Opus Reviews Every Implementation Change
 
