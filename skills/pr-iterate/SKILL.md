@@ -47,7 +47,7 @@ the calling session. This follows the global CLAUDE.md rules:
 | **Phase 3 per-finding triage** (fix / skip-stale / out-of-scope-issue / CR-misread) | **Opus** | Each finding needs a real judgement. |
 | **Phase 3 implementation** - applying the fix per finding | **Sonnet** | Once the plan is decided, the diff is mechanical. |
 | **Phase 4 push + re-ping mechanics** | **Sonnet** (or main session) | Mechanical: lock, push, comment, unlock. |
-| **Phase 5 iteration check** (poll CR's next pass) | **Haiku** | Parse the new CR review body for "Actionable comments posted: 0" or extract new findings. |
+| **Phase 5 iteration check** (wait for CR's next pass) | **Background shell wait** per `cr-loop` §2, then **Haiku** to parse | No model polls; on exit, parse the new CR review body for "Actionable comments posted: 0" or extract new findings. |
 | **Phase 6 cleanup report** | **Main session** | One-shot summary. |
 
 The main session reads each subagent's output, then dispatches the next phase's agent
