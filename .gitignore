@@ -69,5 +69,14 @@ RTK.md
 # silently swallow a future `skills/worktrees/` too.
 /worktrees/
 
+# Skills Claude Code syncs from claude.ai at runtime (one bucket dir per account)
+/skills/synced/
+
+# Agent scratch output: watcher and gate logs, commit-message buffers, verification checkouts
+/logs/
+/state/
+/tmp/
+/verification/
+
 # macOS junk
 .DS_Store

@@ -27,6 +27,8 @@ fi
 
 for skill_path in "$skills_dir"/*/; do
   [ -d "$skill_path" ] || continue
+  # Gitignored trees (the runtime-synced skills/synced/) are not ours to validate.
+  git -C "$skills_dir" check-ignore -q "$skill_path" 2>/dev/null && continue
   skill_name="$(basename "$skill_path")"
   skill_md="$skill_path/SKILL.md"
 
