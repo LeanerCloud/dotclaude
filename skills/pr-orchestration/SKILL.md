@@ -175,7 +175,15 @@ The controls:
   (`TaskStop`) once its deliverable lands: PR open and CI terminal. Later
   rounds on that same PR may resume it; a new issue gets a new agent. Standing
   rosters (the `subagent-strategy` skill) are for reviewers, whose per-round
-  delta is small.
+  delta is small. Every agent also starts at a fixed floor of about 75K
+  tokens (system prompt, CLAUDE.md files, memory index, tool and agent-type
+  schemas) that is re-sent on every call, so split a task expected to need
+  more than about 80 tool calls into separate fresh agents (for example
+  migration, then rebase, then tests), and keep the always-loaded surface
+  small: unused agent definitions and irrelevant CLAUDE.md sections cost on
+  every call of every agent. Measured 2026-09-28: single-PR agents started
+  at 75K; a 146-call rework peaked at 238K, while 26 to 50-call reviews
+  peaked at 120K to 150K.
 - **Cap concurrency at 3 to 4 working agents** unless the user asks for more.
   Background shell watchers do not count; agents do.
 - **Waiting costs nothing only in a shell.** CI and other long waits run as
