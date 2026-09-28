@@ -1,8 +1,9 @@
 ---
 name: infra-ops
 description: Rollback awareness, secrets handling, monitoring, timeouts, CI/CD and Terraform
-  operational rules, including staging-first deploys. Invoke when working on infrastructure,
-  deployments, cloud resources, or any ops concern.
+  operational rules, including staging-first deploys, and multi-repo integration builds. Invoke when
+  working on infrastructure, deployments, cloud resources, any ops concern, or when assembling,
+  building and testing unmerged work across several repos.
 ---
 
 # Infrastructure & Operations
@@ -117,3 +118,26 @@ Invoke this skill when working on infrastructure, deployments, cloud resources, 
 - Keep pipeline configs in version control; treat CI/CD changes with the same review rigour as application code
 - Use short-lived deploy credentials (OIDC tokens) rather than long-lived CI secrets where possible
 - **Release strategy**: tag releases in git with semantic versions (`v1.2.3`); maintain a CHANGELOG; automate release notes generation from commit messages or PR titles; in container registries also push a `latest` tag pointing to the most recent production image
+
+## Multi-Repo Integration Builds
+
+Assembling unmerged work across several repos, building it, and testing the result has its own
+failure modes, all of which fail *silently*:
+
+- **Enumerate loudly.** A loop over repos, PRs or submodules must surface failures, not print only
+  successes. Default branches differ (`main` vs `master`), queries fail, repos get missed. Report
+  counts as "what I found", never as "what exists", and re-check before claiming completeness.
+- **One clean build exit is not a complete build.** After new targets appear, the first run may
+  regenerate the build graph and execute the old one, exiting 0 with work still pending. Ask the
+  build system what remains (`ninja -n`) before believing it.
+- **Say which layer is under test.** A component built from integration branches running against
+  stock system libraries is not "the integrated stack". Name the parts that are, and the parts that
+  are not.
+- **Prefer testing a private runtime over installing one.** A locally built runtime exercised from a
+  disposable location beats replacing the machine's. When a project guards that path (setuid
+  binaries commonly ignore environment overrides under `AT_SECURE`), treat the guard as correct and
+  find a supported route rather than defeating it.
+- **Never install or publish from a tree with uncommitted changes.** The artifact becomes
+  unreproducible by anyone the moment that working tree is cleaned. Commit first, even to a
+  throwaway branch, so the artifact is attributable to a SHA; record what was actually built rather
+  than what should have been.
