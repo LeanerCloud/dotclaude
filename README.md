@@ -44,15 +44,16 @@ portability contract and the per-tool discovery paths.
 | [`work-selection`](skills/work-selection/) | "what should I work on next?" |
 | [`infra-ops`](skills/infra-ops/) | infrastructure, deployments, cloud resources, ops |
 | [`project-docs`](skills/project-docs/) | project documentation, ADRs, `known-issues.md` |
-
-The former flat topic docs (`git-workflow.md`, `triage.md`, …) remain as pointer stubs naming their
-successor skills, so older references keep resolving.
+| [`playwright-verify`](skills/playwright-verify/) | after any web-app change, before declaring it done |
+| [`cristi-voice`](skills/cristi-voice/) | writing or reviewing prose published under Cristian's or LeanerCloud's name |
 
 | Other files | Purpose |
 |------|---------|
 | [`scripts/setup-agent-symlinks.sh`](scripts/setup-agent-symlinks.sh) | Link each skill into `~/.agents/skills/` (read by Codex and Gemini) and the root config into `~/.codex` and `~/.gemini`. |
 | [`scripts/validate-skills.sh`](scripts/validate-skills.sh) | Pre-commit check that every skill stays discoverable by all three tools. |
 | [`scripts/import-upstream-skills.sh`](scripts/import-upstream-skills.sh) | Re-sync the curated third-party skills from their submodules under [`upstreams/`](upstreams/). What is imported and why: [`skills/UPSTREAM.md`](skills/UPSTREAM.md). |
+| [`scripts/validate-worktree-policy.sh`](scripts/validate-worktree-policy.sh) | Check that persistent worktrees stay on a durable path. |
+| [`scripts/hooks/skill-reminder.sh`](scripts/hooks/skill-reminder.sh) | `PreToolUse(Bash)` hook that reminds the session of the always-apply rules now inside skills. |
 | [`scripts/bootstrap-triage-labels.sh`](scripts/bootstrap-triage-labels.sh) | Create the full triage-rubric label set in a repo, once, before its first triage pass. Idempotent; never deletes a label. |
 | [`agents/`](agents/) | Submodule pointing to [`contains-studio/agents`](https://github.com/contains-studio/agents) — a curated agent library. |
 | [`local-paths.md.example`](local-paths.md.example) | Template for `local-paths.md`, per-machine paths and tool locations referenced from the rule files (e.g. the Compass binary). |

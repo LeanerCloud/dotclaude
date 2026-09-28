@@ -17,9 +17,8 @@ Two mechanisms:
      ~/.agents/skills as an alias of ~/.gemini/skills, so a single tree serves
      both. Claude Code reads CLAUDE_DIR/skills directly - the canonical copy.
 
-  2. Root config + the legacy topic-doc paths -> HOME/.codex and HOME/.gemini.
-     The topic docs are now pointer stubs naming their successor skills; the
-     links are kept so any reference to the old paths still resolves.
+  2. Root config (CLAUDE.md as AGENTS.md/GEMINI.md, local-paths.md,
+     projects.md) -> HOME/.codex and HOME/.gemini.
 
 Options:
   --home DIR        Home directory containing .codex and .gemini (default: $HOME)
@@ -110,16 +109,19 @@ link_shared_docs() {
   mkdir -p "$agent_dir"
 
   link_one "$claude_dir/CLAUDE.md" "$agent_dir/AGENTS.md"
-  link_one "$claude_dir/coding-standards.md" "$agent_dir/coding-standards.md"
-  link_one "$claude_dir/conventions.md" "$agent_dir/conventions.md"
-  link_one "$claude_dir/git-workflow.md" "$agent_dir/git-workflow.md"
-  link_one "$claude_dir/infra-ops.md" "$agent_dir/infra-ops.md"
   link_one "$claude_dir/local-paths.md" "$agent_dir/local-paths.md"
-  link_one "$claude_dir/multi-agent-comms.md" "$agent_dir/multi-agent-comms.md"
-  link_one "$claude_dir/project-docs.md" "$agent_dir/project-docs.md"
   link_one "$claude_dir/projects.md" "$agent_dir/projects.md"
-  link_one "$claude_dir/tool-usage.md" "$agent_dir/tool-usage.md"
-  link_one "$claude_dir/triage.md" "$agent_dir/triage.md"
+
+  # Prune links earlier versions made to the retired topic-doc stubs, under the same scoping as the
+  # skill prune below: only a dangling symlink whose target is exactly the old CLAUDE_DIR path.
+  for name in coding-standards conventions git-workflow infra-ops multi-agent-comms project-docs \
+    tool-usage triage; do
+    link="$agent_dir/$name.md"
+    if [ -L "$link" ] && [ ! -e "$link" ] && [ "$(readlink "$link")" = "$claude_dir/$name.md" ]; then
+      rm "$link"
+      echo "pruned: $link (retired topic doc)"
+    fi
+  done
 }
 
 link_skills() {
