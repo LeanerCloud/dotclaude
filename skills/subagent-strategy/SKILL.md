@@ -23,7 +23,7 @@ The standard pattern (plan + review + worktree + implement + test + push + open-
 - **Iteration loops -> Opus.** Responding to CodeRabbit pass-N findings, fix-push cycles after a failed CI run, worktree-recovery after a watchdog stall, and conflict-resolution rebases all share one shape: react to feedback that didn't fit the original plan without breaking what already worked. Sonnet stalls here; the triage surface grows each round and a Sonnet-tier triage either dismisses real findings as "out of scope" without filing a follow-up or produces fixes that don't exercise the contract under review.
 - **Implementation phase -> Sonnet for simpler changes, Opus for non-trivial code.** Writing the diff per the plan's task breakdown, running tests/lint/build, opening the PR, mirroring labels, routine `gh`/`git` mechanics. With a clean plan in hand and design questions answered upstream, Sonnet ships simpler, decided-shape diffs cleanly across multi-file changes; escalate the implementation to **Opus** when the code itself is non-trivial: complex multi-file features, intricate/hard logic, or a refactor whose shape only becomes clear while implementing. Both the upstream planning/design and the non-trivial coding sit on Opus; on the implementation phase the only split is Sonnet for simpler, decided-shape diffs vs Opus once the code turns non-trivial.
 - **Carve-out boundary.** A single mechanical step within an iteration loop (apply a one-line CR-suggested diff verbatim, push) is still Haiku/Sonnet-able. Escalate to Opus when the loop step requires judgement about *what* to do, not just executing a decided fix. (Same rule of thumb as §1b: a small single-commit change in a checkout no other session is using doesn't need its own worktree.)
-- **Scope.** This split applies to PR-shipping. Other workflows have their own rubrics: backlog triage uses the `triage-labels` skill; routine watchers (`ci-watch-*`, `cr-watch-*`, `merge-watch-*`) use polling-on-Haiku, escalate-on-Opus per the `git-commit` skill.
+- **Scope.** This split applies to PR-shipping. Other workflows have their own rubrics: backlog triage uses the `triage-labels` skill; CI watchers are background shell commands per the `ci-watch` skill; the other routine watchers (`cr-watch-*`, `merge-watch-*`) use polling-on-Haiku, escalate-on-Opus per the `git-commit` skill.
 
 ## Background-first execution (don't block the main chat)
 
@@ -32,6 +32,8 @@ The main session is the user's interactive channel; blocking it on work that cou
 - **Background by default.** Subagent work that is long-running or independent - builds, full test/lint suites, CI/deploy/CR/merge watchers, rebases, migrations, codebase-wide sweeps, research fan-outs - is spawned with `run_in_background: true`. The harness notifies you on completion; **never poll** (`TaskOutput` / status loops just re-block the main session). Long shell commands (builds, test suites, `terraform plan`, large downloads) use Bash `run_in_background: true` the same way.
 - **Parallelize independent work.** When several tasks do not depend on each other, dispatch them in a single message (parallel `Agent` calls / one batch) rather than serially.
 - **Foreground only when** the very next action consumes the result and you cannot proceed without it, it is a tight debugging loop where each step informs the next, or it is interactive refinement with the user. When unsure whether the result gates the next step, background it and move other work forward.
+- **Wait in a shell, not in a model loop.** Every agent turn re-sends the agent's whole context, so an agent that polls CI or a PR every minute pays its full context per poll. Arm one background shell command that loops internally (`gh run watch <id> --exit-status`, `gh pr checks <n> --watch`) and end the turn; its exit wakes you. Concurrency caps and one-issue-per-agent are in the `pr-orchestration` skill §"Cost control".
+- **Keep tool output quiet.** Tests, lint and builds print only failures and summary lines (`2>&1 | tail -n 30`, or `grep -E 'FAIL|panic|error'`); read only the file ranges you need. Everything that lands in context is re-read on every later call.
 - **Hand control back while work runs.** After dispatching background work, return to the user or pick up the next independent task instead of idling - summarize what is running and what you will do when it lands.
 - **Keep verification honest.** Backgrounding must not skip the post-implementation review or end-to-end verification (CLAUDE.md section 4). Collect and check each background result before reporting it done: a launched agent is not a completed one.
 
@@ -45,7 +47,7 @@ Every fresh `Agent` spawn starts cold: it re-reads the project docs, re-greps, a
 - It is the **next round of the same loop**: §1c re-review of an updated diff, a CR-fix push to the same branch, a watcher follow-up on the same PR/run.
 - It is a **follow-up question** to a research/Explore/triage agent about material it already surveyed.
 
-In all of these, send the agent the new instruction with just the delta ("review the updated diff; previous findings 1 and 3 were fixed in <files>") instead of a full cold briefing.
+In all of these, send the agent the new instruction with just the delta ("review the updated diff; previous findings 1 and 3 were fixed in <files>") instead of a full cold briefing. After a rebase, give a reviewer the `git range-diff` rather than the whole diff again.
 
 **When NOT to reuse** (spawn fresh instead):
 
@@ -61,11 +63,11 @@ In all of these, send the agent the new instruction with just the delta ("review
 
 Everything above optimises a single follow-up. Over a multi-PR session the compounding win is different, and larger: an agent that has worked several changes in one subsystem accumulates a model of **how that subsystem fails**, which no briefing transfers and no file cache substitutes for.
 
-**Stand up a small named roster at the start of a multi-PR session** (typically one reviewer and one implementer per active subsystem) and route by name for its duration, rather than spawning per task. Reviewer/implementer independence still binds: pooling is per subsystem, not per PR, so a reviewer that reviewed PR A reviews PR B in the same subsystem and never reviews what it wrote.
+**Stand up a small named roster of reviewers at the start of a multi-PR session** (typically one per active subsystem) and route by name for its duration, rather than spawning per task. Reviewer/implementer independence still binds: pooling is per subsystem, not per PR, so a reviewer that reviewed PR A reviews PR B in the same subsystem and never reviews what it wrote. Implementers do not join the roster: each issue gets a fresh one, because an implementer's context grows with every file it edits and every later call re-reads it (`pr-orchestration` §"Cost control"). Hand a reviewer off too once its context is large enough that each call costs several times its first.
 
 What this buys beyond cached reads:
 
-- **Implementers apply prior corrections proactively.** An implementer told once that a wildcard-carrying scope must be tested with `len(x) == 0` rather than an `IsUnrestricted(x)` helper applied that unprompted to the next PR's identical guard. A fresh agent repeats the defect and costs another review round.
+- **Implementers apply prior corrections proactively.** An implementer told once that a wildcard-carrying scope must be tested with `len(x) == 0` rather than an `IsUnrestricted(x)` helper applied that unprompted to the next PR's identical guard. A fresh agent repeats the defect and costs another review round; because each issue gets a fresh implementer, carry such corrections into every implementer brief.
 - **Reviewers start finding defects in the *fixes*, not just the original bugs**: a fix that closed the less-reachable half of a bug; a guard that introduced a false refusal for every seeded group. Those need a model of the subsystem's failure shapes, not familiarity with a diff.
 - **The agent that found a bug is the cheapest verifier of the same bug's fix elsewhere**, because it already knows the shape.
 

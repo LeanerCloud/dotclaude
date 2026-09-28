@@ -334,6 +334,9 @@ PRs/agents run at once. Headlines:
   a watcher that emits an `idle_notification` is "waiting for more," not "done" — `TaskStop` any still
   parked once its PR reaches a terminal state. Run in the **foreground only** when the very next step
   truly needs that result, or for the carve-outs above.
+- **Token budget: every call re-sends the agent's whole context.** One issue per fresh implementer,
+  at most 3-4 working agents unless the user asks for more, CI waits in a background shell (never an
+  agent poll loop), and tests/lint print only failures. Details: `pr-orchestration` §4.
 - **Delegate to the cheapest sufficient tier — actively, not just when in doubt.** The main session is
   usually the most expensive option.
 - **Set the `model` parameter on EVERY `Agent` call — never rely on inheritance.**
