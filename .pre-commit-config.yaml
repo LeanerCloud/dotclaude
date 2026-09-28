@@ -43,3 +43,9 @@ repos:
         language: system
         files: '^(CLAUDE\.md|skills/|scripts/)'
         pass_filenames: false
+      - id: test-worktree-policy
+        name: test worktree policy parser cases
+        entry: bash tests/validate-worktree-policy.sh
+        language: system
+        files: '^(scripts/validate-worktree-policy\.sh|tests/validate-worktree-policy\.sh)$'
+        pass_filenames: false
