@@ -7,7 +7,7 @@ A second repo LeanerCloud/dotclaude is cloned into your workspace. Locate it (e.
 - skills/triage-labels/SKILL.md - the full label rubric for any PR/follow-up issue you create
 - skills/coding-standards/SKILL.md, skills/conventions/SKILL.md - code style (Go/TS/Terraform)
 - skills/worktrees/SKILL.md, skills/tool-usage/SKILL.md - process rules
-- commands/ and skills - including the pr-iterate flow for driving PRs to merge-ready
+- skills/pr-iterate/SKILL.md - the pr-iterate flow for driving PRs to merge-ready
 - skills/pr-orchestration/SKILL.md - the orchestration model this autopilot implements: roles, the handoff contract, the concurrency model (claims are not atomic locks), the merge gate, the loops, and the traps (absence read as success, stale worktree, stale plan)
 - skills/issue-pr-autopilot/SKILL.md (this same dotclaude repo) - the scheduled-variant specifics: the multi-routine design, label state machine, and watcher model you are the load-bearing half of
 Precedence: dotclaude global rules + the GLOBAL HARD CONSTRAINTS below are non-negotiable; the target repo's own CLAUDE.md/CONTRIBUTING.md win only for repo-specific code style and build/test commands.
@@ -22,7 +22,7 @@ Precedence: dotclaude global rules + the GLOBAL HARD CONSTRAINTS below are non-n
 
 ## Repository config (CUDly)
 - Repo: LeanerCloud/CUDly
-- Base branch for ALL PRs (and all rebases): feat/multicloud-web-frontend (NEVER target main or any shared branch)
+- Base branch for ALL PRs (and all rebases): main (PRs target it; NEVER push to it directly)
 - Implement cap per fire: turn at most 2 plan-ready issues into PRs this run (HARD cap)
 - CR-advance + conflict-resolve scope: ALL open in-flight PRs (issue labelled pr-created, not pr-merged, PR open), INCLUDING human-authored ones. Best-effort per fire in priority order; no hard cap; rotate across fires; log any deferred.
 
@@ -56,14 +56,14 @@ For each open issue labelled pr-created but not pr-merged: find its linked PR. N
 
 ## Phase 2 - Conflict-resolve (BEFORE CR-advance)
 For each in-flight PR (issue pr-created, not pr-merged, PR OPEN) whose mergeable state is CONFLICTING/DIRTY:
-- Rebase the PR's branch onto origin/feat/multicloud-web-frontend, resolve mechanical conflicts, run build/lint/tests + pre-commit (NEVER --no-verify), and push the PR's OWN branch with --force-with-lease.
+- Rebase the PR's branch onto origin/main, resolve mechanical conflicts, run build/lint/tests + pre-commit (NEVER --no-verify), and push the PR's OWN branch with --force-with-lease.
 - If a conflict needs a semantic human decision, STOP on that PR and log 'stopped-needs-human-conflict' (and if this issue has failed repeatedly, add needs-human). Do NOT address CR findings on a conflicting tree - that is what this phase guarantees: every PR reaching Phase 3 is non-conflicting.
 
 ## Phase 3 - CR-advance non-conflicting in-flight PRs (best-effort; ALL of them, no hard cap)
 Scope: EVERY open issue labelled pr-created but not pr-merged whose linked PR is OPEN and NON-conflicting (Phase 2 already rebased the conflicting ones), INCLUDING human-authored PRs.
 1. Order by priority (the linked issue's priority/urgency labels), oldest-unaddressed-CR first, so coverage rotates across fires.
 2. ACTIVE-HUMAN GUARD: if the PR's most recent commit is by a human (not you) and is NEWER than the latest coderabbitai[bot] review, SKIP it THIS fire and log 'deferred-active-human' (a later fire picks it up when they go quiet).
-3. For each remaining PR, run ONE pr-iterate pass (dotclaude commands/ + skills pr-iterate):
+3. For each remaining PR, run ONE pr-iterate pass (dotclaude skills/pr-iterate/SKILL.md):
    - If the latest CR review is 'Actionable comments posted: 0' / LGTM AND no unaddressed human review comments -> nothing to do; leave for human merge; skip.
    - Else: triage each CR finding into fix / skip-stale(cite SHA) / skip-out-of-scope(file a fully-triaged follow-up issue, cite CR URL) / skip-CR-misread. Apply fixes minimally + a regression test for real bugs; build/lint/tests + pre-commit (NEVER --no-verify); git commit -F; push the PR's OWN branch only; post a per-finding summary ending with '@coderabbitai review' (or '@coderabbitai full review' on rate-limit recovery; NEVER resolve). The watcher is structural: the PR stays in-flight, so the next worker fire re-examines it. Never self-merge.
 4. Continue best-effort in priority order. When your remaining budget/time is low, STOP cleanly and log every not-yet-processed PR as 'deferred (next fire)'. If CR is rate-limited (pr-iterate Phase 5b), log and move on.
@@ -74,12 +74,12 @@ Scope: EVERY open issue labelled pr-created but not pr-merged whose linked PR is
 3. For EACH chosen issue, sequentially:
    a. Read the autopilot-branch marker: BR=$(gh issue view <issue> --repo LeanerCloud/CUDly --json comments --jq '[.comments[].body | capture("autopilot-branch:\\s*(?<b>auto/[^\\s]+)").b] | last'). If MULTIPLE distinct auto/ branches exist (rare double-plan race), take the NEWEST and log the duplicate; you will clean up the orphan in step (h). If NO marker -> log 'no-branch-marker' and skip (do not implement).
    b. Fetch + checkout the plan branch: git fetch origin $BR && git switch $BR. Read plan.md from the branch.
-   c. PLAN-STALENESS guard: rebase the auto branch onto the current base: git fetch origin feat/multicloud-web-frontend && git rebase origin/feat/multicloud-web-frontend. Re-validate plan.md against the rebased tree. If the base diverged enough that the plan is stale/invalid, re-plan inline (adjust to the current code) or, if it now needs a human design call, log 'deferred-plan-stale' and skip - do not build on a rotten plan.
+   c. PLAN-STALENESS guard: rebase the auto branch onto the current base: git fetch origin main && git rebase origin/main. Re-validate plan.md against the rebased tree. If the base diverged enough that the plan is stale/invalid, re-plan inline (adjust to the current code) or, if it now needs a human design call, log 'deferred-plan-stale' and skip - do not build on a rotten plan.
    d. Implement to repo standards; reuse existing helpers; do not duplicate. Self-review the six dimensions (completeness, correctness, security, bugs, duplication, over-engineering); fix findings.
    e. Run build/lint/tests for the touched area; they MUST pass. Pre-commit hooks MUST pass - NEVER --no-verify.
-   f. ERASE THE PLAN FROM HISTORY so plan.md never ships regardless of how the human merges: git reset --soft origin/feat/multicloud-web-frontend (un-commit the plan commit + your work, keeping changes staged), then remove the plan file: git rm --cached plan.md && rm -f plan.md (and `git rm --cached -r .autopilot 2>/dev/null; rm -rf .autopilot` if you used that path). Now re-commit ONLY the implementation as clean conventional commit(s) via git commit -F <file> (NEVER heredoc -m). Verify plan.md is absent from git log and the diff: git log --oneline origin/feat/multicloud-web-frontend..HEAD and git diff --name-only origin/feat/multicloud-web-frontend...HEAD must NOT list plan.md.
+   f. ERASE THE PLAN FROM HISTORY so plan.md never ships regardless of how the human merges: git reset --soft origin/main (un-commit the plan commit + your work, keeping changes staged), then remove the plan file: git rm --cached plan.md && rm -f plan.md (and `git rm --cached -r .autopilot 2>/dev/null; rm -rf .autopilot` if you used that path). Now re-commit ONLY the implementation as clean conventional commit(s) via git commit -F <file> (NEVER heredoc -m). Verify plan.md is absent from git log and the diff: git log --oneline origin/main..HEAD and git diff --name-only origin/main...HEAD must NOT list plan.md.
    g. Push the branch: git push -u origin $BR (or --force-with-lease if the reset rewrote already-pushed history). Push ONLY this auto/ branch.
-   h. Open the PR against the base. Body MUST contain 'Closes #<issue>' + summary + verification notes. gh pr create --base feat/multicloud-web-frontend --head $BR --title "<conventional title>" --body-file <file>. Capture the number as PR. If you detected a duplicate auto/ branch in (a), delete the orphan now: git push origin --delete <orphan-branch> (only the orphan auto/<issue> branch, never base).
+   h. Open the PR against the base. Body MUST contain 'Closes #<issue>' + summary + verification notes. gh pr create --base main --head $BR --title "<conventional title>" --body-file <file>. Capture the number as PR. If you detected a duplicate auto/ branch in (a), delete the orphan now: git push origin --delete <orphan-branch> (only the orphan auto/<issue> branch, never base).
    i. LEAVE the attribution footer in place (do not strip). The runtime appends a 'Generated by Claude Code' / claude.ai session footer to every PR body it opens, and that footer is meant to stay: do not edit it out, and do not spend a `gh pr edit` round trip on it. The no-Claude-mention rule applies to commit messages and to PR prose you write yourself, not to the runtime's own footer.
    j. MIRROR triage labels onto the PR (MANDATORY, deterministic): LBLS=$(gh issue view <issue> --repo LeanerCloud/CUDly --json labels --jq '[.labels[].name | select(test("^(triaged|priority/|severity/|urgency/|impact/|effort/|type/)"))] | join(",")'); gh pr edit $PR --add-label "$LBLS"; VERIFY. Never put plan-ready/pr-created/pr-merged on the PR. Then add pr-created to the ISSUE: gh issue edit <issue> --add-label pr-created. (Adding pr-created here is your claim - it shrinks the race window per the concurrency model.)
    k. Trigger CodeRabbit: gh pr comment $PR --body "@coderabbitai review". The watcher is structural (see Runtime model): this PR is now in the in-flight set and the next worker fire's Phase 3 WILL re-examine it. Do NOT attempt to spawn a background watcher. Never @coderabbitai resolve. Never self-merge.
@@ -89,7 +89,7 @@ Scope: EVERY open issue labelled pr-created but not pr-merged whose linked PR is
 - NO em-dashes (U+2014) anywhere - chat, code, comments, commits, PR text. Use commas/hyphens/colons.
 - NO Anthropic/Claude mentions and NO 'Co-Authored-By: claude-flow' in commit messages or in PR prose you write. The runtime's own attribution footer on a PR body is left alone.
 - git commit -F, never heredoc -m; never --no-verify; never --yes on project CLIs.
-- Only ever push a PR's OWN auto/ feature branch; never push main or feat/multicloud-web-frontend.
+- Only ever push a PR's OWN auto/ feature branch; never push main.
 - Never self-merge; never @coderabbitai resolve. Never try to spawn background watcher/subagents (impossible here; the cron is the watcher).
 - plan.md (and any .autopilot/ plan file) MUST be erased from branch history before the PR is opened (Phase 4f) - it must never appear in the PR diff or the merged history.
 - EVERY created PR MUST end with its issue's triage rubric mirrored onto it, and the runtime's attribution footer still on its body. Self-check before moving on.

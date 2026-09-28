@@ -31,7 +31,7 @@ machinery, it does not duplicate it:
   the `coding-standards` skill, the `conventions` skill
 - Commit/PR hygiene -> the `git-commit` and `pr-lifecycle` skills; post-PR CR loop -> `cr-loop`
 - Model-tier selection -> the `subagent-strategy` skill
-- Driving an opened PR to merge-ready -> the `pr-iterate` flow (`commands/` / skills)
+- Driving an opened PR to merge-ready -> the `pr-iterate` skill (`skills/pr-iterate/SKILL.md`)
 
 ## Why multiple routines (the load-bearing constraint)
 
@@ -52,17 +52,16 @@ implement/CR loops.
 
 The `schedule` API floor is **1 hour** (`*/30` is rejected), and claude.ai
 schedules are capped at approximately **15 routine fires per day** (account-wide).
-Running four routines at 15-minute offsets would consume 96 fires/day -- far over
-that cap. The 4-hour cadence with two routines (6 planner + 6 worker = 12 fires/day)
-fits comfortably within the budget. See the "Run-budget" section below.
+See the "Run-budget" section below for how the two-routine cadence fits it.
 
 > **Runtime caveat (load-bearing):** remote scheduled agents run in Anthropic's
 > cloud, isolated, with their **own git checkout and zero access to a developer's
 > `~/.claude`**. The design solves this with **two git sources**: the target repo
 > **and** `LeanerCloud/dotclaude` (this repo). The cold agent reads the full
-> guideline set (git-workflow, triage, coding-standards, conventions, worktrees,
-> pr-iterate) from the `dotclaude` checkout, plus the target repo's own
-> `CLAUDE.md`/`CONTRIBUTING.md` for repo-specifics. Both routine prompts also inline
+> guideline set (the `git-commit`, `pr-lifecycle`, `cr-loop`, `triage-labels`,
+> `coding-standards`, `conventions`, `worktrees` and `pr-iterate` skills) from the
+> `dotclaude` checkout, plus the target repo's own `CLAUDE.md`/`CONTRIBUTING.md` for
+> repo-specifics. Both routine prompts also inline
 > the global hard constraints as a backstop. Keep `dotclaude` and each target
 > repo's committed conventions current.
 
@@ -305,7 +304,7 @@ it instantiates here:
 
 | Repo | Base branch | Eligibility (plan) | Plan cap/fire | Implement cap/fire | CR-advance cap/fire | Cadence | Status |
 |---|---|---|---|---|---|---|---|
-| `LeanerCloud/CUDly` | `feat/multicloud-web-frontend` | any `triaged` issue except `type/question`, `status/blocked`, `status/needs-info`, `needs-human` | 2 | 2 | none (all open in-flight PRs) | every 4h (plan `:00` / worker `:30`), 12 runs/day | disabled (pending validation) |
+| `LeanerCloud/CUDly` | `main` | any `triaged` issue except `type/question`, `status/blocked`, `status/needs-info`, `needs-human` | 2 | 2 | none (all open in-flight PRs) | every 4h (plan `:00` / worker `:30`), 12 runs/day | disabled (pending validation) |
 | other `LeanerCloud/*` | repo default unless stated | TBD | TBD | TBD | TBD | TBD | pending |
 | `cristim/*` | repo default | TBD | TBD | TBD | TBD | TBD | pending |
 
@@ -347,21 +346,11 @@ design uses 6 planner + 6 worker = **12 fires/day**, leaving a small headroom of
 
 ## Creating and operating the routines
 
-Follow these steps in order. Do not skip the prerequisite or the validation run.
+Follow these steps in order. Do not skip the validation run.
 
-### Step 1 - Prerequisite: merge this PR first
+### Step 1 - Create both routines (disabled)
 
-The two prompt files (`plan.prompt.md` and
-`worker.prompt.md`) must be on the `main` branch of
-`LeanerCloud/dotclaude` **before** you enable the routines. The cloud agent
-clones dotclaude's default branch on each fire; if the files are absent the
-routine STOPs with a "prompt missing" error by design.
-
-Do not enable either routine until this PR is merged into `main`.
-
-### Step 2 - Create both routines (disabled)
-
-The two routines already exist (created during design exploration):
+The two routines exist:
 
 | Routine | ID | Cron | Model |
 |---|---|---|---|
@@ -377,7 +366,7 @@ file (the cold agent cannot read it from disk without it being inlined). Set
 planner model to the current latest Opus model id and worker to the current
 latest Sonnet model id.
 
-### Step 3 - Validate disabled-first
+### Step 2 - Validate disabled-first
 
 Before enabling, do one manual `run` of the planner, then one manual `run` of
 the worker:
@@ -399,24 +388,11 @@ Confirm:
 - The worker reads its prompt, reconciles any in-flight PRs, and (if a
   `plan-ready` issue exists) implements it, opens a PR, mirrors labels, and
   triggers `@coderabbitai review`.
-- Neither run self-merges or pushes to `main` or `feat/multicloud-web-frontend`.
+- Neither run self-merges or pushes to `main`.
 
 Only after both validation runs pass: set `enabled: true` on each routine.
 
-### Step 4 - Run budget
-
-The account-wide cap is approximately **15 routine fires per day** across ALL
-routines. This design uses 6 planner + 6 worker = **12 fires/day**, leaving
-roughly 3 fires/day headroom for manual `run` calls.
-
-The hourly `cudly-cr-fullreview-drip` routine was **disabled** to stay within
-budget: the worker's CR-advance phase (Phase 3) already re-triggers CodeRabbit
-on every in-flight PR each fire, which subsumes a separate drip.
-
-Do not add routines or raise the cadence without first auditing the remaining
-budget across all active routines in the account.
-
-### Step 5 - Ongoing management
+### Step 3 - Ongoing management
 
 - **Kill switch**: set `enabled: false` via `schedule update` or the routines
   UI at https://claude.ai/code/routines. Prefer disabling the planner alone
@@ -428,19 +404,6 @@ budget across all active routines in the account.
   same generation.
 - **No API delete**: the `RemoteTrigger` API has no delete endpoint. Remove
   routines via the UI at https://claude.ai/code/routines only.
-
-### Step 6 - Cleanup: delete leftover exploration routines
-
-Delete these paused exploration routines via the routines UI (no API delete):
-
-| Name | ID |
-|---|---|
-| `cudly-autopilot-plan-30` | `trig_01S76xzpHdbje4nTksEkSRNt` |
-| `cudly-autopilot-worker-45` | `trig_012PZB6Mx7zLQ9hWmrZFg4c5` |
-| `cudly-issue-pr-autopilot` (superseded single-routine) | (check routines UI) |
-
-Navigate to https://claude.ai/code/routines, locate each by name or ID, and
-delete.
 
 ## Caveats and gotchas (scheduled-specific)
 

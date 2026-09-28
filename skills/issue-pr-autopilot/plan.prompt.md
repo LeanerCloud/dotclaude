@@ -17,7 +17,7 @@ Precedence: dotclaude global rules + the GLOBAL HARD CONSTRAINTS below are non-n
 
 ## Repository config (CUDly)
 - Repo: LeanerCloud/CUDly
-- Base branch (branch all plan branches OFF this; NEVER target main or any shared branch): feat/multicloud-web-frontend
+- Base branch (branch all plan branches OFF this; NEVER push to it directly): main
 - Plan cap per fire: select at most 2 eligible issues this run (HARD cap)
 - Eligibility (plan): open issues that are `triaged` and DO NOT carry `plan-ready`, `pr-created`, `pr-merged`, `needs-human`, `type/question`, `status/blocked`, or `status/needs-info`
 
@@ -48,7 +48,7 @@ Create the labels if missing:
 For EACH chosen issue, do the following in THIS ORDER. Treat the branch+marker+label as a tight claim sequence right after the plan commit lands, to minimise the window where the other staggered planner might grab the same issue (labels are not atomic locks - see skills/issue-pr-autopilot/SKILL.md concurrency model).
 a. Read the issue fully (gh issue view <n>) and the conventions from both repos.
 b. Decide if it is plannable. If ambiguous, under-specified, needs a human design decision, security-sensitive in an irreversible way, or too large for one focused PR -> SKIP it (no branch, no label) and log the reason. Never guess on irreversible design choices.
-c. SLUG=<short kebab slug of the title>. Branch off base: git fetch origin feat/multicloud-web-frontend && git switch -c auto/<issue#>-$SLUG origin/feat/multicloud-web-frontend
+c. SLUG=<short kebab slug of the title>. Branch off base: git fetch origin main && git switch -c auto/<issue#>-$SLUG origin/main
 d. Write the plan to plan.md at the repo root: atomic tasks with explicit file paths, each independently verifiable; what changes, where, and how to prove it works (build/lint/test commands); call out reuse of existing helpers and the blast radius. This file is a SCRATCH artifact - the worker will erase it from history before opening the PR, so it never ships.
 e. Commit the plan as the branch's FIRST commit. Write the message to a temp file and commit via -F (NEVER heredoc -m): printf 'chore(autopilot): plan for #<issue>\n' > /tmp/planmsg.txt && git add plan.md && git commit -F /tmp/planmsg.txt
 f. Push the branch: git push -u origin auto/<issue#>-$SLUG (push ONLY this auto/ branch; never push base or main).
@@ -60,7 +60,7 @@ If any step (c-g) fails, do NOT add plan-ready (so the issue stays eligible for 
 - NO em-dashes (U+2014) anywhere - chat, plan.md, commits, comments. Use commas/hyphens/colons.
 - NO Anthropic/Claude mentions and NO 'Co-Authored-By: claude-flow' in commits or comments.
 - git commit -F, never heredoc -m; never --no-verify; never --yes on project CLIs.
-- Only ever push the issue's own auto/<issue#>-<slug> branch; never push main or feat/multicloud-web-frontend.
+- Only ever push the issue's own auto/<issue#>-<slug> branch; never push main.
 - You do PLANNING ONLY: never implement code, never open a PR, never trigger or respond to CodeRabbit, never add pr-created/pr-merged. Those are the worker routine's job.
 - Each chosen issue ends as: a pushed plan branch + posted marker + plan-ready label, OR an explicit logged skip.
 - Plan cap is 2 (hard).
