@@ -91,9 +91,9 @@ trap 'rm -f "$DIFF_FILE" "$PROMPT_FILE"' EXIT
 
 {
   cat <<'EOF'
-Run the /review-staged-diff command's logic over the diff below. Apply
-git-workflow.md §1's six dimensions: Completeness, Correctness, Security,
-Bugs, Duplication, Memory-garden match. The memory entries to scan are
+Run the review-staged-diff skill's logic over the diff below. Apply the
+six review dimensions in ~/.claude/CLAUDE.md §1: Completeness, Correctness,
+Security, Bugs, Duplication, Over-engineering. Also scan the memory entries
 listed below; read the ones whose names match the diff's language/topic
 and report any violation by entry name.
 
