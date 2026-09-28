@@ -278,8 +278,8 @@ in-progress work directly on the branch you started from. Never create a persist
 full protocol. Headlines: the plan must have passed the §1 review before the worktree exists; the
 authoritative plan lives at `~/.claude/projects/<project>/plans/<slug>.md` so a crash
 mid-implementation is recoverable; the merge gate is all plan items implemented + a clean §1
-post-implementation review + 2 verification passes acted on, whatever the stakes; rebase rather than
-merge by default. A linked worktree does not isolate submodules either, so `git submodule update`
+post-implementation review + 2 verification passes acted on (per §1); rebase rather than merge by
+default. A linked worktree does not isolate submodules either, so `git submodule update`
 inside one moves the main clone's submodule HEADs for every worktree on it. A small single-commit
 change can stay on a feature branch in the main checkout when no other session is using it.
 
@@ -302,16 +302,13 @@ gate; it does not replace either.
    "no actionable findings".
 3. **The implementer addresses** every finding. Mechanical fixes stay with the implementer; a finding
    needing a design call escalates that item to Opus, then the decided fix goes back down.
-4. **Opus reviews a second time**, then you go with it. Two passes total, so don't keep re-reviewing
-   for a pass that returns nothing. Rather than firing off further rounds, talk the remaining
-   findings through with the reviewer until you and it agree the change is good, and proceed on that
-   agreement.
+4. **Opus reviews a second time**, then you go with it: 2 passes per §1, closing on agreement with
+   the reviewer rather than further rounds.
 
 Reviewer and implementer are distinct roles, ideally distinct agents (review the diff as if a stranger
-wrote it). Log per-round findings in the plan file. Review per task as it lands, don't batch. Across
-both passes and the conversation that closes them keep the SAME implementer and SAME reviewer alive
-and continue them via `SendMessage` (§2), so the second pass costs only the delta and the reviewer
-keeps the context it needs to agree.
+wrote it). Log per-round findings in the plan file. Review per task as it lands, don't batch. Keep the
+SAME implementer and SAME reviewer alive across both passes via `SendMessage` (§2), so the second
+pass costs only the delta.
 
 ### 2. Subagent Strategy
 
@@ -361,8 +358,8 @@ which default to Opus.
 tools (`Read`, `Edit`, `Write`, `Glob`, `Grep`, `NotebookEdit`) over Bash for file ops; avoid
 approval-triggering Bash patterns (composed commands, compound `cd &&`, `sudo`/`rm -rf`/`chmod`,
 piping into `bash`, `eval`); **any multiline shell MUST be a script file** in `.claude/scripts/`
-(persistent) or `/tmp/claude/` (throw-away), reviewed before executing (2 passes, including for
-scripts that delete, push, or touch credentials).
+(persistent) or `/tmp/claude/` (throw-away), reviewed before executing (2 passes per §1, including
+for scripts that delete, push, or touch credentials).
 
 ### 3. Self-Improvement Loop
 
@@ -466,8 +463,7 @@ summary at each step.
   (the opposite of the never-destroy-`.git` rule, tenet 9). **Exceptions (do NOT init)**: the home dir
   itself, system temp / scratchpad, `~/Downloads`/`~/Desktop` and similar scratch locations.
 - **Before staging a commit, invoke `git-commit`** — conventional commits, atomic commits, and the
-  mandatory pre-commit review loop of 2 passes, whatever the stakes. Never use heredoc-based
-  `git commit -m`.
+  mandatory pre-commit review loop (2 passes per §1). Never use heredoc-based `git commit -m`.
 - **After every `git push`, invoke `ci-watch`** — one background watcher per workflow run, fixing
   failures autonomously.
 - **When opening a PR, invoke `pr-lifecycle`**; when a CodeRabbit review is in flight, invoke
