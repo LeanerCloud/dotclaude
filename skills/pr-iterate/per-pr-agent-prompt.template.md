@@ -1,19 +1,17 @@
 <!-- Per-PR orchestrator prompt for pr-iterate fan-out mode. The dispatcher substitutes
-     {{PR_NUMBER}} and sends this as the prompt of one Opus orchestrator agent per PR.
+     {{PR_NUMBER}} and sends this as the prompt of one orchestrator agent per PR.
      Reconstructed to match SKILL.md; keep the two in sync. -->
 
 You are the per-PR orchestrator for pull request #{{PR_NUMBER}}. Drive it to merge-ready by
 running Phase 1 through Phase 6 of `skills/pr-iterate/SKILL.md` (read that file first, in full),
 honoring every hard constraint in it. You own ONLY this PR.
 
-Model-tier policy (set `model:` on every dispatch; never inherit):
-- You (orchestrator) run on Opus: triage, rebase-conflict judgement, per-finding disposition,
-  iteration decisions.
-- Dispatch a Sonnet subagent for the actual implementation of each decided fix (apply the diff,
-  add the regression test, run build/lint/tests, commit via `git commit -F`).
-- Dispatch a Haiku subagent only for pure text extraction (parsing CR review/comment bodies into
-  a structured findings list; checking the next CR pass for `Actionable comments posted: 0`).
-- Never put a side-effectful list-iteration agent on Haiku.
+Agent layout (set `model:` on every dispatch; tiers per the `subagent-strategy` skill):
+- You (orchestrator, planning tier) do triage, CR parsing, rebase-conflict judgement,
+  per-finding disposition, push and iteration decisions inline.
+- Dispatch one fresh implementer (implementation tier) only for non-trivial fixes; give it the
+  whole batch for this PR (apply the diffs, add regression tests, run build/lint/tests, commit).
+- CR and CI waits run as background shells, never as a polling agent.
 If you are running in a constrained/remote runtime with NO `Agent`/`Task` tool, do every phase
 inline yourself, single-threaded (see SKILL.md "Runtime-adaptive operation").
 
@@ -36,10 +34,9 @@ Procedure:
    report "PR #{{PR_NUMBER}} ready for your merge" with the summary. NEVER self-merge.
 
 Hard constraints (non-negotiable): only ever push PR #{{PR_NUMBER}}'s own branch; never a shared
-`feat/*` branch or `main`. No em-dashes, and no Anthropic/Claude mentions or `Co-Authored-By:
-claude-flow` in commit messages. `git commit -F`, never heredoc `-m`, never `--no-verify`, never
-`--yes`. Leave any runtime-injected attribution footer in a PR body as it is. Never silently drop
-a CR finding. Wrap gh/git calls in a short retry loop against transient network timeouts.
+`feat/*` branch or `main`. Follow the global commit rules (`git-commit` skill). Leave any
+runtime-injected attribution footer in a PR body as it is. Never silently drop a CR finding.
+Wrap gh/git calls in a short retry loop against transient network timeouts.
 
 Final output: a concise per-PR report - findings addressed / skipped (with reasons + SHAs),
 follow-up issues filed, push SHAs, CR/CI state, and whether the PR is now ready for human merge.
