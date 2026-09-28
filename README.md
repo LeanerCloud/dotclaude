@@ -91,9 +91,12 @@ successor skills, so older references keep resolving.
    ```bash
    ~/.claude/scripts/setup-agent-symlinks.sh
    ```
-   This symlinks every skill into `~/.agents/skills/`, which Codex reads as its user scope and
-   Gemini reads as an alias of `~/.gemini/skills/`. Claude Code reads `~/.claude/skills/` directly,
-   so there is one canonical copy and no duplication. Verify with `gemini skills list` and
+   This symlinks each native skill into `~/.agents/skills/`, which Codex reads as its user scope and
+   Gemini reads as an alias of `~/.gemini/skills/`. Shared guidance uses one canonical copy:
+   `~/.codex/AGENTS.md` points to `~/.claude/CLAUDE.md`; imported skills remain intentionally excluded
+   (see [`skills/README.md`](skills/README.md)). Keep provider runtime configuration, Codex `.system`
+   skills, and credentials separate rather than symlinking whole configuration directories. Claude
+   Code reads `~/.claude/skills/` directly. Verify with `gemini skills list` and
    `codex debug prompt-input`.
 
 ## Customizing

@@ -37,3 +37,9 @@ repos:
         language: script
         files: ^skills/
         pass_filenames: false
+      - id: validate-worktree-policy
+        name: keep persistent worktrees out of reboot-cleared directories
+        entry: bash scripts/validate-worktree-policy.sh --staged
+        language: system
+        files: '^(CLAUDE\.md|skills/|scripts/)'
+        pass_filenames: false

@@ -69,5 +69,8 @@ RTK.md
 # silently swallow a future `skills/worktrees/` too.
 /worktrees/
 
+# Skills Claude Code syncs from claude.ai at runtime (one bucket dir per account)
+/skills/synced/
+
 # macOS junk
 .DS_Store

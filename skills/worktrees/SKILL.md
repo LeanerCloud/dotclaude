@@ -14,10 +14,12 @@ This file is the full worktree-isolation protocol: when to create one, how to pe
 ## Preconditions and creation
 
 - **Precondition — plan has passed the §1 review gate** (three clean passes for high-stakes plans). The worktree is the commitment to implement. Don't create one while the plan is still being iterated on, or it becomes a dumping ground for exploratory edits made on an unverified plan (and once commits start landing, reviewing the plan becomes fighting the code's momentum instead of shaping its design). If the plan needs more revision, stay on the base branch, revise, re-review, then come back.
+- **Use the durable root** `~/.claude/worktrees/<repo-name>-<slug>`. Never put a persistent worktree under `/tmp`, `$TMPDIR`, or another directory cleared at reboot. `<repo-name>` is the main checkout's directory name.
 - **Record the base branch** (the branch checked out when the task starts — e.g., `feat/multicloud-web-frontend`, `main`) in the plan. That's what you'll rebase/merge onto at the end. If the base branch is `main` or another protected branch, still use a worktree — PR discipline from the `git-commit` skill applies on top.
 - **Create the worktree after the plan review gate passes**, before the first commit:
   ```bash
-  git worktree add ../<repo>-<slug> -b <type>/<slug> <base-branch>
+  mkdir -p "$HOME/.claude/worktrees"
+  git worktree add "$HOME/.claude/worktrees/<repo-name>-<slug>" -b <type>/<slug> <base-branch>
   ```
   where `<type>` matches conventional commit types (`feat`, `fix`, `refactor`, `chore`, etc.) and `<slug>` is a short kebab-case name for the change. All implementation, commits, tests, and reviews run inside the worktree.
 
@@ -29,7 +31,7 @@ Persist the plan outside the worktree so it survives crashes: write the authorit
 
 ```yaml
 ---
-worktree: /absolute/path/to/<repo>-<slug>
+worktree: /absolute/path/to/.claude/worktrees/<repo-name>-<slug>
 base_branch: <base-branch>
 feature_branch: <type>/<slug>
 started: <ISO-8601 timestamp>
@@ -110,7 +112,7 @@ A worktree that has been around a while is not necessarily current, and is not n
 
 ## Subagent worktrees
 
-Prefer the `Agent` tool's `isolation: "worktree"` parameter when delegating the implementation to a subagent — it creates and cleans up the worktree automatically. For subagent worktrees, still persist the plan to `~/.claude/projects/<project>/plans/` with the subagent's PID in the header so the parent session can recover if the subagent crashes.
+Do not rely on the `Agent` tool's host-managed `isolation: "worktree"` location for crash-recoverable work. Create the worktree explicitly under `~/.claude/worktrees/`, then pass its absolute path to the subagent. For subagent worktrees, still persist the plan to `~/.claude/projects/<project>/plans/` with the subagent's PID in the header so the parent session can recover if the subagent crashes.
 
 ## Merge gate
 
@@ -123,7 +125,7 @@ ALL of these must hold before rebasing/merging back onto the base branch:
 ## Rebase and cleanup
 
 - **Rebase, don't merge, by default**: `git rebase <base-branch>` inside the worktree to keep history linear, then fast-forward the base branch. Use a merge commit only if the base branch protects against force-pushes or the team convention demands it.
-- **After the merge**: push the base branch (triggering the post-push CI watcher per the `ci-watch` skill), then `git worktree remove ../<repo>-<slug>`, delete the feature branch if it's no longer needed, and delete the plan file at `~/.claude/projects/<project>/plans/<slug>.md` (or flip its `status:` header to `merged` and move it to a `plans/archive/` subdir if you want an audit trail). Crash-recovery enumeration should only surface active work — stale plan files and worktrees confuse future sessions.
+- **After the merge**: push the base branch (triggering the post-push CI watcher per the `ci-watch` skill), then `git worktree remove "$HOME/.claude/worktrees/<repo-name>-<slug>"`, delete the feature branch if it's no longer needed, and delete the plan file at `~/.claude/projects/<project>/plans/<slug>.md` (or flip its `status:` header to `merged` and move it to a `plans/archive/` subdir if you want an audit trail). Crash-recovery enumeration should only surface active work — stale plan files and worktrees confuse future sessions.
 - **If a worktree is abandoned** (idea didn't pan out, approach superseded): flip the plan's `status:` to `abandoned` before removing the worktree, so recovery doesn't try to resume dead work. Then delete the plan file and worktree as above.
 
 ## Reclaiming worktrees after the PR merges or closes (run the sweep)

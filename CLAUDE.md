@@ -19,9 +19,8 @@ skill"**. Discovery paths and the portability contract are in [`skills/README.md
    functionality. Exact fit: reuse. Close fit (~80%): refactor existing code (flag the scope change
    in the plan). Never silently copy-paste. (§1a)
 4. **Delegate to subagents** — Offload research, parallel exploration, and focused subtasks to keep
-   the main context clean. Match model tier (Haiku/Sonnet/Opus/Fable) to task complexity. Reuse a
-   context-warm agent (`SendMessage`) before spawning a fresh one when the follow-up touches the same
-   files. (§2)
+   the main context clean. Select a model by the stable task role below. Reuse a context-warm agent
+   (`SendMessage`) before spawning a fresh one when the follow-up touches the same files. (§2)
 5. **Capture every correction** — When the user corrects an approach, immediately save a memory entry
    that prevents the same mistake. Review relevant memories at session start. (§3)
 6. **No "done" without proof** — Run tests, check logs, exercise the UI. "Should work" is not a
@@ -40,18 +39,26 @@ skill"**. Discovery paths and the portability contract are in [`skills/README.md
    git repo use additive approaches (`git checkout --orphan`, or clone the working tree to a new
    path). If unsure whether a file matters, assume it does.
 
-This document may be used by OpenAI or Gemini tooling. When it names Anthropic tiers, use the
-corresponding tiers in the same role: Haiku -> gpt-5.4-mini -> Gemini 3.1 Flash-Lite; Sonnet ->
-gpt-5.4 -> Gemini 3.1 Flash; Opus (the default top tier — planning, review, iteration, debugging,
-non-trivial implementation, see §1c and §2) -> gpt-5.5 -> Gemini 3.1 Pro; Fable (peak reserve, ~2x
-Opus cost, only when the last-0.5% of max-effort intelligence decides it) -> the top tier at max
-effort (gpt-5.5 / Gemini 3.1 Pro). Keep cheapest/mid/top aligned if local model names change.
+Shared model roles are selected by task, then resolved to host-advertised model IDs. Current defaults:
 
-> **If you're running on an Anthropic model**, **ignore this mapping** — the tier names below already
-> correspond to your model family. The mapping is for OpenAI- or Gemini-backed tooling consuming this
-> same file.
+| Role | Codex | Anthropic | Gemini |
+|---|---|---|---|
+| Planning, design decisions, adversarial review, and independent verification | `gpt-6-astra` | Fable | Pro |
+| Implementation of settled work | `gpt-5.6-luna` | Sonnet | Flash |
+| Routine mechanical assistance | host-advertised lightweight model | host-advertised lightweight model | Flash-Lite |
+
+Roles remain stable across future model families, versions, reasoning modes, and flavors. A flavor
+qualifies only if its host-advertised capabilities fulfill the role; do not infer that from its name.
+Do not silently substitute a weaker model or bypass an exact project pin when the requested model is
+unavailable; report the limitation.
+
+An exact reviewer model pinned by a project-specific rule or skill section overrides this generic
+tier mapping. Do not satisfy an exact pin with a cross-provider substitute or floating model alias;
+see the `pr-lifecycle` skill's CUDly final-HEAD gate.
 
 ## Skills
+
+### Written here
 
 | Skill | Invoke when |
 |-------|-------------|
@@ -77,6 +84,66 @@ effort (gpt-5.5 / Gemini 3.1 Pro). Keep cheapest/mid/top aligned if local model 
 | `infra-ops` | infrastructure, deployments, cloud resources, ops |
 | `project-docs` | setting up, updating, or consulting project documentation |
 | `cristi-voice` | writing or reviewing site/marketing copy, LinkedIn posts, or any prose published under Cristian's or LeanerCloud's name |
+
+### Imported
+
+Curated from pstack, cursor-team-kit, superpowers, gstack, `anthropics/skills`, `terraform-skill`
+and `claude-code-owasp`, pinned as submodules under `~/.claude/upstreams/`. What was taken, what was
+rejected and why: [`skills/UPSTREAM.md`](skills/UPSTREAM.md). These are **Claude Code only** - Codex
+truncates its skill list near 8000 characters, so `setup-agent-symlinks.sh` exports only the table
+above. Where an imported skill contradicts this file, **this file wins**.
+
+| Skill | Invoke when |
+|-------|-------------|
+| `brainstorming` | the requirement is still vague - before any plan exists |
+| `office-hours` | deciding whether the thing is worth building at all |
+| `how` / `why` / `teach` | how a subsystem runs / why it was built that way / explaining either to a person |
+| `architect` | settling types, signatures and module shape before code |
+| `arena` | one attempt would lock in the wrong shape - run N in parallel, graft the best |
+| `systematic-debugging` | any bug, test failure or unexpected behaviour, **before** proposing a fix |
+| `tdd` | a bug with a cheap local test target, or an explicit ask for a failing test first |
+| `blast-radius` | what a change could break beyond the diff - proven by running code |
+| `interrogate` | adversarial multi-model review of a diff (§4's independent reviewer) |
+| `thermo-nuclear-code-quality-review` | the harshest maintainability pass on abstraction quality and file sprawl |
+| `owasp-security` / `cso` | security review of code / threat-modelling a system |
+| `verify-this` | one claim needs fresh local evidence, baseline vs treatment |
+| `verification-before-completion` | about to say done, fixed, or passing |
+| `create-verification-skill` / `maintain-verification-skill` | a repo has no scripted way to drive its real app / that script has drifted |
+| `webapp-testing` | driving a local web app through Playwright |
+| `figure-it-out` / `show-me-your-work` | a large migration or unattended run / the decision trail it must leave |
+| `technical-writing` / `unslop` / `deslop` | writing docs, RFCs or PR text / cutting AI tells from prose / from a diff |
+| `typescript-best-practices` / `terraform-skill` | depth under `conventions` for TS / Terraform |
+| `mcp-builder` | authoring an MCP server |
+| `reflect` / `writing-skills` | turning a long task's lessons into skill edits / writing the skill |
+| `health` / `retro` | code-quality dashboard / weekly engineering retrospective |
+
+The pstack and cursor-team-kit skills were written for Cursor. Resolve every Cursor primitive they
+name (`Task` tool, `~/.cursor/rules/pstack-models.mdc`, Cursor model slugs, `.cursor/skills/`)
+through [`upstreams/HOST-MAPPING.md`](upstreams/HOST-MAPPING.md); the model roster their multi-model
+fan-outs read is [`pstack-models.md`](pstack-models.md).
+
+### Chains for common tasks
+
+Skills compose. The routing above answers "which one"; this answers "in what order".
+
+- **Non-trivial change** - `brainstorming` (if the ask is vague) → `how`/`why` (§0, map before
+  changing) → `architect` (settle the shape) → §1 plan + `review-and-implement` → `worktrees` →
+  `tdd` where a cheap test target exists → `blast-radius` → `review-staged-diff` → `deslop` →
+  `git-commit` → `ci-watch` → `pr-lifecycle` → `cr-loop`.
+- **Bug report** - `systematic-debugging` (root cause first, §6) → `tdd` (regression test that fails
+  pre-fix) → `blast-radius` → `verification-before-completion` → `git-commit`.
+- **Understanding unfamiliar code** - Compass (§0) → `how` → `why` → `teach` if a person needs it.
+- **Review before it lands** - `review-staged-diff` always;
+  `thermo-nuclear-code-quality-review` when the concern is maintainability; `interrogate` on money,
+  auth or tenant-isolation paths; `owasp-security` when the diff touches input, auth or secrets.
+- **Proving it works (§4)** - `verify-this` for a single claim, `webapp-testing` for a browser path,
+  `create-verification-skill` once per repo so later sessions inherit the harness,
+  `verification-before-completion` as the last gate before saying done.
+- **Wide design space** - `arena` instead of one attempt, then `interrogate` the winner.
+- **Large migration or unattended run** - `figure-it-out` for the playbook, `show-me-your-work` for
+  the decision trail, `pr-orchestration` for the fan-out.
+- **After a long task** - `reflect` to route the transcript's lessons into concrete skill edits,
+  `writing-skills` to write them, plus the §3 memory entry.
 
 Read `~/.claude/projects.md` at the start of every session, and update it whenever working in a
 project not yet listed (fields: Project, Path, Stack, Description). Per-machine paths and tool
@@ -241,39 +308,44 @@ the job or ~80% of it. Duplication is far easier to prevent than to clean up.
 ### 1b. Worktree Isolation Per Change
 
 Multi-commit or long-running work, and any work in a checkout another session may be using, happens in
-a dedicated git worktree branched off the current branch; never commit in-progress work directly on
-the branch you started from. **Invoke the `worktrees` skill** for the full protocol. Headlines: the
-plan must have passed the §1 review before the worktree exists; the authoritative plan lives at
-`~/.claude/projects/<project>/plans/<slug>.md` so a crash mid-implementation is recoverable; the
-merge gate is all plan items implemented + a clean §1 post-implementation review + a clean
-verification pass (three for high-stakes changes); rebase rather than merge by default. A small
-single-commit change can stay on a feature branch in the main checkout when no other session is
-using it.
+a dedicated git worktree under `~/.claude/worktrees/`, branched off the current branch; never commit
+in-progress work directly on the branch you started from. Never create a persistent worktree under
+`/tmp`, `$TMPDIR`, or another directory cleared at reboot. **Invoke the `worktrees` skill** for the
+full protocol. Headlines: the plan must have passed the §1 review before the worktree exists; the
+authoritative plan lives at `~/.claude/projects/<project>/plans/<slug>.md` so a crash
+mid-implementation is recoverable; the merge gate is all plan items implemented + a clean §1
+post-implementation review + a clean verification pass (three for high-stakes changes); rebase rather
+than merge by default. A small single-commit change can stay on a feature branch in the main checkout
+when no other session is using it.
 
-### 1c. Local Review Loop — Opus Reviews Every Implementation Change
+### 1c. Local Review Loop: the planning/review role reviews every implementation change
 
-Every change the implementer produces is reviewed locally by Opus before it counts as done. This runs
-inside the implementation phase, upstream of the §1 post-implementation review and the §1b merge
-gate; it does not replace either.
+Every change the implementer produces is reviewed locally by the planning/review role before it
+counts as done. This runs inside the implementation phase, upstream of the §1
+post-implementation review and the §1b merge gate; it does not replace either.
 
-1. **The implementer** (Sonnet for simpler changes, Opus for non-trivial code, per §2) implements one
-   atomic task per the approved plan. Write the plan's task, not a generalised version of it. If the
-   task seems to need machinery the plan didn't call for, that is a signal to re-plan rather than to
-   improvise it.
-2. **Opus reviews the diff locally** across the six review dimensions plus Reuse (§1a) and scope
-   discipline, as a dedicated reviewer subagent (set `model`) so the implementer's context stays
-   clean. Escalate to Fable only for the hardest money-path / architecture calls. Emit a concrete
-   findings list (`file:line` + what's wrong + suggested fix), or an explicit "no actionable
-   findings".
+1. **The implementer** uses the implementation role for settled work and completes one atomic task
+   per the approved plan. If the task seems to need machinery the plan did not call for, send the
+   ambiguity back to the planner.
+2. **The planning/review role reviews the diff locally** across the six review dimensions plus
+   Reuse (§1a) and scope discipline, as a dedicated reviewer with an explicit host-advertised model
+   ID. Emit a concrete findings list (`file:line` + what's wrong + suggested fix), or an explicit
+   "no actionable findings".
 3. **The implementer addresses** every finding. Mechanical fixes stay with the implementer; a finding
-   needing a design call escalates that item to Opus, then the decided fix goes back down.
-4. **Opus re-reviews.** Repeat 3-4 until a pass returns no actionable findings — a clean pass, not
-   "the obvious ones are fixed".
+   needing a design call goes back to the planning role, then the decided fix goes back to the
+   implementer.
+4. **The planning/review role re-reviews.** Repeat 3-4 until a pass returns no actionable findings
+   - a clean pass, not "the obvious ones are fixed".
 
 Reviewer and implementer are distinct roles, ideally distinct agents (review the diff as if a stranger
-wrote it). Log per-round findings in the plan file. Review per task as it lands, don't batch. Across
-rounds keep the SAME implementer and SAME reviewer alive and continue them via `SendMessage` (§2), so
-round N+1 costs only the delta.
+wrote it). Start the reviewer with a self-contained brief and no author transcript. For Codex, use
+`fork_turns="none"` when supported; for Anthropic, use a separate session or subagent with that
+brief and no author transcript. Keep that reviewer separate from the planner and implementer, then
+reuse it across plan revisions, fix loops, and final verification when its context remains current.
+A changed SHA or new gate requires a full re-read of the relevant final artifacts and fresh local
+evidence, not an automatic respawn. Log per-round findings in the plan file. Review per task as it
+lands, don't batch. Use fresh eyes when authorship or role conflicts, material anchoring or missed
+findings, polluted or stale context, unrelated work, or an explicit independent gate requires them.
 
 ### 2. Subagent Strategy
 
@@ -283,8 +355,10 @@ PRs/agents run at once. Headlines:
 - Use subagents liberally to keep the main context clean; one focused task per subagent. **Brief them
   fully** — they start cold: goal, relevant context, expected output format, length cap.
 - **Reuse a live agent before spawning a new one** (`SendMessage`) when it already holds the relevant
-  files, diff, or investigation thread. Do NOT reuse when independence is the point (adversarial
-  verification, fresh-eyes review), when a different tier is needed, or when its context is polluted.
+  files, diff, or investigation thread. Keep the initial independent reviewer separate from the
+  author, planner, and implementer, then reuse it across its review stream when its context is current.
+  Spawn fresh only for authorship or role conflicts, material anchoring or missed findings, polluted
+  or stale context, unrelated work, or an explicit independent gate.
 - **In `Workflow` scripts, batch same-file work into one agent** — `agent()` calls always start cold.
 - **When NOT to use subagents**: tight debugging loops where each iteration informs the next, work
   needing multiple rounds of your own judgement, interactive refinement with the user.
@@ -294,20 +368,20 @@ PRs/agents run at once. Headlines:
   a watcher that emits an `idle_notification` is "waiting for more," not "done" — `TaskStop` any still
   parked once its PR reaches a terminal state. Run in the **foreground only** when the very next step
   truly needs that result, or for the carve-outs above.
-- **Delegate to the cheapest sufficient tier — actively, not just when in doubt.** The main session is
-  usually the most expensive option.
+- **Select the stable task role explicitly.** Resolve that role to a host-advertised model ID using
+  the shared mapping above. Do not choose by model age, name, or assumed flavor strength.
 - **Set the `model` parameter on EVERY `Agent` call — never rely on inheritance.**
 
-| Tier | Use for |
+| Role | Use for |
 |------|---------|
-| Haiku | renames, typo/format fixes, mechanical edits with a clear spec, simple lookups, single-command runs, tightly-specified function/test, small single-file review, documented API migration, rubric classification, short summaries |
-| Sonnet | PR implementation of simpler, decided-shape changes; focused multi-file changes with a decided shape; functions with 1-2 design choices; refactors with a clear target |
-| Opus | **the default top tier.** PR planning; all review loops (§1c local review, §1 pre-commit/post-impl, adversarial money-path review); architecture/design decisions; iteration loops (CR responses, fix-push, rebases); gnarly hypothesis-driven debugging; non-trivial implementation; reading a large unfamiliar codebase from scratch; any work where understanding/weighing options is the hard part |
-| Fable | **peak reserve (~2x Opus cost).** Only when the last ~0.5% of max-effort intelligence decides the outcome — the hardest money-path adversarial reviews, the gnarliest architecture calls. |
+| Planning/review | plan reviews, architecture and debugging decisions, local and adversarial review, independent verification, and iteration requiring judgment |
+| Implementation | settled code or documentation changes, tests, and routine workflow execution |
+| Mechanical assistance | tightly specified lookups, renames, formatting, single-command runs, and short summaries |
 
-Mechanical single steps stay Haiku/Sonnet. When in doubt, go one tier cheaper and re-spawn stronger
-if it struggles — *except* planning, review, iteration, debugging, and non-trivial implementation,
-which default to Opus.
+Use the implementation role only after material design questions are settled. Start each independent
+review stream with a fresh planning/review-role agent, then reuse that reviewer across revisions and
+verification when its context is current. Re-read final artifacts and obtain local evidence at every
+gate; do not treat prior approval as evidence. Generic older tier names resolve by these roles.
 
 **Every `gh pr create` MUST mirror the closing issue's triage labels onto the PR** (`priority/*`,
 `severity/*`, `urgency/*`, `impact/*`, `effort/*`, `type/*`, plus `triaged` only if the issue carries

@@ -25,7 +25,7 @@ Everything already owned by another file is cross-referenced, not restated:
 | Commit conventions | the `git-commit` skill |
 | Review-bot loop | the `cr-loop` skill |
 | CI watchers | the `ci-watch` skill |
-| Merge mechanics | the `pr-lifecycle` skill |
+| Merge mechanics and project-specific final-HEAD gates | the `pr-lifecycle` skill |
 | Rate limits | the `rate-limit-retry` skill |
 | Worktree isolation, staleness/disappearance, crash recovery, post-merge reclaim | the `worktrees` skill |
 | Model-tier selection, reviewer independence, subsystem pooling, agent reuse | the `subagent-strategy` skill |
@@ -36,9 +36,11 @@ Everything already owned by another file is cross-referenced, not restated:
 | Matching the CI-pinned tool version | the `tool-usage` skill |
 | Cron routines, RemoteTrigger bodies, run budget | the `issue-pr-autopilot` skill |
 
-Paths below use placeholders: `<repo>` is the main checkout, `<wt>` a
-worktree root (this repo conventionally puts them under a scratch dir such
-as `$TMPDIR/claude/`).
+Paths below use placeholders: `<repo>` is the main checkout, `<repo-name>` its
+directory name, and `<wt>` a durable worktree path under
+`$HOME/.claude/worktrees/<repo-name>-<slug>`. Never use `/tmp`, `$TMPDIR`, or
+another reboot-cleared directory for a worktree that carries implementation or
+plan state.
 
 ---
 
@@ -82,14 +84,21 @@ planner and implementer roles above, not a different model. Read
 planner = the judgement-heavy phase, worker = the mechanical phase. The
 split exists for the same reason in both variants - to put top-tier
 reasoning only where judgement is the hard part (the `subagent-strategy` skill
-§"Routine PR-shipping splits across tiers") - and the tier rubric is the
+§"Routine PR-shipping role split") - and the tier rubric is the
 same one.
 
-**Independence and pooling**: a reviewer must never review code it wrote,
-and never re-bless a change it already approved; reviewers are pooled by
-subsystem so a warm agent stays independent on a *different* PR. Both rules
-live in the `subagent-strategy` skill §"Reuse agents before spawning new ones",
-the owner of agent-reuse strategy. The PR-level consequence is the
+**Independence and pooling**: start each reviewer in a fresh review role context
+separate from the author, then reuse that reviewer across plan revisions, fix
+loops, and final local verification for the same problem. A reviewer must never
+review a plan or code it authored. It may re-review a previously approved change
+only after re-deriving the current requirements and full relevant artifacts,
+challenging assumptions and simpler alternatives, and running independent local
+verification. A new gate or
+SHA requires new evidence, not automatically a new agent. Start a fresh reviewer
+only for an authorship or role conflict, anchoring or material miss, stale or
+polluted context, unrelated scope, or an explicitly independent-review gate.
+Both rules live in the `subagent-strategy` skill §"Reuse agents before spawning
+new ones", the owner of agent-reuse strategy. The PR-level consequence is the
 adversarial-clean merge gate (§5).
 
 ### The handoff contract
@@ -157,8 +166,8 @@ the `cr-loop` skill. **Always check freshness before pushing** (the `worktrees` 
 
 ## 4. Cost control
 
-Tier selection is owned by the `subagent-strategy` skill (§"Delegate to the
-cheapest sufficient tier", §"Routine PR-shipping splits across tiers"); do
+Role selection is owned by the `subagent-strategy` skill (§"Select the stable
+task role explicitly", §"Routine PR-shipping role split"); do
 not re-derive it here or in the `issue-pr-autopilot` skill. Three controls are
 specific to running many items at once:
 
@@ -175,14 +184,14 @@ specific to running many items at once:
 
 ## 5. The merge gate
 
-A PR merges only when **all four** hold. A blanket "merge them" is never
-authorization to bypass one.
+A PR merges only when **all four** hold. Project-specific gates in the `pr-lifecycle` skill add to
+these generic gates. A blanket "merge them" is never authorization to bypass one.
 
 | Gate | Check | Prevents |
 |------|-------|----------|
 | CI green | every workflow run `success` for the exact HEAD SHA | merging broken code |
 | Review bot clean | 0 unresolved threads **AND** latest review newer than the HEAD push | the false-clean trap (§7) |
-| Adversarial clean | an independent agent **returned** a verdict against current HEAD - findings now fixed, or "NO CONFIRMED FINDINGS" plus what it attacked - **and posted it on the PR** (the `cr-loop` skill §3b) | green-CI-but-still-broken, §7, and a verdict that dies with the session |
+| Adversarial clean | an independent agent **returned** a verdict against current HEAD - findings now fixed, or "NO CONFIRMED FINDINGS" plus what it attacked - **and the invoking session posted the verdict verbatim on the PR** (the `cr-loop` skill §3b) | green-CI-but-still-broken, §7, and a verdict that dies with the session |
 | Mergeable | `MERGEABLE` + `CLEAN`; no `--admin`, no `--no-verify` | merging past a pending check |
 
 The mergeable gate is the `pr-lifecycle` skill §4 ("never bypass required checks");
@@ -530,9 +539,10 @@ spawn and when to reuse a warm agent instead; this is what every brief must
    only outcome that does not announce itself (§7), so the brief has to make
    it announce itself.
 8. **Output shape** and whether it may modify code.
-9. **What it must post on the PR before reporting done**, per
-   the `cr-loop` skill §3b: a reviewer posts its verdict and the evidence
-   under it, an implementer posts what its fix commit changed and how it
+9. **What must be recorded on the PR before reporting done**, per
+   the `cr-loop` skill §3b: a read-only reviewer returns its verdict and
+   evidence, the invoking session posts the verdict verbatim and the evidence
+   on the PR, and an implementer posts what its fix commit changed and how it
    was verified. A result that exists only in the reply to the
    orchestrator is gone the moment the session ends, and the next reader
    of that PR has no way to tell the review happened at all.
