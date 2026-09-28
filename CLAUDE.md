@@ -10,27 +10,14 @@ skill"**. Discovery paths and the portability contract are in [`skills/README.md
 
 ## Core Tenets
 
-1. **Understand before changing** — For non-trivial work in unfamiliar code, build or refresh the
-   Compass graph first (§0) and map what you will touch with `compass explain`, `compass path` and
-   `compass affected`. Don't edit code you haven't mapped.
-2. **Plan before non-trivial changes** — For architectural or multi-commit work, write the plan
-   first, execute second, replan if reality diverges. Skip for a few obvious steps.
-3. **Reuse before writing** — Before adding a new function, type, or helper, grep for existing
-   functionality. Exact fit: reuse. Close fit (~80%): refactor existing code (flag the scope change
-   in the plan). Never silently copy-paste. (§1a)
-4. **Delegate to subagents** — Offload research, parallel exploration, and focused subtasks to keep
-   the main context clean. Match model tier (Haiku/Sonnet/Opus) to task complexity. Reuse a
-   context-warm agent (`SendMessage`) before spawning a fresh one when the follow-up touches the same
-   files. (§2)
-5. **Capture every correction** — When the user corrects an approach, immediately save a memory entry
-   that prevents the same mistake. Review relevant memories at session start. (§3)
-6. **No "done" without proof** — Run tests, check logs, exercise the UI. "Should work" is not a
-   status. If verification isn't possible, say so explicitly. (§4)
-7. **Prefer elegance to hacks** — On non-trivial changes, pause and ask "is there a cleaner way?"
-   before shipping. Cleaner means simpler, not more elaborate. If a fix feels hacky, do it right.
-   Skip for obvious one-liners. (§5)
-8. **Bugs: triage now, fix at root** — Symptom → root cause → fix → regression test. No temporary
-   patches that hide the real issue. (§6)
+1. **Understand before changing**: map the code you will touch before editing it. (§0)
+2. **Plan before non-trivial changes**: plan first, execute second, replan if reality diverges. (§1)
+3. **Reuse before writing**: search for existing code first; never silently copy-paste. (§1a)
+4. **Delegate to subagents**: keep the main context clean; match tier to task; reuse warm agents. (§2)
+5. **Capture every correction** as a memory entry that prevents the same mistake. (§3)
+6. **No "done" without proof**: "should work" is not a status. (§4)
+7. **Prefer elegance to hacks**: cleaner means simpler, not more elaborate. (§5)
+8. **Bugs: triage now, fix at root**, with a regression test; no temporary patches. (§6)
 9. **Never delete data — including hidden/metadata files** — "Don't delete files" means ALL files:
    `.git` dirs, dotfiles, config caches, lockfiles, logs, build artifacts. Do NOT rationalize
    deletion as "just metadata," "can be regenerated," "not user data," or "the plan said so." Before
@@ -40,15 +27,8 @@ skill"**. Discovery paths and the portability contract are in [`skills/README.md
    git repo use additive approaches (`git checkout --orphan`, or clone the working tree to a new
    path). If unsure whether a file matters, assume it does.
 
-This document may be used by OpenAI or Gemini tooling. When it names Anthropic tiers, use the
-corresponding tiers in the same role: Haiku -> gpt-5.4-mini -> Gemini 3.1 Flash-Lite; Sonnet ->
-gpt-5.4 -> Gemini 3.1 Flash; Opus (the top tier — planning, review, iteration, debugging,
-non-trivial implementation, and every adversarial review, see §1c and §2) -> gpt-5.5 -> Gemini 3.1
-Pro. Keep cheapest/mid/top aligned if local model names change.
-
-> **If you're running on an Anthropic model**, **ignore this mapping** — the tier names below already
-> correspond to your model family. The mapping is for OpenAI- or Gemini-backed tooling consuming this
-> same file.
+Non-Anthropic hosts map Haiku/Sonnet/Opus to their cheapest/mid/top tier in the same role (the
+`subagent-strategy` skill §"Model rubric" names them).
 
 An exact reviewer model pinned by a project-specific rule or skill section overrides this generic
 tier mapping. Do not satisfy an exact pin with a cross-provider substitute or floating model alias;
@@ -79,7 +59,7 @@ see the `pr-lifecycle` skill's CUDly final-HEAD gate.
 | `triage-labels` | in a repo that uses the rubric: creating an issue or PR, or updating an untriaged one you own or were asked to work on |
 | `triage-pass` | "triage", "prioritize the backlog", "go over open issues" |
 | `work-selection` | "what should I work on next?" |
-| `infra-ops` | infrastructure, deployments, cloud resources, ops |
+| `infra-ops` | infrastructure, deployments, cloud resources, ops; multi-repo integration builds |
 | `project-docs` | setting up, updating, or consulting project documentation |
 | `cristi-voice` | writing or reviewing site/marketing copy, LinkedIn posts, or any prose published under Cristian's or LeanerCloud's name |
 | `playwright-verify` | after any web-app change, before declaring it done; when setting up a new web project's local run/verification harness |
@@ -158,15 +138,11 @@ file. Always read it at session start.
 > multi-person team. Apply proportionally — a solo project doesn't need a formal review process, but
 > the underlying principle (don't merge broken code, test before deploying) always applies.
 
-- **Simplicity First (YAGNI)**: make every change as simple as possible. Build only what a current
-  caller needs; no parameters, flags, hooks, or abstraction layers for a future that hasn't arrived.
-  Sophistication is a cost, not a virtue.
+- **Simplicity First (YAGNI)**: build only what a current caller needs. (`coding-standards`
+  §"Simplicity & Scope")
 - **No Laziness**: find root causes. No temporary fixes. Senior developer standards.
-- **Fail loud; no silent fallbacks, magic values, or stringly-typed enums.** If something required is
-  missing or wrong, return an explicit error rather than a fabricated/default/degraded value (most
-  critical on money / data-mutation paths). Don't hardcode magic values or fixed ratios — derive from
-  data/config or named constants. Use typed enums/constants instead of bare string literals; validate
-  external input at the boundary and error on unknown.
+- **Fail loud; no silent fallbacks, magic values, or stringly-typed enums.** (`coding-standards`
+  §"Fallbacks, Magic Values & Enums")
 - **Verify before asserting — never report status from memory or a stale note.** Before stating any
   status, count, or claim that something is done / merged / passing / ready / settled, re-check the
   live source THIS turn (re-run the query, re-read the file, re-list the PRs). Do not infer it from
@@ -181,8 +157,7 @@ file. Always read it at session start.
 - **Shared checkouts**: before editing, building, installing or pushing in a repo another session may
   be using, check for other sessions and coordinate with them; run shared build, install and push
   steps under a per-repo lock. Invoke the `multi-agent-comms` skill.
-- **Comment sparingly**: default to no comment; add one only where the *why* isn't deducible from the
-  code, and keep it to 1-2 lines. Rationale belongs in the PR description, not the source.
+- **Comment sparingly**: default to no comment; prune generated ones. (`coding-standards` §"Comments")
 - **Backward compatibility**: only for libraries/packages consumed by external code. Within the
   project, refactor freely.
 - **Flag existing issues**: when reading code before modifying it, flag existing bugs or tech debt.
@@ -209,12 +184,6 @@ file. Always read it at session start.
     want to push back slightly", "to be candid rather than merely encouraging".
   - *No fluff openings.* Lead with the code, command, or answer, not "Here is the solution" or
     "Let's examine the fascinating tension between...".
-  - *Edit generated code comments.* Generated comments are where slop collects: paragraphs of opaque
-    narration so dense you have to read the code to decode them. Prune them. A comment earns its place
-    only by saying what the code cannot (the *why*, a caveat, a non-obvious constraint, a link), never
-    by restating what the code already says. Rewriting the comments down to the essential often
-    surfaces real design issues, so treat it as part of the work, not a formality. (Reinforces the
-    "Comment sparingly" rule above.)
 
 ## Workflow
 
@@ -225,19 +194,10 @@ Before answering architecture questions or starting non-trivial work in an unfam
 - Read the project's `CLAUDE.md` first — it takes precedence over global rules. Check
   `known-issues.md` at the project root (format: invoke `project-docs`).
 - **Build the Compass graph first** when the project has >~5 source files or the architecture isn't
-  clear from the directory listing. Compass is a local Rust binary: no model credentials, seconds to
-  about a minute per build. Resolve its location from `~/.claude/local-paths.md`.
-  - In a repo you own: `compass init . --yes` once (writes `.compass/config.toml` and `compass-out/`;
-    add `compass-out/` to `.gitignore`), then `compass update .` after changes, or `compass watch`.
-  - In a repo you don't own, or one another session is working in: build out of tree so nothing lands
-    in the checkout, e.g. `compass extract <path> --code-only --out <dir>`, and run queries from `<dir>`.
-- **Query it instead of grep-and-read loops**: `compass explain <symbol>` (callers, callees,
-  location), `compass path <from> <to>`, `compass affected <symbol> --depth 3`, and
-  `compass query "<terms>"`. For an overview, `compass export html` (or `wiki` / `obsidian`).
-- **Know its limits and fall back to `rg` plus reading the source**: `query` matches identifiers and
-  words, not meaning ("mmap segment" finds `compatible_mmap`; a plain-English sentence can return
-  nothing); C macros and code pulled in through `#include "file.c"` are not indexed; dynamic dispatch,
-  reflection and generated code resolve only partially.
+  clear from the directory listing, and query it (`compass explain`, `path`, `affected`) instead of
+  grep-and-read loops; the binary's location is in `~/.claude/local-paths.md`. Where it can't resolve
+  something, fall back to `rg` plus reading the source. Commands and limits: `coding-standards`
+  §"Code graph (Compass)".
 - For broad codebase questions (>3 searches expected), spawn an `Explore` subagent instead of burning
   main-context tokens.
 
@@ -353,29 +313,6 @@ both passes and the conversation that closes them keep the SAME implementer and 
 and continue them via `SendMessage` (§2), so the second pass costs only the delta and the reviewer
 keeps the context it needs to agree.
 
-### 1d. Multi-Repo Integration Builds
-
-Assembling unmerged work across several repos, building it, and testing the result has its own
-failure modes, all of which fail *silently*:
-
-- **Enumerate loudly.** A loop over repos, PRs or submodules must surface failures, not print only
-  successes. Default branches differ (`main` vs `master`), queries fail, repos get missed. Report
-  counts as "what I found", never as "what exists", and re-check before claiming completeness.
-- **One clean build exit is not a complete build.** After new targets appear, the first run may
-  regenerate the build graph and execute the old one, exiting 0 with work still pending. Ask the
-  build system what remains (`ninja -n`) before believing it.
-- **Say which layer is under test.** A component built from integration branches running against
-  stock system libraries is not "the integrated stack". Name the parts that are, and the parts that
-  are not.
-- **Prefer testing a private runtime over installing one.** A locally built runtime exercised from a
-  disposable location beats replacing the machine's. When a project guards that path (setuid
-  binaries commonly ignore environment overrides under `AT_SECURE`), treat the guard as correct and
-  find a supported route rather than defeating it.
-- **Never install or publish from a tree with uncommitted changes.** The artifact becomes
-  unreproducible by anyone the moment that working tree is cleaned. Commit first, even to a
-  throwaway branch, so the artifact is attributable to a SHA; record what was actually built rather
-  than what should have been.
-
 ### 2. Subagent Strategy
 
 **Invoke the `subagent-strategy` skill** for the full rubric; `pr-orchestration` when several
@@ -417,10 +354,6 @@ whose design is already settled).
 Mechanical single steps stay Haiku/Sonnet. When in doubt, go one tier cheaper and re-spawn stronger
 if it struggles — *except* planning, review, iteration, debugging, and non-trivial implementation,
 which default to Opus.
-
-**Every `gh pr create` MUST mirror the closing issue's triage labels onto the PR** (`priority/*`,
-`severity/*`, `urgency/*`, `impact/*`, `effort/*`, `type/*`, plus `triaged` only if the issue carries
-it). Part of the open-PR step, not a follow-up.
 
 ### 2a. Tool Selection
 
@@ -501,11 +434,8 @@ scripts that delete, push, or touch credentials).
 - **Root-cause process**: reproduce -> isolate -> identify the faulty assumption -> fix the
   assumption, not the symptom. A fix that only makes the test pass is often a patch hiding the real
   issue.
-- **Add a regression test that replicates the real failing scenario** and confirm it fails pre-fix and
-  passes post-fix (§4). If a test genuinely can't be written (environmental, flaky race), document why
-  in the commit message AND verify the scenario manually end-to-end instead.
-- **A fix is not "done" on green CI alone — demonstrate the actual scenario now works** (§4). This
-  matters most for bugs a prior "fix" already claimed to resolve.
+- **Regression test and end-to-end proof per §4.** If a test genuinely can't be written
+  (environmental, flaky race), say why in the commit message and verify the scenario manually.
 - **Escalate only for decisions, not investigations.** For CI failures after a push, invoke `ci-watch`.
 
 ### 7. Backlog Triage + Work Selection
@@ -524,9 +454,8 @@ the user instead.
 
 ## Task Management
 
-Use the built-in task system (TaskCreate/TaskList/TaskUpdate). Plan first, verify the plan, then track
-progress through tasks. Explain changes with a high-level summary at each step. Capture lessons in
-auto-memory after corrections.
+Track multi-step work in the built-in task system (TaskCreate/TaskList/TaskUpdate), with a high-level
+summary at each step.
 
 ## Git Workflow
 

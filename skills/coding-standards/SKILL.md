@@ -46,6 +46,25 @@ Ensure `.github/workflows/` (or equivalent) has at minimum:
 - `Makefile` or `Taskfile` with `make lint`, `make test`, `make build` targets
 - `known-issues.md` — track known bugs and tech debt; see the `project-docs` skill
 
+### Code graph (Compass)
+
+Build a Compass graph before non-trivial work when the project has >~5 source files or the
+architecture isn't clear from the directory listing. Compass is a local Rust binary: no model
+credentials, seconds to about a minute per build. Resolve its location from
+`~/.claude/local-paths.md`.
+
+- In a repo you own: `compass init . --yes` once (writes `.compass/config.toml` and `compass-out/`;
+  add `compass-out/` to `.gitignore`), then `compass update .` after changes, or `compass watch`.
+- In a repo you don't own, or one another session is working in: build out of tree so nothing lands
+  in the checkout, e.g. `compass extract <path> --code-only --out <dir>`, and run queries from `<dir>`.
+- **Query it instead of grep-and-read loops**: `compass explain <symbol>` (callers, callees,
+  location), `compass path <from> <to>`, `compass affected <symbol> --depth 3`, and
+  `compass query "<terms>"`. For an overview, `compass export html` (or `wiki` / `obsidian`).
+- **Know its limits and fall back to `rg` plus reading the source**: `query` matches identifiers and
+  words, not meaning ("mmap segment" finds `compatible_mmap`; a plain-English sentence can return
+  nothing); C macros and code pulled in through `#include "file.c"` are not indexed; dynamic dispatch,
+  reflection and generated code resolve only partially.
+
 ---
 
 ## Simplicity & Scope (YAGNI)
@@ -237,6 +256,7 @@ Run this gate before shipping any user-facing app. Several lines restate the bul
 Rationale belongs in the PR description; the source carries only what a future editor needs in order not to break something. Prose that reads as thorough to the author reads as noise to the reviewer, and buries the few comments that actually matter.
 
 - **Default to no comment.** Naming and structure carry the meaning; reach for a comment only where they can't.
+- **Edit generated comments.** Generated code is where comment slop collects: paragraphs of narration so dense you have to read the code to decode them. Prune them to what the code cannot say. Rewriting comments down to the essential often surfaces real design issues, so treat it as part of the work.
 - **Comment only where the WHY isn't deducible from the code**: a deliberate choice a reader would otherwise "fix", a constraint that isn't visible at this spot, a workaround for an external bug (link the upstream issue or CVE), a deviation from the obvious approach.
 - **Keep it terse: 1-2 lines.** Never paragraphs, never half a page. If it needs more than that, it belongs in the PR description or the commit message.
 - **Two hard per-comment rules**, checkable one comment at a time and not subject to averaging: **no comment exceeds 2 lines**, and **no comment describes what the code does** (that one is deleted, not shortened). These bite where a ratio can't: a diff can sit under budget and still be full of three-line restatements.
