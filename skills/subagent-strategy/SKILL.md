@@ -41,7 +41,7 @@ The main session is the user's interactive channel; blocking it on work that cou
 
 Every fresh `Agent` spawn starts cold: it re-reads the project docs, re-greps, and re-loads every file it needs before doing anything useful. When an agent from earlier in the session already holds that context, continuing it via `SendMessage` (by agent ID or name) makes the follow-up cost only the delta. This is the agent-level analog of §1a "reuse before writing": check what already exists before creating something new.
 
-**The check, before any spawn**: does a running or recently finished agent already have the relevant files, diff, or investigation thread in context? Signals that it does:
+**The check, before any spawn**: does a running or recently finished agent already have the relevant files, diff, or investigation thread in context, AND is that context still small (roughly under 100K tokens)? Signals that it does:
 
 - The follow-up touches the **same files or module** the agent just read or edited (fix findings in code it wrote, extend a change it made, answer another question about the area it explored).
 - It is the **next round of the same loop**: §1c re-review of an updated diff, a CR-fix push to the same branch, a watcher follow-up on the same PR/run.
@@ -54,10 +54,12 @@ In all of these, send the agent the new instruction with just the delta ("review
 - **Independence is the point.** Adversarial verification (CLAUDE.md §4), fresh-eyes review, refute-style judging: a verifier that shares the implementer's context inherits its blind spots. **The independence rule: a reviewer must never review code it wrote, and never re-bless a change it already approved.** That is about *roles*, not rounds — the same reviewer re-reviewing after the implementer fixes its findings is correct and cheap, because it still holds the diff. Reviewer and implementer stay distinct agents; but the same reviewer SHOULD persist across rounds of its own loop.
   - **Subsystem pooling** is how you get both independence and warm context when several reviews are in flight at once: pool reviewers by subsystem (e.g. one per cloud provider, one for the API/auth layer, one for the frontend). An agent warm on a subsystem reviewing a *different* change in that subsystem is still fresh on that diff, so it satisfies the independence rule while skipping the cold-start re-read — continue it via `SendMessage` rather than spawning a new one. See the `pr-orchestration` skill for the PR-level consequences.
 - **Wrong tier.** An agent's model is fixed at spawn. If the follow-up needs Opus judgement and the warm agent is Haiku/Sonnet (or the follow-up is mechanical and the warm agent is a top tier, where each continued turn re-reads its whole accumulated context at top-tier prices), a fresh right-tier spawn is cheaper than a wrong-tier continuation.
-- **Polluted or bloated context.** The agent went down failed paths, accumulated huge tool output, or is near its context limit. A fresh agent with a tight briefing beats a confused warm one.
-- **Unrelated task.** Overlap in time is not overlap in context; don't funnel misc work through one long-lived agent.
+- **Polluted or bloated context.** The agent went down failed paths, accumulated huge tool output, or has grown past roughly 100K tokens. Carried context is re-sent on every call: a warm 350K agent doing a ~300-call issue re-reads about 120M tokens, a fresh one ramping from ~50K about 45M. A fresh agent with a tight briefing beats a confused warm one.
+- **New task.** A different issue or PR gets a fresh agent, even in the same repo. Overlap in time or repo is not overlap in context; don't funnel misc work through one long-lived agent.
 
 **Tie-breaker**: when the follow-up reads the same >2-3 files the agent already loaded, reuse usually wins; when the briefing is two sentences and the files are small, a cold spawn at a cheaper tier may still be cheaper. Decide by which context is larger: the files to re-read, or the delta message.
+
+**Keep the ramp-up, drop the bloat.** A finishing agent writes a short repo notes file (`~/.claude/projects/<project>/repo-notes.md`: layout, build and test commands, environment gotchas; a few lines, updated not appended) and the next fresh agent reads it first.
 
 ### Standing rosters: keep agents across a series of PRs, not just across one follow-up
 
