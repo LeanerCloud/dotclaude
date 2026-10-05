@@ -111,6 +111,8 @@ Skills compose. The routing above answers "which one"; this answers "in what ord
 - **Bug report** - `systematic-debugging` (root cause first, §6) → `tdd` (regression test that fails
   pre-fix) → `blast-radius` → `verification-before-completion` → `git-commit`.
 - **Understanding unfamiliar code** - Compass (§0) → `how` → `why` → `teach` if a person needs it.
+- **A PR before it merges** - §1d: another agent that did not write it reviews it, checks the author's claims against the authoritative source, and the author closes the findings
+  before handing off for merge.
 - **Review before it lands** - `review-staged-diff` always;
   `thermo-nuclear-code-quality-review` when the concern is maintainability; `interrogate` on money,
   auth or tenant-isolation paths; `owasp-security` when the diff touches input, auth or secrets.
@@ -309,6 +311,44 @@ Reviewer and implementer are distinct roles, ideally distinct agents (review the
 wrote it). Log per-round findings in the plan file. Review per task as it lands, don't batch. Keep the
 SAME implementer and SAME reviewer alive across both passes via `SendMessage` (§2), so the second
 pass costs only the delta.
+
+### 1d. Cross-Agent PR Review Before Handoff
+
+A pushed PR is not mergeable until a **fresh agent that did not write it** has reviewed it, and that
+review is the agent's job to obtain. Never end a turn saying a PR "needs review" and wait; spawn the
+reviewer, get the findings, fix them, re-review. Then hand off for merge per `pr-lifecycle` §4 and
+report the outcome to the user.
+
+**Independence extends §1c to the PR.** The reviewer must not inherit the author's reasoning: a fresh
+subagent with a cold brief is the minimum, a separate session is better.
+
+**Brief the reviewer cold.** It starts with no context, so the brief carries: what the project is and
+what "correct" means here; the PR's number, head SHA, base, and head/base relationship of any
+stacked PRs; what the PR claims to fix; how to build and test; the owner's rules that apply; and the
+required output format. State plainly that the author's PR body is a claim to be tested, not evidence.
+
+**Require the reviewer to go to the source of truth, not the PR.** The highest-value findings come
+from checking an external contract where one exists: an upstream implementation, a specification, a
+vendor's own source, a protocol. A review performed only against the author's prose can only confirm
+the prose. When a project has an authoritative reference, name the file and say to compare behaviour
+against it, and require a `file:line` from it per field checked.
+
+**Require the reviewer to reproduce the evidence, not read it.** "Every fix has a test that fails
+before the change" is a claim about a fact that can be checked: have the reviewer rebuild with the
+parent's source and the new tests and report the *actual output*. Have it mutate the implementation to
+a plausible wrong value and confirm a probe fails, when the PR's argument rests on a test's
+non-vacuity. A PR that says its probe "cannot fail" needs that checked, not believed.
+
+**The author verifies each finding before acting on it.** Reviewers are wrong sometimes.
+Reproduce the failure, check the claim against the source, and push back in the report when it is
+wrong, with the evidence. A finding that cannot be reproduced gets closed with a note, not silently
+fixed. Conversely, do not defend a finding you have not checked.
+
+**Fixes go back through the reviewer.** The author addresses every finding; one needing a design call
+goes back to the reviewer, the decided fix returns to the author, and the reviewer re-reviews. Close
+on agreement, as §1. Reviewers do not merge; once the review is clean and CI is green, the author
+follows `pr-lifecycle` §4 (human merge by default; never self-merge `LeanerCloud/dotclaude`).
+Findings that are fixed later are a follow-up PR, not an amend that invalidates a review already given.
 
 ### 2. Subagent Strategy
 

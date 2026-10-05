@@ -78,5 +78,10 @@ RTK.md
 /tmp/
 /verification/
 
+# Machine-local tool integration hooks (e.g. herdr overwrites them on reinstall) and agent scratch.
+# Anchored: an unanchored `hooks/` would also ignore the tracked `scripts/hooks/`.
+/hooks/
+/scratch/
+
 # macOS junk
 .DS_Store
