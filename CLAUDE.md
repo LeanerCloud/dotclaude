@@ -27,8 +27,8 @@ skill"**. Discovery paths and the portability contract are in [`skills/README.md
    git repo use additive approaches (`git checkout --orphan`, or clone the working tree to a new
    path). If unsure whether a file matters, assume it does.
 
-Non-Anthropic hosts map Haiku/Sonnet/Opus to their cheapest/mid/top tier in the same role (the
-`subagent-strategy` skill §"Model rubric" names them).
+Non-Anthropic hosts map Sonnet 5.5 low / medium / high to their cheapest/mid/top tier in the same
+role (the `subagent-strategy` skill §"Model rubric" names them).
 
 An exact reviewer model pinned by a project-specific rule or skill section overrides this generic
 tier mapping. Do not satisfy an exact pin with a cross-provider substitute or floating model alias.
@@ -283,26 +283,26 @@ default. A linked worktree does not isolate submodules either, so `git submodule
 inside one moves the main clone's submodule HEADs for every worktree on it. A small single-commit
 change can stay on a feature branch in the main checkout when no other session is using it.
 
-### 1c. Local Review Loop — Opus Reviews Every Implementation Change
+### 1c. Local Review Loop — Sonnet 5.5 High Reviews Every Implementation Change
 
-Every change the implementer produces is reviewed locally by Opus before it counts as done. This runs
+Every change the implementer produces is reviewed locally by Sonnet 5.5 high before it counts as done. This runs
 inside the implementation phase, upstream of the §1 post-implementation review and the §1b merge
 gate; it does not replace either.
 
-1. **The implementer** (Sonnet for simpler changes, Opus for non-trivial code, per §2) implements one
+1. **The implementer** (Sonnet 5.5 medium; all coding runs at medium, per §2) implements one
    atomic task per the approved plan. Write the plan's task, not a generalised version of it. If the
    task seems to need machinery the plan didn't call for, that is a signal to re-plan rather than to
    improvise it. Before handing the diff to review, **probe your own additions** (invoke the
    `coding-standards` skill, "Deletion probes"): delete each piece whose necessity you couldn't state
    in one sentence and see whether anything actually fails. Cheaper to find here than in review, and
    what survives arrives with evidence attached.
-2. **Opus reviews the diff locally** across the six review dimensions plus Reuse (§1a) and scope
+2. **Sonnet 5.5 high reviews the diff locally** across the six review dimensions plus Reuse (§1a) and scope
    discipline, as a dedicated reviewer subagent (set `model`) so the implementer's context stays
    clean. Emit a concrete findings list (`file:line` + what's wrong + suggested fix), or an explicit
    "no actionable findings".
 3. **The implementer addresses** every finding. Mechanical fixes stay with the implementer; a finding
-   needing a design call escalates that item to Opus, then the decided fix goes back down.
-4. **Opus reviews a second time**, then you go with it: 2 passes per §1, closing on agreement with
+   needing a design call escalates that item to Sonnet 5.5 high, then the decided fix goes back down.
+4. **Sonnet 5.5 high reviews a second time**, then you go with it: 2 passes per §1, closing on agreement with
    the reviewer rather than further rounds.
 
 Reviewer and implementer are distinct roles, ideally distinct agents (review the diff as if a stranger
@@ -336,21 +336,23 @@ PRs/agents run at once. Headlines:
 - **Delegate to the cheapest sufficient tier — actively, not just when in doubt.** The main session is
   usually the most expensive option.
 - **Set the `model` parameter on EVERY `Agent` call — never rely on inheritance.**
+  Both Sonnet tiers are `model: sonnet`; the effort is the difference. State the effort (medium or
+  high) in the brief or use an agent definition that pins it, since `Agent` has no effort parameter.
 
 | Tier | Use for |
 |------|---------|
-| Haiku | renames, typo/format fixes, mechanical edits with a clear spec, simple lookups, single-command runs, tightly-specified function/test, small single-file review, documented API migration, rubric classification, short summaries |
-| Sonnet | PR implementation of simpler, decided-shape changes; focused multi-file changes with a decided shape; functions with 1-2 design choices; refactors with a clear target |
-| Opus | **the top tier.** PR planning; all review loops (§1c local review, §1 pre-commit/post-impl, adversarial money-path review); architecture/design decisions; iteration loops (CR responses, fix-push, rebases); gnarly hypothesis-driven debugging; non-trivial implementation; reading a large unfamiliar codebase from scratch; any work where understanding/weighing options is the hard part. Nothing escalates above it: the hardest money-path adversarial reviews and gnarliest architecture calls run here too. |
+| Sonnet 5.5 low | renames, typo/format fixes, mechanical edits with a clear spec, simple lookups, single-command runs, tightly-specified function/test, small single-file review, documented API migration, rubric classification, short summaries |
+| Sonnet 5.5 medium | **all coding.** PR implementation of any size or difficulty, including non-trivial code; writing tests; applying a decided fix from a review, CodeRabbit or CI failure; rebases and conflict resolution; refactors; routine `gh`/`git` mechanics. Design questions are settled upstream by a high-tier planner or reviewer, then the decided fix goes down to medium. |
+| Sonnet 5.5 high | **planning, adversarial review and verification only.** PR planning and plan review; architecture/design decisions; diagnosis and hypothesis-driven debugging (deciding what is wrong); reading a large unfamiliar codebase from scratch; all review loops (§1c local review, §1 pre-commit/post-impl, §1d cross-agent PR review, adversarial money-path review); triaging review findings (deciding which are real and what the fix should be); independent verification and reproducing evidence (§4). Nothing escalates above it. It does not write the code. |
 
-A sharper test than "when in doubt" for a task that could plausibly be either tier: is the answer
-known in advance? Opus when it isn't (diagnosis, symbol archaeology, judging whether an
-implementation is honest); Sonnet when it is (reverts, mechanical PR preparation, applying a fix
-whose design is already settled).
+A sharper test for a task that could plausibly be either tier: does it write or change code, or does
+it decide, review or verify? Writing or changing code is Sonnet 5.5 medium, even when the code is hard;
+deciding the design, judging whether an implementation is honest, or checking evidence is Sonnet 5.5 high.
+If a medium implementer hits a design question it cannot settle from the plan, it stops and sends that
+question to the high-tier planner or reviewer; the decided answer goes back to it.
 
-Mechanical single steps stay Haiku/Sonnet. When in doubt, go one tier cheaper and re-spawn stronger
-if it struggles — *except* planning, review, iteration, debugging, and non-trivial implementation,
-which default to Opus.
+Mechanical single steps stay Sonnet 5.5 low/medium. When in doubt about a coding task, stay at medium and
+send the hard question up rather than escalating the whole task.
 
 ### 2a. Tool Selection
 
