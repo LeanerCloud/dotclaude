@@ -27,8 +27,8 @@ skill"**. Discovery paths and the portability contract are in [`skills/README.md
    git repo use additive approaches (`git checkout --orphan`, or clone the working tree to a new
    path). If unsure whether a file matters, assume it does.
 
-Non-Anthropic hosts map Sonnet 5.5 low / Sonnet 5.5 medium / Sonnet 5.5 high to their cheapest/mid/top tier in the same role (the
-`subagent-strategy` skill §"Model rubric" names them).
+Non-Anthropic hosts map Sonnet 5.5 low / medium / high to their cheapest/mid/top tier in the same
+role (the `subagent-strategy` skill §"Model rubric" names them).
 
 An exact reviewer model pinned by a project-specific rule or skill section overrides this generic
 tier mapping. Do not satisfy an exact pin with a cross-provider substitute or floating model alias.

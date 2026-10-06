@@ -79,7 +79,7 @@ For a sequence of atomic commits implementing one plan: review each commit's sta
 
 For staged changes touching multiple concerns (Go + TS + Terraform) or any substantial diff, launch specialised review agents in parallel and compile their findings before committing; each agent is one comprehensive lens, and together they approximate a full review board that no single pass matches. Beyond a general reviewer (`feature-dev:code-reviewer` or `pr-review-toolkit:code-reviewer`), run each lens agent named in the list above so nothing slips between them.
 
-Spawn each on the appropriate tier (the review judgement itself is top-tier, including for the hardest money-path diffs; mechanical single-file diffs can drop to Sonnet 5.5 medium), aggregate the findings, dedupe overlaps, and resolve every actionable item before the commit lands.
+Spawn each on the appropriate tier (the review judgement itself is top-tier, including for the hardest money-path diffs; mechanical single-file diffs can drop to Sonnet 5.5 low), aggregate the findings, dedupe overlaps, and resolve every actionable item before the commit lands.
 
 ### Fix before committing, never after
 
