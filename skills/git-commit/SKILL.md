@@ -44,7 +44,7 @@ The rule is `CLAUDE.md` Git Workflow ("Repo first"). In short:
 
 Before every commit, enter a review loop (same discipline as the plan review loop): run **2 review passes** over the staged diff (per `CLAUDE.md` §1), fix what they find, then commit. Do NOT skip, shortcut, or batch this step. The goal is to land clean commits in the first place, so the history doesn't need fix-up commits.
 
-**Review on Opus, as comprehensively as possible: CodeRabbit's lens is the floor, not the ceiling.** This review is judgement-heavy, so run it at Opus tier (the §1c local review loop and the plan-review gate are its analogues, both Opus per `CLAUDE.md` §2), including the hardest, highest-stakes money-path diffs. The six dimensions in `CLAUDE.md` §1 are the baseline; then go wider than any single reviewer would. Review as CodeRabbit would (its Actionable / Nitpick categories, the project's CR config, recurring past CR findings) AND as a demanding staff engineer would, across at least the lenses below. Where a lens names an agent, that agent is its dedicated reviewer for the Delegation fan-out.
+**Review on Sonnet 5.5 high, as comprehensively as possible: CodeRabbit's lens is the floor, not the ceiling.** This review is judgement-heavy, so run it at the Sonnet 5.5 high tier (the §1c local review loop and the plan-review gate are its analogues, both Sonnet 5.5 high per `CLAUDE.md` §2), including the hardest, highest-stakes money-path diffs. The six dimensions in `CLAUDE.md` §1 are the baseline; then go wider than any single reviewer would. Review as CodeRabbit would (its Actionable / Nitpick categories, the project's CR config, recurring past CR findings) AND as a demanding staff engineer would, across at least the lenses below. Where a lens names an agent, that agent is its dedicated reviewer for the Delegation fan-out.
 
 - **Architecture & design fit**: does the change belong where it landed, follow the module's patterns, and avoid leaking abstractions?
 - **Type design & invariants**: are illegal states unrepresentable, invariants expressed in types rather than asserted at runtime, encapsulation intact? (`pr-review-toolkit:type-design-analyzer`)
@@ -79,7 +79,7 @@ For a sequence of atomic commits implementing one plan: review each commit's sta
 
 For staged changes touching multiple concerns (Go + TS + Terraform) or any substantial diff, launch specialised review agents in parallel and compile their findings before committing; each agent is one comprehensive lens, and together they approximate a full review board that no single pass matches. Beyond a general reviewer (`feature-dev:code-reviewer` or `pr-review-toolkit:code-reviewer`), run each lens agent named in the list above so nothing slips between them.
 
-Spawn each on the appropriate tier (the review judgement itself is Opus-class, including for the hardest money-path diffs; mechanical single-file diffs can drop to Sonnet), aggregate the findings, dedupe overlaps, and resolve every actionable item before the commit lands.
+Spawn each on the appropriate tier (the review judgement itself is top-tier, including for the hardest money-path diffs; mechanical single-file diffs can drop to Sonnet 5.5 medium), aggregate the findings, dedupe overlaps, and resolve every actionable item before the commit lands.
 
 ### Fix before committing, never after
 

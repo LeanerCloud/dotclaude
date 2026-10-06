@@ -57,7 +57,7 @@ Any PR with CR findings or an un-responded trigger and no live watcher gets a fr
 
 ### 4. Wait for human merge — do NOT self-merge by default
 
-After CI is green and CodeRabbit's loop has settled, hand off to the user. Spawn a background agent named `merge-watch-<pr-#>` (`model: haiku` — polling and the routine §5 verifications (terraform plan, curl, simple Chrome MCP walkthroughs) are mechanical; if §5 verification turns out to need exploratory UI debugging, re-spawn that step on **Opus** — exploratory debug is hypothesis iteration per CLAUDE.md §2 and is the kind of "understanding is the hard part" workload that's gotten wrong on Sonnet. Step down to Sonnet only when the exploration narrows to a single decided fix to apply) that polls `gh pr view <#> --json state,merged,mergeCommit,mergedAt` until:
+After CI is green and CodeRabbit's loop has settled, hand off to the user. Spawn a background agent named `merge-watch-<pr-#>` (`model: sonnet` at low effort — polling and the routine §5 verifications (terraform plan, curl, simple Chrome MCP walkthroughs) are mechanical; if §5 verification turns out to need exploratory UI debugging, re-spawn that step on **Sonnet 5.5 high** — exploratory debug is hypothesis iteration per CLAUDE.md §2 and is the kind of "understanding is the hard part" workload that's gotten wrong at medium effort. Step down to Sonnet 5.5 medium only when the exploration narrows to a single decided fix to apply) that polls `gh pr view <#> --json state,merged,mergeCommit,mergedAt` until:
 
 - `merged: true` → proceed to §5.
 - `state: CLOSED` and not merged → terminal, clean up, exit (and notify user that the PR was closed unmerged so any in-flight work can be re-planned).
