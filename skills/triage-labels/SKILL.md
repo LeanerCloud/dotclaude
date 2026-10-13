@@ -1,8 +1,8 @@
 ---
 name: triage-labels
-description: The five-dimension label rubric (type, severity, urgency, impact, effort) plus derived
-  priority, what "untriaged" and "stale" mean, and the `gh` mechanics. Invoke when creating an issue or PR in a
-  repo that uses the rubric, or when asked to label or triage items.
+description: >-
+  Five-dimension label rubric (type, severity, urgency, impact, effort), derived priority, gh
+  mechanics. Use when creating or labelling issues/PRs in repos using the rubric.
 ---
 
 # Triage labels and the per-item rule

@@ -1,9 +1,8 @@
 ---
 name: triage-pass
-description: Running a full backlog triage - when it is warranted, the pass itself, parallel-agent
-  fan-out, the three-pass approach for 100+ item backlogs, anti-patterns, and how to report results.
-  Invoke on "triage", "let's triage", "prioritize the backlog", "go over open issues", a backlog
-  overview request, before sprint planning, or after a major merge.
+description: >-
+  Full backlog triage with parallel fan-out. Triggers: "triage", "prioritize the backlog", "go
+  over open issues", backlog overview, before sprint planning, after a major merge.
 ---
 
 # The triage pass
@@ -21,7 +20,7 @@ Run a **full** triage pass when:
 - When starting work in an unfamiliar repo for the first time and you need to understand what's open and competing for attention.
 - Whenever the open count exceeds ~30 untriaged items — the backlog has stopped being a list and started being a swamp; triage is overdue.
 
-For a casual "what should I work on next?" with a **small, already-labelled** backlog (≤10 items, with priority labels visible), **skip the full triage**. Just sort the existing labels per §"Picking the next thing to work on" and surface the top 3 with one-line rationales. The full process is for backlogs that aren't already legible. The CLAUDE.md §7 gating rule formalises this — don't loop back to here if the lighter selection is enough.
+For a casual "what should I work on next?" with a **small, already-labelled** backlog (≤10 items, with priority labels visible), **skip the full triage**. Just sort the existing labels per §"Picking the next thing to work on" and surface the top 3 with one-line rationales. The full process is for backlogs that aren't already legible. The AGENTS.md §7 gating rule formalises this — don't loop back to here if the lighter selection is enough.
 
 ## The triage pass itself
 

@@ -41,7 +41,7 @@ repos:
         name: keep persistent worktrees out of reboot-cleared directories
         entry: bash scripts/validate-worktree-policy.sh --staged
         language: system
-        files: '^(CLAUDE\.md|skills/|scripts/)'
+        files: '^(AGENTS\.md|CLAUDE\.md|skills/|scripts/)'
         pass_filenames: false
       - id: test-worktree-policy
         name: test worktree policy parser cases

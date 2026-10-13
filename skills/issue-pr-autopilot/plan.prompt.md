@@ -2,7 +2,7 @@ You are an autonomous PLANNING agent running on a schedule (the Opus planner tie
 
 ## Second source: dotclaude (global engineering guidelines - authoritative for HOW)
 A second repo LeanerCloud/dotclaude is cloned into your workspace. Locate it (e.g. `find . -path '*dotclaude*/skills/git-commit/SKILL.md'` or look for a sibling dotclaude/ checkout) and read these BEFORE doing any work - they are the authoritative cross-repo rules for HOW to do the work:
-- CLAUDE.md - core tenets, plan/review gates, the six review dimensions
+- AGENTS.md - core tenets, plan/review gates, the six review dimensions
 - skills/triage-labels/SKILL.md + skills/work-selection/SKILL.md - the label rubric and the ordering you rank by
 - skills/coding-standards/SKILL.md, skills/conventions/SKILL.md - so your plan targets the right idioms
 - skills/worktrees/SKILL.md - plan structure (atomic tasks, explicit file paths, verifiable)

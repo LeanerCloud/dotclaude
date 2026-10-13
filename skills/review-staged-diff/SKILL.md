@@ -12,7 +12,7 @@ Run a CR-style review of the staged diff against the six review dimensions PLUS 
 **Inputs to gather first** (in this order):
 
 1. `git diff --cached` — the staged changeset under review. If empty, also try `git diff HEAD~1..HEAD` to review the most recent commit instead and tell the user that's what you're doing.
-2. `ls ~/.claude/projects/<project-slug>/memory/feedback_*.md` — the per-project memory garden. Resolve `<project-slug>` from the working directory + the format in `~/.claude/CLAUDE.md` §3. Read the entries whose names hint at relevance to the diff (e.g. if the diff is Go code, read the `feedback_*go*` and any concurrency/context entries; if Terraform, read the `feedback_tf_*` entries).
+2. `ls ~/.claude/projects/<project-slug>/memory/feedback_*.md` — the per-project memory garden. `<project-slug>` is the absolute working directory with each `/` replaced by `-` (e.g. `-Users-cristi-src-mslc`). Read the entries whose names hint at relevance to the diff (e.g. if the diff is Go code, read the `feedback_*go*` and any concurrency/context entries; if Terraform, read the `feedback_tf_*` entries).
 3. The project's `CLAUDE.md` (root or `~/.claude/projects/<slug>/CLAUDE.md`) — for project-specific overrides.
 
 **Per-dimension pass** (read the full staged diff with each lens; do not parallelise within a single pass — humans + CR review serially across dimensions, so do the same):
@@ -44,4 +44,4 @@ Severity: Major (would break behaviour or hide a bug), Minor (style / nitpick), 
 2. A short summary: dimension counts, memory-garden entries that matched, total Major / Minor / Info.
 3. If any finding suggests memorialising a new pattern (a recurring class CR has not yet flagged but is generalisable), call it out at the end so the human can decide whether to add it to memory after the commit lands per the `git-commit` skill ("Per-project feedback memory").
 
-Do NOT modify the staged diff yourself; this command is a review pass, not an edit pass. The user reviews the findings, fixes locally, and re-runs the command once more, 2 runs in total, whatever the stakes, per the §1 review gate.
+Do NOT modify the staged diff yourself; this command is a review pass, not an edit pass. The user reviews the findings, fixes locally, and re-runs the command once more, 2 runs in total, whatever the stakes, per the §1 review gate; a staged diff whose tree hash was already reviewed clean is not re-reviewed (`AGENTS.md` §1, same-hash rule).

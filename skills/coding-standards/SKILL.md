@@ -1,8 +1,8 @@
 ---
 name: coding-standards
-description: Stack preferences, testing philosophy, error handling, security (incl. a pre-launch
-  security checklist), API design, the YAGNI and comment-density rules, and the first-visit project
-  bootstrap checklist. Invoke when writing or reviewing code, on first visit to any project, and
+description: >-
+  Stack preferences, testing, error handling, security checklist, API design, YAGNI and comment
+  rules, first-visit bootstrap. Use when writing or reviewing code, on first visit to a project,
   before launching a user-facing app.
 ---
 
@@ -74,10 +74,10 @@ Sophistication is a cost, not a virtue. The simplest thing that works wins: fewe
 **The test is not "is this correct?" or "could this ever happen?" but "does a current caller need this, and can this state be reached given the callers that exist?"** Correct, well-reasoned, well-tested code guarding an unreachable state is still waste, and it is the hardest kind to spot because every local justification for it holds up. Find out what the calling system actually does before building for the general case.
 
 - **YAGNI.** Build only what a current caller needs. No parameters, flags, hooks, or abstraction layers for a future that hasn't arrived. If there is exactly one consumer, write it for that consumer.
-- **DRY, but rule-of-three.** Two similar pieces of code are usually fine; abstract at the third. Premature abstraction is over-engineering too, and it is harder to undo than duplication. (Complements `CLAUDE.md` §1a: reuse what already exists, but don't invent an abstraction for a second case that doesn't exist yet.)
+- **DRY, but rule-of-three.** Two similar pieces of code are usually fine; abstract at the third. Premature abstraction is over-engineering too, and it is harder to undo than duplication. (Complements `AGENTS.md` §1a: reuse what already exists, but don't invent an abstraction for a second case that doesn't exist yet.)
 - **Don't validate the impossible.** Validate at trust boundaries: external input, config, API payloads. Inside the module, trust your own callers instead of re-checking what the type system or the single call site already guarantees. Don't double up either (a type constraint *and* a runtime assert for the same value).
 - **Prefer removing the hazard to defending against it.** If a value needs validating because it reaches a shell, first check whether it needs to reach a shell at all. Deleting the interpolation removes the injection path and the validation with it.
-- **Elegance means fewer moving parts**, never more sophisticated ones (`CLAUDE.md` §5). If the "more elegant" version is longer or introduces a new concept, it isn't the more elegant one.
+- **Elegance means fewer moving parts**, never more sophisticated ones (`AGENTS.md` §5). If the "more elegant" version is longer or introduces a new concept, it isn't the more elegant one.
 
 **Self-check before opening a PR:**
 - Does every parameter have a caller that sets it?
@@ -281,7 +281,7 @@ Three ways this number lies, all of which have produced a wrong answer in practi
 
 **Fix stale comments adjacent to your diff.** The rules cover the comments your change sits among, not only the lines you added: the block above the function you edited, the note beside the line you moved, the comment inside the hunk. If it restates the code, runs past 2 lines, or has rotted out of sync with the code, fix or delete it while you are there — and **delete commented-out code on sight**, since version control already keeps it and nobody will uncomment it.
 
-Scope this tightly: **adjacent to the diff, not the whole file.** A stale comment at the other end of a file you happened to touch is somebody else's change. This is a narrow carve-out from "don't touch what you weren't asked to touch" (`CLAUDE.md` core principles) — that rule exists to prevent unrelated drive-by refactors, not to preserve rot in the lines you are already rewriting. Put the cleanup in its own commit so the functional diff stays readable.
+Scope this tightly: **adjacent to the diff, not the whole file.** A stale comment at the other end of a file you happened to touch is somebody else's change. This is a narrow carve-out from "don't touch what you weren't asked to touch" (`AGENTS.md` core principles) — that rule exists to prevent unrelated drive-by refactors, not to preserve rot in the lines you are already rewriting. Put the cleanup in its own commit so the functional diff stays readable.
 
 ```go
 // Bad: six lines restating the code and narrating the decision

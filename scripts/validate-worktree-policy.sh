@@ -18,7 +18,7 @@ if [ "$mode" = staged ]; then
   grep_args+=(--cached)
 fi
 
-pathspecs=(CLAUDE.md skills scripts ':(exclude)scripts/validate-worktree-policy.sh')
+pathspecs=(AGENTS.md CLAUDE.md skills scripts ':(exclude)scripts/validate-worktree-policy.sh')
 failures=0
 
 fail() {
@@ -71,7 +71,7 @@ assert_not_contains() {
   fi
 }
 
-assert_contains CLAUDE.md '.claude/worktrees/' 'always-on guidance must name the durable worktree root'
+assert_contains AGENTS.md '.claude/worktrees/' 'always-on guidance must name the durable worktree root'
 assert_contains skills/worktrees/SKILL.md '.claude/worktrees/' 'worktree creation must use the durable root'
 assert_contains skills/pr-orchestration/SKILL.md '.claude/worktrees/' 'orchestration must use the durable root'
 assert_contains skills/pr-iterate/SKILL.md '.claude/worktrees/' 'PR iteration must use the durable root'

@@ -1,21 +1,15 @@
 ---
 name: pr-iterate
 description: >-
-  Drive one PR, several, or every eligible open PR to merge-ready - resolve conflicts, address
-  CodeRabbit findings, push, re-ping CR, repeat until CR has zero actionables and CI is green.
-  Invoke on "address CR on #NNN", "fix conflicts on #NNN", "iterate on #NNN", "iterate on all my
-  open PRs", "fan out pr-iterate on my backlog". Never opens a new PR and never merges.
-when_to_use: >-
-  Also triggered by "address CR comments on #NNN" and "push fixes and re-ping CR on #NNN". Takes an
-  optional PR list - no argument fans out across all eligible open PRs in the current repo behind a
-  confirmation gate.
+  Drive existing PRs to merge-ready: fix conflicts, address CodeRabbit findings, re-ping CR until
+  clean and CI green. Triggers: "address CR on #N", "fix conflicts on #N", "iterate on #N",
+  "iterate on all my PRs". No argument fans out across all eligible open PRs behind a confirmation
+  gate. Never opens or merges.
 ---
 
-<!-- NOTE: reconstructed copy committed to dotclaude so the scheduled issue-pr-autopilot
-     remote agent (which clones dotclaude) can read the CR-iteration flow. The original
-     local copy was lost and has been reconstructed here, including
-     per-pr-agent-prompt.template.md. Phase 0 still documents a fallback for environments
-     where that template happens to be unavailable. -->
+<!-- NOTE: committed to dotclaude so the scheduled issue-pr-autopilot remote agent (which
+     clones dotclaude) can read the CR-iteration flow. Phase 0 documents a fallback for
+     environments where per-pr-agent-prompt.template.md is unavailable. -->
 
 # pr-iterate - automate the recurring PR-iteration loop
 
@@ -243,7 +237,7 @@ issues, skip the rest with a brief reason.
    the REAL failing scenario** (same inputs / data shape that reproduced the bug, not a narrower
    unit that can stay green while the bug lives) and FAILS pre-fix / PASSES post-fix. For the
    highest-severity finding, stash-verify (stash the prod change, run the test, confirm failure,
-   stash pop). **Green tests are NOT proof the feature works** (CLAUDE.md §4): after fixing,
+   stash pop). **Green tests are NOT proof the feature works** (AGENTS.md §4): after fixing,
    trace the actual end-to-end path the user triggers and confirm the observed behavior matches
    expected. For any finding that a prior "fix" already claimed to resolve, verify adversarially
    against the committed code before declaring it done.
@@ -275,7 +269,7 @@ issues, skip the rest with a brief reason.
    re-invokes `/pr-iterate <N>`, OR report "Pushed pass-<K> fixes + re-pinged CR; re-invoke after
    CR responds (typically 5-15 min)."
 2. On re-entry, re-pull CR signal (Phase 1.3). If the most recent CR review says
-   `Actionable comments posted: 0` (or LGTM) -> Phase 6. If new findings -> loop to Phase 3.
+   `Actionable comments posted: 0` (or LGTM) -> Phase 6. If new findings -> loop to Phase 3, within the CR round cap in `cr-loop` §3 (escalate instead of a round 4) and the `AGENTS.md` §1 2-pass rule.
 3. CI gate: `gh pr checks <N>` should be green. Transient `tflint --init` 403 -> `gh run rerun
    <run-id> --failed`. Real gocyclo -> extract helpers. Migration collision (UNSTABLE) ->
    renumber via `git mv`. Stash collision -> sleep 2 min, retry; do NOT `--no-verify`.

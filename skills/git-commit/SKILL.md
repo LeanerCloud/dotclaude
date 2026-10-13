@@ -14,7 +14,7 @@ a PR.
 
 ## ⚠️ Initialize a repo BEFORE any non-trivial work
 
-The rule is `CLAUDE.md` Git Workflow ("Repo first"). In short:
+The rule is `AGENTS.md` section Git (repo init at task start). In short:
 
 - **At task start**, not commit time, offer to `git init` a project directory that is not a repo; init without asking only when the user asked you to create the project there.
 - **Location exceptions**: never init `~`, system temp or the session scratchpad, `~/Downloads`, `~/Desktop` or similar scratch dirs. When unsure whether a dir is a project, treat it as one.
@@ -42,17 +42,17 @@ The rule is `CLAUDE.md` Git Workflow ("Repo first"). In short:
 
 ## ⚠️ Mandatory pre-commit review loop — NO EXCEPTIONS
 
-Before every commit, enter a review loop (same discipline as the plan review loop): run **2 review passes** over the staged diff (per `CLAUDE.md` §1), fix what they find, then commit. Do NOT skip, shortcut, or batch this step. The goal is to land clean commits in the first place, so the history doesn't need fix-up commits.
+Before every commit, enter a review loop (same discipline as the plan review loop): run **2 review passes** over the staged diff (per `AGENTS.md` §1), fix what they find, then commit. A staged diff whose tree hash was already reviewed clean is not re-reviewed (`AGENTS.md` §1, same-hash rule). Do NOT skip, shortcut, or batch this step. The goal is to land clean commits in the first place, so the history doesn't need fix-up commits.
 
-**Review on Sonnet 5.5 high, as comprehensively as possible: CodeRabbit's lens is the floor, not the ceiling.** This review is judgement-heavy, so run it at the Sonnet 5.5 high tier (the §1c local review loop and the plan-review gate are its analogues, both Sonnet 5.5 high per `CLAUDE.md` §2), including the hardest, highest-stakes money-path diffs. The six dimensions in `CLAUDE.md` §1 are the baseline; then go wider than any single reviewer would. Review as CodeRabbit would (its Actionable / Nitpick categories, the project's CR config, recurring past CR findings) AND as a demanding staff engineer would, across at least the lenses below. Where a lens names an agent, that agent is its dedicated reviewer for the Delegation fan-out.
+**Review on Sonnet 5.5 high, as comprehensively as possible: CodeRabbit's lens is the floor, not the ceiling.** This review is judgement-heavy, so run it at the Sonnet 5.5 high tier (the §1c local review loop and the plan-review gate are its analogues, both Sonnet 5.5 high per `AGENTS.md` §2), including the hardest, highest-stakes money-path diffs. The six dimensions in `AGENTS.md` §1 are the baseline; then go wider than any single reviewer would. Review as CodeRabbit would (its Actionable / Nitpick categories, the project's CR config, recurring past CR findings) AND as a demanding staff engineer would, across at least the lenses below.
 
 - **Architecture & design fit**: does the change belong where it landed, follow the module's patterns, and avoid leaking abstractions?
-- **Type design & invariants**: are illegal states unrepresentable, invariants expressed in types rather than asserted at runtime, encapsulation intact? (`pr-review-toolkit:type-design-analyzer`)
-- **Silent failures**: swallowed errors, empty catch blocks, fallbacks that mask real problems, `nil`/zero placeholders standing in for absent data (per `CLAUDE.md` §5). (`pr-review-toolkit:silent-failure-hunter`)
-- **Test coverage & edge cases**: are the new paths actually exercised, including boundaries, error paths, and the contract (not just the happy path)? (`pr-review-toolkit:pr-test-analyzer`)
+- **Type design & invariants**: are illegal states unrepresentable, invariants expressed in types rather than asserted at runtime, encapsulation intact? (brief: `lenses/type-design.md`)
+- **Silent failures**: swallowed errors, empty catch blocks, fallbacks that mask real problems, `nil`/zero placeholders standing in for absent data (per `AGENTS.md` §5). (brief: `lenses/silent-failures.md`)
+- **Test coverage & edge cases**: are the new paths actually exercised, including boundaries, error paths, and the contract (not just the happy path)?
 - **Security**: beyond OWASP basics: trust boundaries, authz on every new path, secret handling, injection via every new input.
-- **Over-engineering & scope**: parameters with no caller, abstractions with one consumer, validation of unreachable states, machinery the current requirement doesn't need. Could a competent colleague have written this in half the lines? See the `coding-standards` skill ("Simplicity & Scope (YAGNI)"). (`pr-review-toolkit:code-simplifier`)
-- **Comment accuracy & density**: do comments match the code, or did they rot during edits? Is the diff over-commented (restatements of the next line, rationale essays, review-round references)? **Measure it, don't eyeball it**: run the one-liner in the `coding-standards` skill ("Comments") and check the two per-comment rules - nothing over 2 lines, nothing describing what the code does. Over ~15% means delete until under it or name the exception. (`pr-review-toolkit:comment-analyzer`)
+- **Over-engineering & scope**: parameters with no caller, abstractions with one consumer, validation of unreachable states, machinery the current requirement doesn't need. Could a competent colleague have written this in half the lines? See the `coding-standards` skill ("Simplicity & Scope (YAGNI)").
+- **Comment accuracy & density**: do comments match the code, or did they rot during edits? Is the diff over-commented (restatements of the next line, rationale essays, review-round references)? **Measure it, don't eyeball it**: run the one-liner in the `coding-standards` skill ("Comments") and check the two per-comment rules - nothing over 2 lines, nothing describing what the code does. Over ~15% means delete until under it or name the exception.
 - **Performance & resources**: N+1s, unbounded growth, leaked handles/goroutines, needless allocation on hot paths.
 - **API, naming & convention consistency**: does it match the surrounding code's idiom, naming, and the project's documented conventions?
 
@@ -60,7 +60,7 @@ For multi-concern or substantial diffs, fan out the specialised review agents in
 
 ### Each pass
 
-Read the full staged diff (`git diff --cached`) and the relevant unstaged context, and check the six dimensions in `CLAUDE.md` §1, plus the memory garden match:
+Read the full staged diff (`git diff --cached`) and the relevant unstaged context, and check the six dimensions in `AGENTS.md` §1, plus the memory garden match:
 
 - **Memory garden match**: Scan the per-project memory at `~/.claude/projects/<project-slug>/memory/feedback_*.md` (and any matching `project_*.md`) and apply every entry whose `**How to apply:**` line matches the changeset. This is the **highest-leverage step** because the entries encode patterns CR already taught us on this project — finding a match here means CR will NOT raise the same nit again. If a finding from the current review surfaces a pattern that's NOT in memory but is generalisable, file the new `feedback_<slug>.md` after the commit lands per §"Per-project feedback memory".
 
@@ -77,7 +77,7 @@ For a sequence of atomic commits implementing one plan: review each commit's sta
 
 ### Delegation
 
-For staged changes touching multiple concerns (Go + TS + Terraform) or any substantial diff, launch specialised review agents in parallel and compile their findings before committing; each agent is one comprehensive lens, and together they approximate a full review board that no single pass matches. Beyond a general reviewer (`feature-dev:code-reviewer` or `pr-review-toolkit:code-reviewer`), run each lens agent named in the list above so nothing slips between them.
+For staged changes touching multiple concerns (Go + TS + Terraform) or any substantial diff, fan out up to 3-4 `general-purpose` subagents in parallel, each briefed with the text of the lens(es) it owns (group related lenses), plus one general code reviewer. An agent owning a lens that has a brief file gets that file's full text in its prompt (`~/.claude/skills/git-commit/lenses/`). Compile their findings before committing.
 
 Spawn each on the appropriate tier (the review judgement itself is top-tier, including for the hardest money-path diffs; mechanical single-file diffs can drop to Sonnet 5.5 low), aggregate the findings, dedupe overlaps, and resolve every actionable item before the commit lands.
 
@@ -98,7 +98,7 @@ After committing, run a quick sanity scan (`git show HEAD`) to catch anything th
 
 ## Per-project feedback memory
 
-The per-project memory garden (`~/.claude/projects/<project-slug>/memory/feedback_*.md`, entry structure per `CLAUDE.md` §3) is read in four contexts:
+The per-project memory garden (`~/.claude/projects/<project-slug>/memory/feedback_*.md`, entry structure per `AGENTS.md` §3) is read in four contexts:
 
 1. **Before / during writing new code on any branch.** Skim relevant entries up front and apply them proactively. This is the cheapest place to apply a known rule and the biggest leverage.
 2. **During the pre-commit review gate**, as the memory garden match above.

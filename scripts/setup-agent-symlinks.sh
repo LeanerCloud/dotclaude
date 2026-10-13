@@ -17,7 +17,7 @@ Two mechanisms:
      ~/.agents/skills as an alias of ~/.gemini/skills, so a single tree serves
      both. Claude Code reads CLAUDE_DIR/skills directly - the canonical copy.
 
-  2. Root config (CLAUDE.md as AGENTS.md/GEMINI.md, local-paths.md,
+  2. Root config (AGENTS.md as AGENTS.md/GEMINI.md, local-paths.md,
      projects.md) -> HOME/.codex and HOME/.gemini.
 
 Options:
@@ -108,7 +108,7 @@ link_shared_docs() {
   agent_dir="$1"
   mkdir -p "$agent_dir"
 
-  link_one "$claude_dir/CLAUDE.md" "$agent_dir/AGENTS.md"
+  link_one "$claude_dir/AGENTS.md" "$agent_dir/AGENTS.md"
   link_one "$claude_dir/local-paths.md" "$agent_dir/local-paths.md"
   link_one "$claude_dir/projects.md" "$agent_dir/projects.md"
 
@@ -173,5 +173,5 @@ link_skills() {
 
 link_shared_docs "$codex_dir"
 link_shared_docs "$gemini_dir"
-link_one "$claude_dir/CLAUDE.md" "$gemini_dir/GEMINI.md"
+link_one "$claude_dir/AGENTS.md" "$gemini_dir/GEMINI.md"
 link_skills

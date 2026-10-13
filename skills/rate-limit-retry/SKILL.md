@@ -1,8 +1,8 @@
 ---
 name: rate-limit-retry
-description: What to do when an operation is throttled (429, secondary rate limit, a usage limit
-  that resets, "try again later") by any API, model or CLI - schedule one self-deleting retry
-  instead of stalling; escalate exhausted credits instead. Invoke when a throttle actually happens.
+description: >-
+  Any API, CLI or model throttle (429, rate limit exceeded, secondary limit, resetting usage
+  limit, "try again later"): schedule one self-deleting retry; escalate exhausted credits.
 ---
 
 # Rate-limit handling: retry when throttled, never stall

@@ -34,9 +34,9 @@ Within ~30 seconds of `gh pr create` returning, the main session MUST have done 
 2. **Trigger CodeRabbit** per the `cr-loop` skill §1, bound atomically to step 4 (invariant below).
 3. **CI watcher(s)**: arm one background shell watcher per Actions workflow run that fired on the push (per the `ci-watch` skill), labelled `ci-watch-<short-sha>-<workflow-slug>-<run-id>`. See §"Post-push CI watcher" for the prompt shape. Their job is CI failures only - they do NOT read CodeRabbit's inline comments.
 4. **CR watcher**: arm ONE `cr-watch-<pr-#>` shell wait per the `cr-loop` skill §2 (wait, triage hand-off and model tiers live there); without it, CodeRabbit findings sit unread.
-5. **Merge watcher**: spawn ONE background `Agent` named `merge-watch-<pr-#>` per §4. It waits for the human merge AND runs the §5 post-merge verification AND files the §7 follow-up issues. Spawn this immediately at PR-creation time even though it has nothing to do until merge - having it pre-armed means the merge → verification → issue-filing chain runs without main-session intervention.
+5. **Merge watcher**: arm ONCE, at PR creation (§4 only describes it), ONE background shell watcher `merge-watch-<pr-#>` (Bash `run_in_background: true`, not an agent) per §4: it polls `gh pr view <#> --json state` every 5-10 minutes and exits on MERGED or CLOSED. When it exits, spawn an agent to run the §5 post-merge verification and file the §7 follow-up issues, so the chain runs without main-session intervention and nothing polls at agent cost.
 
-Total: **3+ background agents per PR** (one per CI run + cr-watch + merge-watch). Do not collapse them into one "do everything" agent - they have different polling cadences and different terminal conditions. Do not omit cr-watch with the rationale that "CodeRabbit is just a bot" - its findings have the same severity weighting as a human reviewer's, and unaddressed CR threads block the human merge in projects that gate on review-bot approval.
+Total: **3+ background watchers per PR** (one per CI run + cr-watch + merge-watch, all shell scripts). Do not collapse them into one "do everything" watcher - they have different polling cadences and different terminal conditions. Do not omit cr-watch with the rationale that "CodeRabbit is just a bot" - its findings have the same severity weighting as a human reviewer's, and unaddressed CR threads block the human merge in projects that gate on review-bot approval.
 
 **Common failure mode** (the reason this checklist exists in this prominent form): spawning only the CI watcher and walking away. The CI watcher reports "all checks passed" once CodeRabbit's "check" reaches the green "review submitted" state - but its findings inside the review are invisible to that check. The human reviewer notices the unaddressed comments first; main session has already moved on. Always spawn cr-watch alongside ci-watch.
 
@@ -52,12 +52,12 @@ Any PR with CR findings or an un-responded trigger and no live watcher gets a fr
 
 **Watcher teardown invariant.** Every background watcher (`ci-watch-*`, `cr-watch-*`, `merge-watch-*`, any deploy-watch) is reaped once its terminal condition is met; one left idle is a leak that survives to session exit. An `idle_notification` means "available for more", not "done", so the harness keeps the agent registered until it returns a terminal final message or is stopped. Do both:
 
-- Write watcher prompts to return the final report **and stop** on the terminal condition: CI run concluded and any fix pushed (`ci-watch`); CR review clean with zero open findings and no re-review pending (`cr-watch`); PR merged and §5 verification plus §7 issue-filing complete (`merge-watch`). Never "report back and keep polling".
-- During the reconciliation sweep, `TaskStop` by name every `cr-watch`/`ci-watch`/`merge-watch` still running for a MERGED or CLOSED PR. `merge-watch` is the natural end-of-lifecycle reaper (§4/§5); the sweep is the backstop. The session is not clean to close until every such watcher is stopped.
+- Write watcher prompts to return the final report **and stop** on the terminal condition: CI run concluded and any fix pushed (`ci-watch`); CR review clean with zero open findings and no re-review pending (`cr-watch`); PR merged and §5 verification plus §7 issue-filing complete (the post-merge agent; the `merge-watch` shell watcher simply exits on MERGED or CLOSED). Never "report back and keep polling".
+- During the reconciliation sweep, `TaskStop` by name every `cr-watch`/`ci-watch`/`merge-watch` still running for a MERGED or CLOSED PR. The post-merge agent reaps the sibling watchers (§4/§5); the sweep is the backstop. The session is not clean to close until every such watcher is stopped.
 
 ### 4. Wait for human merge — do NOT self-merge by default
 
-After CI is green and CodeRabbit's loop has settled, hand off to the user. Spawn a background agent named `merge-watch-<pr-#>` (`model: sonnet` at low effort — polling and running the fully prescribed §5 checks (terraform plan, curl, simple Chrome MCP walkthroughs) are mechanical, but judging whether the evidence verifies the change is verification and goes to **Sonnet 5.5 high**; if §5 verification turns out to need exploratory UI debugging, re-spawn that step on **Sonnet 5.5 high** — exploratory debug is hypothesis iteration per CLAUDE.md §2 and is the kind of "understanding is the hard part" workload that's gotten wrong at medium effort. Step down to Sonnet 5.5 medium only when the exploration narrows to a single decided fix to apply) that polls `gh pr view <#> --json state,merged,mergeCommit,mergedAt` until:
+After CI is green and CodeRabbit's loop has settled, hand off to the user. The `merge-watch-<pr-#>` shell watcher armed at PR creation (§3 step 5) polls `gh pr view <#> --json state,merged,mergeCommit,mergedAt` every 5-10 minutes until MERGED or CLOSED, then exits. Only when it exits, spawn the post-merge agent (`model: sonnet` at low effort — running the fully prescribed §5 checks (terraform plan, curl, simple Chrome MCP walkthroughs) are mechanical, but judging whether the evidence verifies the change is verification and goes to **Sonnet 5.5 high**; if §5 verification turns out to need exploratory UI debugging, re-spawn that step on **Sonnet 5.5 high** — exploratory debug is hypothesis iteration per AGENTS.md §2 and is the kind of "understanding is the hard part" workload that's gotten wrong at medium effort. Step down to Sonnet 5.5 medium only when the exploration narrows to a single decided fix to apply). The watcher's exit state decides the path:
 
 - `merged: true` → proceed to §5.
 - `state: CLOSED` and not merged → terminal, clean up, exit (and notify user that the PR was closed unmerged so any in-flight work can be re-planned).
@@ -70,7 +70,7 @@ Project-specific review and merge gates live in each project's `CLAUDE.md`.
 
 ### 5. Post-merge verification
 
-Once merged, the `merge-watch-<pr-#>` agent waits for the deploy pipeline (`gh run list --branch <base> --limit 5` polled until the relevant deploy run is green), then exercises a verification appropriate to the change type:
+Once merged, the post-merge agent waits for the deploy pipeline (`gh run list --branch <base> --limit 5` polled until the relevant deploy run is green), then exercises a verification appropriate to the change type:
 
 - **UI / frontend changes**: navigate the deployed URL via Chrome MCP (`mcp__claude-in-chrome__*` tools), exercise the affected flow, and confirm the bug repro from the originating issue no longer reproduces. For multi-page flows, walk the golden path AND the previously-broken edge case. Record concrete observations (which selectors clicked, what the network tab showed, which API responses came back).
 - **Backend / API changes**: `curl` the affected endpoint(s) with realistic input, assert the response shape, status code, and key field values. For state-changing endpoints, follow up with a read to confirm the state actually changed.
@@ -79,9 +79,9 @@ Once merged, the `merge-watch-<pr-#>` agent waits for the deploy pipeline (`gh r
 
 When verification can't be done remotely (sandboxed env, gated credentials, change requires a real customer scenario): say so explicitly in the comment in §6 — never silently skip and claim done.
 
-**Reclaim the worktree once merged.** The `merge-watch-<pr-#>` agent is the one that observes the merge, so it owns cleanup: after the §5 verification, run the worktree sweep from the `worktrees` skill ("Reclaiming worktrees after the PR merges or closes") for this PR's branch: safety-gate it (clean tree, nothing unpushed; recover stranded work per `feedback_recover_stranded_fix_work` if not), then `git worktree remove` it, delete **both** the local branch (`git branch -D`) **and the remote branch** (`git push origin --delete <branch>` — a merged/wontfix head branch is dead; leaving it accumulates hundreds of stale remote refs), and archive/delete the plan file. If this PR was closed as wontfix instead of merged, the same sweep applies. This is what keeps `git worktree list` and `git branch -r` from silently accumulating dozens of merged-branch worktrees and refs; pair it with the periodic no-worktree **branch sweep** in the `worktrees` skill ("Sweep merged/closed branches that have NO worktree") for branch refs left behind after their worktree is already gone.
+**Reclaim the worktree once merged.** The post-merge agent (spawned when `merge-watch-<pr-#>` exits) owns cleanup: after the §5 verification, run the worktree sweep from the `worktrees` skill ("Reclaiming worktrees after the PR merges or closes") for this PR's branch: safety-gate it (clean tree, nothing unpushed; recover stranded work per `feedback_recover_stranded_fix_work` if not), then `git worktree remove` it, delete **both** the local branch (`git branch -D`) **and the remote branch** (`git push origin --delete <branch>` — a merged/wontfix head branch is dead; leaving it accumulates hundreds of stale remote refs), and archive/delete the plan file. If this PR was closed as wontfix instead of merged, the same sweep applies. This is what keeps `git worktree list` and `git branch -r` from silently accumulating dozens of merged-branch worktrees and refs; pair it with the periodic no-worktree **branch sweep** in the `worktrees` skill ("Sweep merged/closed branches that have NO worktree") for branch refs left behind after their worktree is already gone.
 
-**Reap the watchers, then reap yourself.** The merge is the terminal event for the whole PR lifecycle, so the `merge-watch-<pr-#>` agent is the natural reaper per the Watcher-teardown invariant (§"Post-PR review loop"): after the worktree reclaim, `TaskStop` this PR's now-idle siblings: the `cr-watch-<pr-#>` and every `ci-watch-<sha>-*` for it (their jobs ended when CR went clean and CI concluded, but they may be parked on an idle notification). Then **return your own final report**, which permanently ends `merge-watch` itself, rather than continuing to poll. End state after a merge: zero live watchers for that PR. If you cannot stop a sibling (already gone, or not addressable), note it so the session-end reconciliation sweep catches it.
+**Reap the watchers, then reap yourself.** The merge is the terminal event for the whole PR lifecycle, so the post-merge agent is the natural reaper per the Watcher-teardown invariant (§"Post-PR review loop"): after the worktree reclaim, `TaskStop` this PR's now-idle siblings: the `cr-watch-<pr-#>` and every `ci-watch-<sha>-*` for it (their jobs ended when CR went clean and CI concluded, but they may be parked on an idle notification). Then **return your own final report**, which ends the post-merge agent, rather than continuing to poll. End state after a merge: zero live watchers for that PR. If you cannot stop a sibling (already gone, or not addressable), note it so the session-end reconciliation sweep catches it.
 
 ### 6. Comment on the originating issue with the verification outcome
 
@@ -132,7 +132,7 @@ gh pr create
    ↓
 @coderabbitai review comment
    ↓
-[cr-watch-<pr-#>] background agent → poll 60-120s, handle 429s
+[cr-watch-<pr-#>] background shell → poll per cr-loop §2, handle 429s
    ↓
 CodeRabbit review arrives
    ↓
@@ -142,7 +142,7 @@ Triage: actionable / dismiss-with-justification / batch-nitpick
    ↓
 CI green + CodeRabbit settled → PR comment summarising
    ↓
-[merge-watch-<pr-#>] background agent → poll until merged
+[merge-watch-<pr-#>] background shell → poll 5-10 min until MERGED/CLOSED, then spawn post-merge agent
    ↓
 Deploy pipeline green
    ↓

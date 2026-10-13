@@ -47,10 +47,8 @@ SYMLINKS=(
   "verification-before-completion|upstreams/superpowers/skills/verification-before-completion"
   "writing-skills|upstreams/superpowers/skills/writing-skills"
   "office-hours|upstreams/gstack/office-hours"
-  "cso|upstreams/gstack/cso"
   "health|upstreams/gstack/health"
   "retro|upstreams/gstack/retro"
-  "mcp-builder|upstreams/anthropic-skills/skills/mcp-builder"
   "terraform-skill|upstreams/terraform-skill/skills/terraform-skill"
   "owasp-security|upstreams/owasp-security/.claude/skills/owasp-security"
 )

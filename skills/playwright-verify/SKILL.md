@@ -1,15 +1,15 @@
 ---
 name: playwright-verify
-description: Automated browser verification of web-app changes - run the prod-parity local stack,
-  drive Playwright through the standard checklist, iterate until clean. Invoke after any web-app
-  change before declaring it done, and when setting up a new web project's run/verification harness.
+description: >-
+  Verify web-app changes in a browser via Playwright on the prod-parity local stack. Use after any
+  web-app change before declaring done, and when setting up a web harness.
 ---
 
 # Playwright Verification of Web-App Changes
 
 After ANY change to a web application - frontend, or a backend change that affects a user-facing
 web flow - verify the change in a real browser with Playwright before declaring it done. This
-operationalizes the CLAUDE.md §4 use-the-feature-in-a-browser rule with automation instead of a
+operationalizes the AGENTS.md §4 use-the-feature-in-a-browser rule with automation instead of a
 one-off manual click-through. Also invoke when setting up a new web project: installing the
 harness below is part of project setup, not later polish.
 

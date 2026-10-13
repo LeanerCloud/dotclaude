@@ -1,9 +1,9 @@
 ---
 name: multi-agent-comms
-description: How peer agent sessions sharing one machine or repo avoid clobbering each other -
-  check for other sessions, message them before overlapping work, and serialize shared steps (push,
-  build, install, full test suite) with a per-repo OS file lock. Invoke when several agents or
-  sessions may work the same project concurrently.
+description: >-
+  Stop concurrent agent sessions clobbering one repo: check for peers, message before overlap,
+  serialize push/build/install under a per-repo lock. Use when several sessions may work one
+  project.
 ---
 
 # Multi-agent coordination
