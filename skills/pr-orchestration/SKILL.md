@@ -263,19 +263,9 @@ A `sed`-built script can silently produce a 0-byte file. `bash -n` any generated
 it as a watcher (review rules: `tool-usage` skill).
 
 ### A fix can be defeated by its own remediation path
-Three shapes, two from one script closing an over-broad IAM grant:
-
-- **A scan scoped by a value the fix tells the operator to change.** The scan keyed on the *current*
-  pool ID, so following the script's own "migrate to a dedicated pool" advice rebuilt that string for
-  the NEW pool and the wildcard grant went unseen, exit 0. Walk a remediation end-to-end **with its
-  own recommendation applied**.
-- **Detection scope wider than removal scope** leaves the defect *detected and surviving*, worse than
-  not scanning. Derive both from one list and **re-read the state after mutating it**.
-- **A control the code REFERENCES may not EXIST.** A fix rested on a deployment environment's
-  approval gate; those environments did not exist and the platform auto-creates a referenced
-  environment BARE on first use, so the YAML was correct and the control vacuous. Verify an external
-  control's live configuration, prefer controls declared in IaC, and state which half of a claim you
-  verified.
+- Walk a remediation end-to-end **with its own recommendation applied**; a scan keyed on a value the fix tells the operator to change goes blind afterwards.
+- Detection scope wider than removal scope leaves the defect detected and surviving. Derive both from one list and re-read the state after mutating it.
+- A control the code references may not exist (a referenced deploy environment is auto-created BARE). Verify an external control's live configuration, prefer controls declared in IaC, and state which half of a claim you verified.
 
 ### The orchestrator's own status read has a shelf life
 In a fast fan-out a state read goes stale in minutes, and the orchestrator is the LAST to know: each

@@ -84,10 +84,7 @@ Submodule gitdirs live in the main clone's `.git/modules`, so `git submodule upd
 
 ## PID lifecycle - writes are the ownership protocol
 
-- Plan creation: set `pid:` (the session shell's `$$`), `host:` (`$(hostname)`), `pid_updated:` (now).
-- Every task checkpoint or at least every 30 min while editing: rewrite `pid_updated:` (and `pid:` if changed). This is the heartbeat.
-- Adoption: rewrite `pid:`, `host:`, `pid_updated:` in one write BEFORE any code change; verify after ~2s that your PID is still there, else yield.
-- Clean exit (merge or abandon): clear `pid:`.
+Defined in the embedded checklist above (resolve, adopt, heartbeat every 30 min). Plan creation sets `pid:` (`$$`), `host:` (`$(hostname)`), `pid_updated:` (now); clean exit (merge or abandon) clears `pid:`.
 
 ## Crash recovery and orphan detection
 
@@ -116,17 +113,13 @@ Don't rely on a host-managed subagent worktree (Claude Code: `Agent` `isolation:
 
 ## Merge gate
 
-ALL must hold before rebasing/merging onto the base branch:
-
-1. Every plan item is implemented (cross-check line by line).
-2. The §1 post-implementation review is complete and clean.
-3. **2 verification passes are done and acted on** (two, whatever the stakes), as defined in the embedded checklist. Fix what a pass surfaces but don't restart a counter: after the second pass, go with it.
+The gate is the "Merge gate" block in the embedded checklist above (all plan items implemented, clean §1 post-implementation review, 2 verification passes acted on). After the second pass, go with it.
 
 ## Rebase and cleanup
 
-- **Rebase, don't merge, by default**: `git rebase <base-branch>` in the worktree for linear history, then fast-forward the base. Merge commit only if the base protects against force-pushes or the team convention demands it.
-- **Immediately after the merge**: push the base branch (post-push CI watcher per `ci-watch`). The rest of this bullet is inside the AGENTS.md tenet 9 exception only when the branch tip is an ancestor of the pushed base (`git merge-base --is-ancestor <branch> origin/<base>`); otherwise ask first. Then `git worktree remove "$HOME/.claude/worktrees/<repo-name>-<slug>"`, delete the build dirs recorded in the plan's `build_dirs:` (exact paths only, only if no other plan lists them; never glob by number; never shared dirs such as `build-master`), delete the feature branch if no longer needed, and archive the plan (flip `status:` to `merged`, move to `plans/archive/`).
-- **If a worktree is abandoned**: flip `status:` to `abandoned` first, archive the plan, and remove the worktree once the user confirms.
+- **Rebase, don't merge, by default**: `git rebase <base-branch>` in the worktree, then fast-forward the base. Merge commit only if the base protects against force-pushes or the team convention demands it.
+- **Immediately after the merge**: push the base branch (post-push CI watcher per `ci-watch`), then clean up per "On completion" in the embedded checklist and delete the feature branch if no longer needed; build dirs follow step 4 of the sweep below.
+- **Abandoned worktree**: see "On abandonment" in the checklist.
 
 ## Reclaiming worktrees after the PR merges or closes (run the sweep)
 
