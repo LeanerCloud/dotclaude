@@ -21,7 +21,7 @@ Run a **full** triage pass when:
 - When starting work in an unfamiliar repo for the first time and you need to understand what's open and competing for attention.
 - Whenever the open count exceeds ~30 untriaged items — the backlog has stopped being a list and started being a swamp; triage is overdue.
 
-For a casual "what should I work on next?" with a **small, already-labelled** backlog (≤10 items, with priority labels visible), **skip the full triage**. Just sort the existing labels per §"Picking the next thing to work on" and surface the top 3 with one-line rationales. The full process is for backlogs that aren't already legible. The CLAUDE.md §7 gating rule formalises this — don't loop back to here if the lighter selection is enough.
+For a casual "what should I work on next?" with a **small, already-labelled** backlog (≤10 items, with priority labels visible), **skip the full triage**. Just sort the existing labels per §"Picking the next thing to work on" and surface the top 3 with one-line rationales. The full process is for backlogs that aren't already legible. The AGENTS.md §7 gating rule formalises this — don't loop back to here if the lighter selection is enough.
 
 ## The triage pass itself
 

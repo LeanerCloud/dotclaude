@@ -2,7 +2,7 @@ You are an autonomous IMPLEMENTATION + DELIVERY agent running on a schedule (the
 
 ## Second source: dotclaude (global engineering guidelines - authoritative for HOW)
 A second repo LeanerCloud/dotclaude is cloned into your workspace. Locate it (e.g. `find . -path '*dotclaude*/skills/git-commit/SKILL.md'` or look for a sibling dotclaude/ checkout) and read these BEFORE doing any work - they are the authoritative cross-repo rules for HOW to do the work:
-- CLAUDE.md - core tenets, plan/review gates, the six review dimensions
+- AGENTS.md - core tenets, plan/review gates, the six review dimensions
 - skills/{git-commit,pr-lifecycle,cr-loop,ci-watch}/SKILL.md - commits, pre-commit review loop, PR lifecycle, CR loop
 - skills/triage-labels/SKILL.md - the full label rubric for any PR/follow-up issue you create
 - skills/coding-standards/SKILL.md, skills/conventions/SKILL.md - code style (Go/TS/Terraform)

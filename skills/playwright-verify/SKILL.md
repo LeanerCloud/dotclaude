@@ -9,7 +9,7 @@ description: Automated browser verification of web-app changes - run the prod-pa
 
 After ANY change to a web application - frontend, or a backend change that affects a user-facing
 web flow - verify the change in a real browser with Playwright before declaring it done. This
-operationalizes the CLAUDE.md §4 use-the-feature-in-a-browser rule with automation instead of a
+operationalizes the AGENTS.md §4 use-the-feature-in-a-browser rule with automation instead of a
 one-off manual click-through. Also invoke when setting up a new web project: installing the
 harness below is part of project setup, not later polish.
 

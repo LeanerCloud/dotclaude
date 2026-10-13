@@ -9,7 +9,7 @@ description: Worktree isolation per change - creation preconditions, plan persis
 
 Multi-commit or long-running work, and any work in a checkout another session may be using, happens in a dedicated git worktree branched off the current branch — never commit in-progress work directly on the branch you started from. The base branch stays clean until the change is fully implemented and verified, so a broken or abandoned attempt never pollutes it.
 
-This file is the full worktree-isolation protocol: when to create one, how to persist the plan, the PID/ownership lifecycle, crash recovery, the merge gate, and cleanup. CLAUDE.md §1b carries a short headline + pointer here.
+This file is the full worktree-isolation protocol: when to create one, how to persist the plan, the PID/ownership lifecycle, crash recovery, the merge gate, and cleanup. AGENTS.md §1b carries a short headline + pointer here.
 
 ## Preconditions and creation
 
@@ -59,7 +59,7 @@ Paste verbatim below the header — copy-paste, don't paraphrase, so every plan 
 
 **Merge gate — ALL must hold before rebasing onto `base_branch:`**:
 - Every item in this plan is implemented (tick each line).
-- The CLAUDE.md §1 post-implementation review is clean.
+- The AGENTS.md §1 post-implementation review is clean.
 - **2 verification passes are done and acted on** (two, whatever the stakes). A pass covers tests, lint/typecheck, the §4 per-change-type verification (UI smoke, API curl, etc.), and a re-read of the diff against the plan. Fix what each pass finds; don't keep re-verifying for a pass that finds nothing.
 
 **On completion**: rebase onto `base_branch:`, push, `git worktree remove` the worktree, flip `status:` to `merged`, then delete (or archive) this plan file. If the PR merges out-of-band (a human or another agent's `merge-watch` merges it after this session is gone), any later session reclaims this worktree via the sweep in the `worktrees` skill ("Reclaiming worktrees after the PR merges or closes").
@@ -69,7 +69,7 @@ Paste verbatim below the header — copy-paste, don't paraphrase, so every plan 
 
 ### Task breakdown
 
-The actual plan — atomic tasks with file paths and verification steps per CLAUDE.md §1.
+The actual plan — atomic tasks with file paths and verification steps per AGENTS.md §1.
 
 ### Symlink and exclusion
 

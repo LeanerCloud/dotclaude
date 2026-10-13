@@ -243,7 +243,7 @@ issues, skip the rest with a brief reason.
    the REAL failing scenario** (same inputs / data shape that reproduced the bug, not a narrower
    unit that can stay green while the bug lives) and FAILS pre-fix / PASSES post-fix. For the
    highest-severity finding, stash-verify (stash the prod change, run the test, confirm failure,
-   stash pop). **Green tests are NOT proof the feature works** (CLAUDE.md §4): after fixing,
+   stash pop). **Green tests are NOT proof the feature works** (AGENTS.md §4): after fixing,
    trace the actual end-to-end path the user triggers and confirm the observed behavior matches
    expected. For any finding that a prior "fix" already claimed to resolve, verify adversarially
    against the committed code before declaring it done.

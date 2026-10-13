@@ -31,7 +31,7 @@ Everything already owned by another file is cross-referenced, not restated:
 | Model-tier selection, reviewer independence, subsystem pooling, agent reuse | the `subagent-strategy` skill |
 | Peer-session coordination on one repo (session messaging, per-repo locks) | the `multi-agent-comms` skill |
 | Priority ordering of issues and PRs | the `work-selection` skill |
-| Verification standards, adversarial verification | `CLAUDE.md` §4, §6 |
+| Verification standards, adversarial verification | `AGENTS.md` §4, §6 |
 | Testing rules, including asserting the defect | the `coding-standards` skill |
 | Matching the CI-pinned tool version | the `tool-usage` skill |
 | Cron routines, RemoteTrigger bodies, run budget | the `issue-pr-autopilot` skill |
@@ -461,7 +461,7 @@ context*. Guards:
 
 ## 8. Verification discipline
 
-The standards are in `CLAUDE.md` §4 (verification before done) and §6
+The standards are in `AGENTS.md` §4 (verification before done) and §6
 (root-cause bug fixing): a regression guard must fail against the pre-fix
 code, green tests are not proof the feature works, trace the real
 end-to-end path, re-check live state before asserting status. Procedure for

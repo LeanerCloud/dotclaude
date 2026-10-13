@@ -3,7 +3,7 @@
 # in every session's context and are now inside skills.
 #
 # Skills load only when invoked, and nothing enforces invocation. For most guidance that is fine —
-# the trigger lines in CLAUDE.md carry the headline rule. For a handful of commands the cost of
+# the trigger lines in AGENTS.md carry the headline rule. For a handful of commands the cost of
 # missing the rule is high and the command is rare, so a one-line nudge next to the tool call is
 # worth it. Deliberately NOT fired on every Bash call: a reminder that appears constantly stops
 # being read and just burns context.

@@ -27,7 +27,7 @@ machinery, it does not duplicate it:
 - The orchestration model this implements (roles, concurrency, merge gate,
   loops, traps) -> the `pr-orchestration` skill
 - Selection / triage rubric -> the `work-selection` and `triage-labels` skills
-- Plan -> worktree -> implement -> review -> PR -> `CLAUDE.md`, the `worktrees` skill,
+- Plan -> worktree -> implement -> review -> PR -> `AGENTS.md`, the `worktrees` skill,
   the `coding-standards` skill, the `conventions` skill
 - Commit/PR hygiene -> the `git-commit` and `pr-lifecycle` skills; post-PR CR loop -> `cr-loop`
 - Model-tier selection -> the `subagent-strategy` skill
@@ -39,7 +39,7 @@ A cloud scheduled routine runs as **one flat agent**: it has tools
 `[Bash, Read, Write, Edit, Glob, Grep]` only, **no Agent/Task tool**, so it
 **cannot spawn subagents**, and it is **pinned to a single model** for the whole
 run. There is no shared memory between fires either. So the local
-CLAUDE.md tier-split (Opus plans, Sonnet implements, each as a subagent) is
+AGENTS.md tier-split (Opus plans, Sonnet implements, each as a subagent) is
 impossible inside a single routine.
 
 The only way to apply the tier-split in the cloud is to run **separate routines on

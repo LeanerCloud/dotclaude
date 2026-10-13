@@ -32,7 +32,7 @@ Only create files that are relevant — a simple CLI tool doesn't need `api.md` 
 
 ## Compass Knowledge Graph
 
-Compass builds a local knowledge graph of the codebase (symbols, calls, dependencies, communities) that survives across sessions and reduces the need to re-read raw files. Full usage and its limits are in `CLAUDE.md` §0.
+Compass builds a local knowledge graph of the codebase (symbols, calls, dependencies, communities) that survives across sessions and reduces the need to re-read raw files. Full usage and its limits are in `AGENTS.md` §0.
 
 - **On first visit to a project**: if `compass-out/` is missing and the project is non-trivial, run `compass init . --yes` (or build out of tree with `compass extract <path> --code-only --out <dir>` when the checkout isn't yours)
 - **For orientation**: `compass export html` (or `wiki`) gives the architecture map; `compass explain <symbol>` and `compass affected <symbol>` answer targeted questions

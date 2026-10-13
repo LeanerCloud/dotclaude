@@ -12,8 +12,8 @@ That work shapes the opinions in here: heavy use of multi-cloud Terraform, suppl
 
 ## How it's organised
 
-[`CLAUDE.md`](CLAUDE.md) is the always-on core: the nine core tenets, the principles, the six review
-dimensions, the model-tier table, and a routing table. Everything with a specific trigger lives in a
+[`AGENTS.md`](AGENTS.md) (imported by `CLAUDE.md`) is the always-on core: the nine core tenets, the principles, the six review
+dimensions, the model-tier table, and the mandatory skill triggers. Everything with a specific trigger lives in a
 [**skill**](skills/) whose body loads only when that trigger fires, so a session no longer starts by
 reading ~130 KB of guidance it mostly won't use.
 

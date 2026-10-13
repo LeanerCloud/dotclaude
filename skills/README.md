@@ -2,7 +2,7 @@
 
 Every rule in this repo that isn't needed on *every* turn lives here as an
 [Agent Skill](https://agentskills.io): a directory with a `SKILL.md` whose frontmatter is loaded up
-front and whose body loads only when the skill is activated. `CLAUDE.md` keeps the always-on core and
+front and whose body loads only when the skill is activated. `AGENTS.md` keeps the always-on core and
 routes to these.
 
 The same files drive **Claude Code**, **Codex CLI** and **Gemini CLI**. That portability is a
@@ -79,9 +79,9 @@ of the exercise — but for a few rules, missing them is expensive.
 
 Two mitigations, in order of strength:
 
-1. **The headline rule stays in `CLAUDE.md`.** A skill holds the procedure, never the fact that the
-   procedure exists. `CLAUDE.md` says "before staging a commit, invoke `git-commit`" and states the
-   3-clean-pass requirement inline, so skipping the skill still leaves the rule visible.
+1. **The headline rule stays in `AGENTS.md`.** A skill holds the procedure, never the fact that the
+   procedure exists. `AGENTS.md` says "before staging a commit, invoke `git-commit`" and states the
+   2-pass review requirement inline, so skipping the skill still leaves the rule visible.
 2. **`scripts/hooks/skill-reminder.sh`** (Claude Code only, registered as a `PreToolUse` hook on
    `Bash`) injects a one-line reminder next to `git commit`, `git push`, and `gh pr create`. Those
    three are rare enough that a per-invocation nudge is cheap and high-stakes enough to be worth it.
