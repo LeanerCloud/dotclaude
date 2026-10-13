@@ -8,96 +8,72 @@ disable-model-invocation: true
 
 # Issue -> PR Autopilot (scheduled, multi-routine, multi-tier)
 
-> **This is the scheduled variant of the model documented in
-> the `pr-orchestration` skill. Read that first**; this file covers only
-> what differs when the trigger is a cron routine rather than an interactive
-> session. The roles, the handoff contract, the concurrency model, the merge
-> gate, the loops, and the traps are defined there and are not repeated here.
+Host mapping for Claude-only primitives: `skills/HOSTS.md`.
 
-A continuous delivery loop driven by GitHub issue labels. **Two** scheduled
-**remote** Claude Code agents (created via the `schedule` skill / `RemoteTrigger`)
-fire on staggered 4-hourly crons, plan and open PRs for eligible issues, and stamp
-labels that act as the state machine. The label *is* the dedup guard and the
-handoff medium between tiers.
+> This is the scheduled variant of the model in the `pr-orchestration` skill. **Read that first**;
+> this file covers only what differs when the trigger is a cron routine. Roles, the handoff contract,
+> the concurrency model, the merge gate, the loops and the traps are defined there.
 
-This file is the source of truth for the per-repo config and the two routine
-prompts (`plan.prompt.md` and
-`worker.prompt.md`, same directory). It composes existing
-machinery, it does not duplicate it:
+A continuous delivery loop driven by GitHub issue labels. **Two** scheduled **remote** Claude Code
+agents (created via the `schedule` skill / `RemoteTrigger`) fire on staggered 4-hourly crons, plan and
+open PRs for eligible issues, and stamp labels that act as the state machine. The label *is* the dedup
+guard and the handoff medium between tiers.
 
-- The orchestration model this implements (roles, concurrency, merge gate,
-  loops, traps) -> the `pr-orchestration` skill
-- Selection / triage rubric -> the `work-selection` and `triage-labels` skills
-- Plan -> worktree -> implement -> review -> PR -> `AGENTS.md`, the `worktrees` skill,
-  the `coding-standards` skill, the `conventions` skill
-- Commit/PR hygiene -> the `git-commit` and `pr-lifecycle` skills; post-PR CR loop -> `cr-loop`
-- Model-tier selection -> the `subagent-strategy` skill
-- Driving an opened PR to merge-ready -> the `pr-iterate` skill (`skills/pr-iterate/SKILL.md`)
+This file is the source of truth for the per-repo config and the two routine prompts
+(`plan.prompt.md`, `worker.prompt.md`, same directory). It composes existing machinery:
 
-## Why multiple routines (the load-bearing constraint)
+- Orchestration model (roles, concurrency, merge gate, loops, traps): `pr-orchestration`
+- Selection / triage rubric: `work-selection`, `triage-labels`
+- Plan -> worktree -> implement -> review -> PR: `AGENTS.md`, `worktrees`, `coding-standards`, `conventions`
+- Commit/PR hygiene: `git-commit`, `pr-lifecycle`; post-PR CR loop: `cr-loop`
+- Model-tier selection: `subagent-strategy`
+- Driving an opened PR to merge-ready: `pr-iterate` (`skills/pr-iterate/SKILL.md`)
 
-A cloud scheduled routine runs as **one flat agent**: it has tools
-`[Bash, Read, Write, Edit, Glob, Grep]` only, **no Agent/Task tool**, so it
-**cannot spawn subagents**, and it is **pinned to a single model** for the whole
-run. There is no shared memory between fires either. So the local
-AGENTS.md tier-split (Opus plans, Sonnet implements, each as a subagent) is
-impossible inside a single routine.
+## Why multiple routines
 
-The only way to apply the tier-split in the cloud is to run **separate routines on
-separate models** that hand off through **durable GitHub state** (labels + a plan
-committed to a branch + a parseable issue comment). The **Opus planner** does the
-bounded, judgement-heavy planning phase; the **Sonnet worker** does the
-mechanical implementation, conflict-resolution, and CR-advance phases. This is
-cost-optimal: Opus runs only the short planning phase, never the long
-implement/CR loops.
+A cloud scheduled routine is **one flat agent**: tools `[Bash, Read, Write, Edit, Glob, Grep]` only,
+**no subagent tool**, **pinned to a single model** for the whole run, with no shared memory between
+fires. The local tier-split (top tier plans, Sonnet implements, as subagents) is impossible inside one
+routine. So run **separate routines on separate models** that hand off through **durable GitHub state**
+(labels + a plan committed to a branch + a parseable issue comment). The **Opus planner** does the
+bounded planning phase; the **Sonnet worker** does implementation, conflict-resolution and CR-advance.
+Opus never runs the long implement/CR loops.
 
-The `schedule` API floor is **1 hour** (`*/30` is rejected), and claude.ai
-schedules are capped at approximately **15 routine fires per day** (account-wide).
-See the "Run-budget" section below for how the two-routine cadence fits it.
+The `schedule` API floor is **1 hour** (`*/30` is rejected); claude.ai schedules are capped at about
+**15 routine fires per day** account-wide (see "Run-budget").
 
-> **Runtime caveat (load-bearing):** remote scheduled agents run in Anthropic's
-> cloud, isolated, with their **own git checkout and zero access to a developer's
-> `~/.claude`**. The design solves this with **two git sources**: the target repo
-> **and** `LeanerCloud/dotclaude` (this repo). The cold agent reads the full
-> guideline set (the `git-commit`, `pr-lifecycle`, `cr-loop`, `triage-labels`,
-> `coding-standards`, `conventions`, `worktrees` and `pr-iterate` skills) from the
-> `dotclaude` checkout, plus the target repo's own `CLAUDE.md`/`CONTRIBUTING.md` for
-> repo-specifics. Both routine prompts also inline
-> the global hard constraints as a backstop. Keep `dotclaude` and each target
-> repo's committed conventions current.
+> **Runtime caveat:** remote agents run in Anthropic's cloud with their **own git checkout and zero
+> access to a developer's `~/.claude`**. The design uses **two git sources**: the target repo **and**
+> `LeanerCloud/dotclaude`. The cold agent reads the guideline set (`git-commit`, `pr-lifecycle`,
+> `cr-loop`, `triage-labels`, `coding-standards`, `conventions`, `worktrees`, `pr-iterate` skills) from
+> the dotclaude checkout, plus the target repo's `CLAUDE.md`/`CONTRIBUTING.md`. Both prompts also inline
+> the global hard constraints as a backstop. Keep dotclaude and each target repo's conventions current.
 
 ## The label state machine
 
 | Issue state | Label(s) | Meaning | Loop action |
 |---|---|---|---|
-| fresh / unlabelled | (none of the autopilot labels) | no plan yet | **eligible for planning** - the planner picks it, writes a plan branch, adds `plan-ready` |
-| plan ready | `plan-ready` | a plan branch + parseable `autopilot-branch:` marker exist; awaiting implementation | the worker implements it, opens a PR, swaps to `pr-created` state |
+| fresh / unlabelled | (none of the autopilot labels) | no plan yet | **eligible for planning**: the planner picks it, writes a plan branch, adds `plan-ready` |
+| plan ready | `plan-ready` | a plan branch + parseable `autopilot-branch:` marker exist; awaiting implementation | the worker implements it, opens a PR, adds `pr-created` |
 | PR in flight | `pr-created` (+ `plan-ready`) | a PR exists (open or merged) | skip create; the worker drives it through CR |
 | PR merged | `pr-created` + `pr-merged` | delivered | skip; reconcile only |
 | stuck | `needs-human` | N consecutive autopilot failures | skip entirely; a human takes over |
 
-- `plan-ready` (color `FBCA04`): the Opus planner has committed a plan branch and
-  posted the `autopilot-branch:` marker comment for this issue.
-- `pr-created` (color `1D76DB`): a PR has been opened for this issue.
-- `pr-merged` (color `0E8A16`): the issue's PR has been merged.
-- `needs-human` (color `B60205`): the autopilot gave up on this issue after N
-  consecutive failures; do not retry automatically.
+- `plan-ready` (`FBCA04`): the planner committed a plan branch and posted the `autopilot-branch:` marker.
+- `pr-created` (`1D76DB`): a PR has been opened for this issue.
+- `pr-merged` (`0E8A16`): the issue's PR has been merged.
+- `needs-human` (`B60205`): gave up after N consecutive failures; do not retry automatically.
 
-Labels are created on first fire if missing. `plan-ready` is never removed once
-set (it records that a plan branch exists); the worker layers `pr-created` on top
-rather than swapping labels, so the create-dedup guard (`pr-created`) and the
+Labels are created on first fire if missing. `plan-ready` is never removed (it records that a plan
+branch exists); the worker layers `pr-created` on top, so the create-dedup guard (`pr-created`) and the
 plan-claim guard (`plan-ready`) are independent and monotonic.
 
 ## Routines (2 total: 1 Opus planner + 1 Sonnet worker, staggered 30 min apart)
 
-Both routines run in environment **Default** (`anthropic_cloud`,
-`env_01DCb7bHtxWMDQZ8MBr67maL`), with two git sources (the target repo +
-`LeanerCloud/dotclaude`) and tools `[Bash, Read, Write, Edit, Glob, Grep]`. The
-planner runs `plan.prompt.md`; the worker runs
-`worker.prompt.md`. The 30-minute offset staggers plan -> work
-within the same 4-hour slot: the planner fires at the top of each 4-hour window,
-the worker fires 30 minutes later in the same window so a fresh plan is ready before
-the worker acts.
+Both run in environment **Default** (`anthropic_cloud`, `env_01DCb7bHtxWMDQZ8MBr67maL`), with two git
+sources (target repo + `LeanerCloud/dotclaude`) and tools `[Bash, Read, Write, Edit, Glob, Grep]`. The
+planner fires at the top of each 4-hour window, the worker 30 minutes later, so a fresh plan is usually
+ready before the worker acts.
 
 | Routine | Cron (UTC) | Model | Prompt | Routine ID | Role |
 |---|---|---|---|---|---|
@@ -106,41 +82,27 @@ the worker acts.
 
 Both are currently **disabled** (pending validation).
 
-> Set the planner model to the **current latest Opus model id** and the worker to
-> the **current latest Sonnet model id** at routine-creation time. Refresh both
-> together when a newer generation ships so they stay on the same generation.
+> Set the planner to the **current latest Opus model id** and the worker to the **current latest Sonnet
+> model id** at creation; refresh both together when a newer generation ships.
 
-> **Server-pinned minute (observed 2026-07-27):** the `RemoteTrigger` API pins the
-> cron **minute** server-side for load-spreading, so a submitted `0 */4 * * *` is
-> rewritten to a stable server-chosen minute (the planner has landed at `:44` and
-> `:55` on successive writes, not `:00`; resubmitting `0` does not stick). The `:00`/`:30` values below are
-> therefore **nominal**. This is a latency detail only: correctness comes from the
-> `plan-ready`/`pr-created` labels, not the clock (see "Correctness is from labels,
-> not the clock"), so an inverted plan/worker order within a slot just defers the
-> pickup to the next worker fire. At enable-time, read the actual `next_run_at` /
-> `cron_expression` of both routines; if you want strict plan-before-work ordering,
-> set the worker's nominal minute later than the planner's server-assigned minute
-> (accepting the server may re-pin it too).
+> **Server-pinned minute (observed 2026-07-27):** the `RemoteTrigger` API pins the cron **minute**
+> server-side (the planner landed at `:44` and `:55` on successive writes; resubmitting `0` does not
+> stick), so `:00`/`:30` are **nominal**. This is latency only: correctness comes from labels. At
+> enable-time read the actual `next_run_at` / `cron_expression` of both; for strict plan-before-work
+> ordering set the worker's nominal minute later than the planner's assigned minute (the server may
+> re-pin it too). An inverted order just defers pickup to the next worker fire.
 
-> **The planner runs on Opus, the top tier**, and a routine is pinned to a single
-> model for the whole fire with no Agent/Task tool. There is no tier above Opus to
-> escalate to mid-run, so a gnarly architecture call or high-stakes money-path plan
-> needs no special routing: the planner is already on the strongest model. If one
-> still wants a human in the loop, re-plan it out-of-band by hand, then let the
-> normal worker fire pick it up via the `plan-ready` label.
+> **The planner runs on Opus, the top tier**; nothing above it exists to escalate to mid-run, so a
+> gnarly architecture or money-path plan needs no special routing. To put a human in the loop, re-plan
+> out-of-band by hand and let the normal worker fire pick it up via `plan-ready`.
 
-> **Earlier exploration routines:** `cudly-autopilot-plan-30` and
-> `cudly-autopilot-worker-45` were created during design exploration and are no
-> longer part of the active design. Delete them via the routines UI at
-> https://claude.ai/code/routines (no API delete endpoint exists).
+> **Earlier exploration routines** `cudly-autopilot-plan-30` and `cudly-autopilot-worker-45` are no
+> longer part of the design. Delete them at https://claude.ai/code/routines (no API delete endpoint).
 
 ### RemoteTrigger create-bodies
 
-Each routine is created with the shape below. Generate a fresh lowercase v4 UUID
-for `events[].data.uuid` per routine. Substitute `MODEL` and `PROMPT_FILE_CONTENTS`
-per the table above (`session_context.message.content` is the full text of the
-prompt file inlined, since the cloud agent is cold). The two git sources let the
-cold agent read this repo's guidelines plus the target repo.
+Generate a fresh lowercase v4 UUID for `events[].data.uuid` per routine. `session_context.message.content`
+is the full text of the prompt file, inlined (the cloud agent is cold).
 
 **Planner** (`cudly-autopilot-plan`, cron `0 */4 * * *`):
 
@@ -174,132 +136,97 @@ cold agent read this repo's guidelines plus the target repo.
 }
 ```
 
-**Worker** (`cudly-autopilot-worker`, cron `30 */4 * * *`): same shape with
-`name: "cudly-autopilot-worker"`, `cron_expression: "30 */4 * * *"`,
-`model: "<current latest Sonnet model id>"`, `message.content` = full text of
-`worker.prompt.md`, and a fresh `uuid`.
+**Worker** (`cudly-autopilot-worker`): same shape with `name: "cudly-autopilot-worker"`,
+`cron_expression: "30 */4 * * *"`, `model: "<current latest Sonnet model id>"`, `message.content` = full
+text of `worker.prompt.md`, and a fresh `uuid`.
 
-Create both with `enabled: false`, do one `run` of each to confirm the cloud env
-can clone both sources + plan / implement / open a PR + edit labels, then `enable`.
-You **cannot delete** via API; use https://claude.ai/code/routines.
+Create both with `enabled: false`, do one `run` of each to confirm the cloud env can clone both sources,
+plan / implement / open a PR and edit labels, then `enable`. You **cannot delete** via API.
 
 ## Watcher model (scheduled context differs from a local session)
 
-The generalised rule - every trigger needs something durable that will act on
-the response - is in the `pr-orchestration` skill §"The loops". What
-differs here: neither routine can spawn `cr-watch`/`ci-watch` background agents
-(no Agent/Task tool; background processes die when the bounded run ends), so the
-local `pr-lifecycle` "spawn a watcher" steps do not apply literally. The
-invariant is satisfied **structurally and cross-routine** instead: every PR the
-worker triggers/re-pings stays in the in-flight set (`pr-created`, not
-`pr-merged`, PR open) and is therefore guaranteed to be re-examined by the next
-worker fire. **The worker cron is the durable watcher** for both planner-spawned
-and human-spawned PRs, which is why **disabling the worker routine orphans every
-triggered PR**. CR rate-limit recovery uses `@coderabbitai full review` (not the
-incremental form), per the `cr-loop` skill.
+The generalised rule (every trigger needs something durable that acts on the response) is in
+`pr-orchestration` §"The loops". Here neither routine can spawn `cr-watch`/`ci-watch` background agents
+(no subagent tool; background processes die when the bounded run ends), so the `pr-lifecycle` "spawn
+a watcher" steps do not apply literally. The invariant is satisfied **structurally and cross-routine**:
+every PR the worker triggers/re-pings stays in the in-flight set (`pr-created`, not `pr-merged`, PR
+open) and is re-examined by the next worker fire. **The worker cron is the durable watcher** for both
+planner-spawned and human-spawned PRs, so **disabling the worker routine orphans every triggered PR**.
+CR rate-limit recovery uses `@coderabbitai full review` (not the incremental form), per `cr-loop`.
 
 ## Plan handoff (the durable contract between the two tiers)
 
-The planner and the worker never run in the same process, so they are bound by
-the handoff contract in the `pr-orchestration` skill §"The handoff
-contract" (plan committed not remembered, claim as the first durable action,
-parseable marker). This is its concrete instance - they communicate only
-through GitHub state:
+Planner and worker never share a process; they are bound by the handoff contract in `pr-orchestration`
+§"The handoff contract" and communicate only through GitHub state:
 
 1. **Plan branch**: `auto/<issue#>-<slug>`, branched off the repo base.
-2. **Plan file**: the plan committed to that branch as its FIRST commit
-   (`plan.md`, or `.autopilot/plan-<issue#>.md`), conventional message
-   `chore(autopilot): plan for #<issue>`.
-3. **Marker comment** on the issue, an exact parseable line:
-   `autopilot-branch: auto/<issue#>-<slug>`.
+2. **Plan file**: committed as the branch's FIRST commit (`plan.md`, or `.autopilot/plan-<issue#>.md`),
+   message `chore(autopilot): plan for #<issue>`.
+3. **Marker comment** on the issue, an exact parseable line: `autopilot-branch: auto/<issue#>-<slug>`.
 4. **`plan-ready` label** on the issue, added LAST as the claim.
 
 ### Opus planner, per fire
 
-1. **Preflight (cheap gate).** Resolve repo + login; ensure all four labels exist.
-   Count eligible issues (open, `triaged`, not `plan-ready`, not `pr-created`, not
-   `needs-human`, not `type/question`/`status/blocked`/`status/needs-info`). If 0,
-   write a one-line summary and stop.
-2. **Select.** Rank eligible issues by the `work-selection` skill (priority -> urgency -> impact
-   -> unblocks-others -> effort). Take the top **1-2** (the per-repo plan cap), and challenge each against the current code first (AGENTS.md §1): an obsolete issue or one with a more fundamental fix gets a comment plus `status/needs-info` instead of a plan.
-3. **Plan + claim, per issue, in this order** (claim as a tight sequence right
-   after the plan commit lands, to minimise the dup-window between the two
-   staggered planners): create `auto/<issue#>-<slug>` off the base; write the plan
-   to `plan.md`; commit it as the branch's FIRST commit; push the branch; comment
-   the `autopilot-branch:` marker on the issue; add `plan-ready`. If any step
-   fails, do not add `plan-ready` (so the issue stays eligible) and log the reason.
-4. **Never** implement code, open a PR, or run the CR loop. Planning only.
+1. **Preflight (cheap gate).** Resolve repo + login; ensure all four labels exist. Count eligible issues
+   (open, `triaged`, not `plan-ready`, not `pr-created`, not `needs-human`, not
+   `type/question`/`status/blocked`/`status/needs-info`). If 0, write a one-line summary and stop.
+2. **Select.** Rank by `work-selection` (priority -> urgency -> impact -> unblocks-others -> effort).
+   Take the top **1-2** (per-repo plan cap), and challenge each against the current code first
+   (AGENTS.md §1): an obsolete issue or one with a more fundamental fix gets a comment plus
+   `status/needs-info` instead of a plan.
+3. **Plan + claim, per issue, in this order** (claim as a tight sequence right after the plan commit, to
+   minimise the dup-window): create `auto/<issue#>-<slug>` off the base; write `plan.md`; commit it as
+   the FIRST commit; push; comment the `autopilot-branch:` marker; add `plan-ready`. If any step fails,
+   do not add `plan-ready` (the issue stays eligible) and log the reason.
+4. **Never** implement code, open a PR, or run the CR loop.
 
 ### Sonnet worker, per fire (FOUR sub-phases, IN THIS ORDER)
 
-1. **Reconcile (cheap).** For each `pr-created` and not `pr-merged` issue, find its
-   linked PR (closing-keyword / `(#N)` / title-mirror, since CUDly PRs target a
-   non-default base so auto-close does not fire). If MERGED, add `pr-merged`. Never
-   remove `pr-created`.
-2. **Conflict-resolve (before CR-advance).** For each `pr-created`, open,
-   `mergeable == CONFLICTING` PR: rebase onto the base, push `--force-with-lease`
-   the PR's own branch. STOP + log if a conflict needs a semantic human decision.
-   Never address CR findings on a conflicting/stale tree.
-3. **CR-advance.** For each `pr-created`, open, NON-conflicting PR: one `pr-iterate`
-   pass (pull CR findings, triage, fix minimally + regression test for real bugs,
-   build/lint/tests + pre-commit, push the PR's own branch, re-ping
-   `@coderabbitai review` / `full review` on rate-limit recovery). The
-   cron/cross-routine **is** the durable watcher (see atomic-coupling note). Never
-   self-merge; never `@coderabbitai resolve`. Active-human guard: defer a PR whose
-   latest commit is a human push newer than the last CR review.
-4. **Implement (capped).** For each `plan-ready` and not `pr-created` and not
-   `needs-human` issue, up to the per-repo implement cap:
-   a. Read the `autopilot-branch:` marker from the issue; checkout that branch.
-   b. **Rebase the auto branch onto the current base** and re-validate the plan
-      against `plan.md`; if the base diverged enough that the plan is stale,
-      re-plan inline or defer (re-add nothing, log staleness) rather than building
-      on a rotten plan.
-   c. Implement to repo standards (reuse helpers; no duplication); five-dimension
-      self-review; build/lint/tests + pre-commit MUST pass; never `--no-verify`.
-   d. **Erase the plan from history**: `git reset --soft <base>`, delete `plan.md`,
-      and re-commit ONLY the implementation as clean conventional commit(s), so
-      `plan.md` never appears in the branch's final history regardless of how the
-      human merges.
-   e. Open the PR against the base (`Closes #<issue>` + summary + verification
-      notes); leave the runtime's attribution footer in place; mirror the issue's
-      triage rubric onto the PR; add `pr-created` to the issue; trigger
-      `@coderabbitai review`. Never self-merge.
+1. **Reconcile (cheap).** For each `pr-created` and not `pr-merged` issue, find its linked PR
+   (closing-keyword / `(#N)` / title-mirror; CUDly PRs target a non-default base so auto-close does not
+   fire). If MERGED, add `pr-merged`. Never remove `pr-created`.
+2. **Conflict-resolve (before CR-advance).** For each `pr-created`, open, `mergeable == CONFLICTING` PR:
+   rebase onto the base, push `--force-with-lease` the PR's own branch. STOP + log if a conflict needs a
+   semantic human decision. Never address CR findings on a conflicting/stale tree.
+3. **CR-advance.** For each `pr-created`, open, NON-conflicting PR: one `pr-iterate` pass (pull CR
+   findings, triage, fix minimally + regression test for real bugs, build/lint/tests + pre-commit, push
+   the PR's own branch, re-ping `@coderabbitai review` / `full review` on rate-limit recovery). The
+   cron is the durable watcher. Never self-merge; never `@coderabbitai resolve`. Active-human guard:
+   defer a PR whose latest commit is a human push newer than the last CR review.
+4. **Implement (capped).** For each `plan-ready` and not `pr-created` and not `needs-human` issue, up to
+   the per-repo implement cap:
+   a. Read the `autopilot-branch:` marker; checkout that branch.
+   b. **Rebase the auto branch onto the current base** and re-validate `plan.md`; if the plan is stale,
+      re-plan inline or defer (add nothing, log staleness) rather than build on a rotten plan.
+   c. Implement to repo standards (reuse helpers; no duplication); five-dimension self-review;
+      build/lint/tests + pre-commit MUST pass; never `--no-verify`.
+   d. **Erase the plan from history**: `git reset --soft <base>`, delete `plan.md`, re-commit ONLY the
+      implementation as clean conventional commit(s), so `plan.md` never appears in final history.
+   e. Open the PR against the base (`Closes #<issue>` + summary + verification notes); leave the
+      runtime's attribution footer in place; mirror the issue's triage rubric onto the PR; add
+      `pr-created` to the issue; trigger `@coderabbitai review`. Never self-merge.
 
-> **Correctness is from labels, not the clock.** An Opus plan can exceed 15
-> minutes, so the worker gates on `plan-ready` (and `pr-created`), never on "the
-> previous offset must have finished". The minute offsets are latency tuning only;
-> a plan that is not yet `plan-ready` is simply picked up by a later worker fire.
+> **Correctness is from labels, not the clock.** An Opus plan can exceed 15 minutes, so the worker gates
+> on `plan-ready` (and `pr-created`), never on "the previous offset must have finished". Offsets are
+> latency tuning; a plan not yet `plan-ready` is picked up by a later worker fire.
 
 ## Concurrency model (how the generic model maps onto labels)
 
-The model - durable state as the coordination substrate, disjoint slices per
-phase, claims are not atomic locks, the three required mitigations, and
-correctness-from-state-not-the-clock - is in
-the `pr-orchestration` skill §"Coordination and concurrency". This is how
-it instantiates here:
+Generic model: `pr-orchestration` §"Coordination and concurrency". Instantiation here:
 
-- **The substrate** is GitHub issue labels plus the `autopilot-branch:` issue
-  comment: the ONLY shared state between isolated routine fires (no shared
-  memory; see "no subagents / no shared memory" below).
-- **The disjoint slices** are: unlabelled -> plan; `plan-ready` (no
-  `pr-created`) -> implement; `pr-created` + open + `CONFLICTING` -> rebase;
-  `pr-created` + open + clean -> CR-advance; merged -> stamp `pr-merged`.
-- **Mitigation (a), no simultaneous actors**, is implemented as cron staggering:
-  never schedule two routines at the same minute-offset (planner at `:00`,
-  worker at `:30` of each 4-hour window, zero simultaneous fires), and each fire
-  must finish within its slot.
-- **Mitigation (b), claim-first**, is: the planner pushes the plan commit, posts
-  the `autopilot-branch:` marker, and adds `plan-ready` immediately on selection;
-  the worker adds `pr-created` at PR-open.
-- **Mitigation (c), idempotent gates**, means the worst case of a lost race is a
-  duplicate `auto/<issue>` branch, caught at the `pr-created` gate and cleaned up
-  (close the orphan), per the double-plan caveat below.
-- **Throughput vs the 1h floor and run-budget.** With two routines at 4-hour
-  cadence, something happens every 30 minutes within each 4-hour window with
-  ZERO simultaneous fires. To go faster, **prefer raising the per-fire cap or
-  adding target repos** over adding more routines: each extra routine costs 6+
-  fires/day against the ~15/day account-wide cap (see "Run-budget" below).
-  Simultaneous fires also trade mitigation (a) for throughput.
+- **Substrate**: GitHub issue labels plus the `autopilot-branch:` comment, the ONLY shared state between
+  isolated fires.
+- **Disjoint slices**: unlabelled -> plan; `plan-ready` (no `pr-created`) -> implement; `pr-created` +
+  open + `CONFLICTING` -> rebase; `pr-created` + open + clean -> CR-advance; merged -> stamp `pr-merged`.
+- **Mitigation (a), no simultaneous actors**: cron staggering (planner `:00`, worker `:30` of each
+  4-hour window, zero simultaneous fires); each fire must finish within its slot.
+- **Mitigation (b), claim-first**: the planner pushes the plan commit, posts the marker and adds
+  `plan-ready` immediately on selection; the worker adds `pr-created` at PR-open.
+- **Mitigation (c), idempotent gates**: worst case of a lost race is a duplicate `auto/<issue>` branch,
+  caught at the `pr-created` gate and cleaned up (close the orphan).
+- **Throughput**: to go faster, **prefer raising the per-fire cap or adding target repos** over adding
+  routines: each extra routine costs 6+ fires/day against the ~15/day cap. Simultaneous fires also trade
+  mitigation (a) for throughput.
 
 ## Per-repo config
 
@@ -311,140 +238,99 @@ it instantiates here:
 
 ## Cost controls
 
-The three generic controls (cheap preflight gate, top-tier reasoning only on the
-bounded planning/review phases, per-pass caps) are in
-the `pr-orchestration` skill §"Cost control", and tier selection itself is
-owned by the `subagent-strategy` skill. Their concrete values here:
+Generic controls (cheap preflight gate, top-tier only on bounded planning/review, per-pass caps):
+`pr-orchestration` §"Cost control"; tier selection: `subagent-strategy`. Values here:
 
 - Preflight gates in both routines, so quiet backlogs cost ~nothing.
-- Opus runs **only** the bounded planning phase (cap 2 issues/fire); the long
-  implement and CR-advance loops run on Sonnet.
-- Per-fire plan and implement caps of 2 bound new branches and PRs (and
-  downstream CR loops) per run.
-- The `schedule` API floor is **1 hour** (`*/30` is rejected). Staggered offsets x
-  caps is the spend lever; raising cadence means more routines, not finer crons.
+- Opus runs **only** the bounded planning phase (cap 2 issues/fire); implement and CR-advance run on Sonnet.
+- Per-fire plan and implement caps of 2 bound new branches and PRs (and their CR loops) per run.
+- The `schedule` API floor is **1 hour**. Staggered offsets x caps is the spend lever; more cadence means
+  more routines, not finer crons.
 
 ## Run-budget
 
-claude.ai scheduled routines are capped at approximately **~15 fires per day,
-account-wide** across ALL routines in the account. The current two-routine 4-hour
-design uses 6 planner + 6 worker = **12 fires/day**, leaving a small headroom of
-~3 fires/day for one-off manual `run` calls or transient extra loads.
+claude.ai routines are capped at about **15 fires per day, account-wide** across ALL routines. The
+two-routine 4-hour design uses 6 planner + 6 worker = **12 fires/day**, leaving about 3/day for manual
+`run` calls.
 
-**Constraints that follow from this:**
-
-- Do NOT add more routines or raise the cadence (e.g. to 2-hour, or back to the
-  hourly grid) without first checking the remaining budget across all active
+- Do NOT add routines or raise cadence without first checking the remaining budget across all active
   routines in the account.
-- If you also run other routines in the same account (e.g. a separate CR re-review
-  drip or a nightly sweep), each of those fires counts against the SAME ~15/day
-  cap. Prefer folding them into one of the existing routine phases: the worker's
-  CR-advance phase already re-triggers CodeRabbit on every in-flight PR, which
-  subsumes a separate CR drip routine.
-- The ~15/day figure is an observed practical cap, not a published hard limit;
-  treat it conservatively. Disable unused or exploratory routines promptly to
-  keep the budget stable.
+- Other routines in the same account (a CR re-review drip, a nightly sweep) count against the SAME cap.
+  Prefer folding them into an existing phase: the worker's CR-advance already re-triggers CodeRabbit on
+  every in-flight PR, subsuming a separate CR drip routine.
+- ~15/day is an observed practical cap, not a published limit; treat it conservatively and disable unused
+  or exploratory routines promptly.
 
 ## Creating and operating the routines
 
-Follow these steps in order. Do not skip the validation run.
+Follow in order; do not skip the validation run.
 
 ### Step 1 - Create both routines (disabled)
 
-The two routines exist:
-
-| Routine | ID | Cron | Model |
-|---|---|---|---|
-| `cudly-autopilot-plan` | `trig_01PwHdsKE5bsbrQJRkYJjZAd` | `0 */4 * * *` | latest available Opus |
-| `cudly-autopilot-worker` | `trig_01GjFaCDmu7moBS6jmBkLa3B` | `30 */4 * * *` | latest available Sonnet |
-
-Both are **disabled**. If you ever need to recreate them from scratch, use the
-`schedule` skill (`RemoteTrigger create`) with the JSON bodies documented in the
-"RemoteTrigger create-bodies" section above: environment `env_01DCb7bHtxWMDQZ8MBr67maL`,
-two git sources (CUDly + dotclaude), tools `[Bash, Read, Write, Edit, Glob, Grep]`,
-`enabled: false`, and `message.content` = the full text of the respective prompt
-file (the cold agent cannot read it from disk without it being inlined). Set
-planner model to the current latest Opus model id and worker to the current
-latest Sonnet model id.
+Both exist (IDs in the routine table), **disabled**. To recreate, use the `schedule` skill
+(`RemoteTrigger create`) with the JSON bodies above: environment `env_01DCb7bHtxWMDQZ8MBr67maL`, two git
+sources (CUDly + dotclaude), tools `[Bash, Read, Write, Edit, Glob, Grep]`, `enabled: false`, and
+`message.content` = the full text of the respective prompt file (the cold agent cannot read it from disk
+unless inlined). Planner on the current latest Opus, worker on the current latest Sonnet.
 
 ### Step 2 - Validate disabled-first
 
-Before enabling, do one manual `run` of the planner, then one manual `run` of
-the worker:
+One manual `run` of the planner, then (after it completes) one of the worker:
 
 ```
-# planner
-schedule run trig_01PwHdsKE5bsbrQJRkYJjZAd
-
-# worker (after planner run completes)
-schedule run trig_01GjFaCDmu7moBS6jmBkLa3B
+schedule run trig_01PwHdsKE5bsbrQJRkYJjZAd   # planner
+schedule run trig_01GjFaCDmu7moBS6jmBkLa3B   # worker
 ```
 
 Confirm:
-- The cloud env clones both repos successfully.
-- The planner reads the prompt file from the dotclaude checkout, selects an
-  eligible issue, commits a plan branch, posts the `autopilot-branch:` marker,
-  and adds `plan-ready`. If no eligible issues exist, a one-line "nothing to
-  plan" summary is the expected output.
-- The worker reads its prompt, reconciles any in-flight PRs, and (if a
-  `plan-ready` issue exists) implements it, opens a PR, mirrors labels, and
-  triggers `@coderabbitai review`.
+- The cloud env clones both repos.
+- The planner reads the prompt from the dotclaude checkout, selects an eligible issue, commits a plan
+  branch, posts the `autopilot-branch:` marker and adds `plan-ready`. With no eligible issues, a one-line
+  "nothing to plan" summary is expected.
+- The worker reconciles in-flight PRs and (if a `plan-ready` issue exists) implements it, opens a PR,
+  mirrors labels and triggers `@coderabbitai review`.
 - Neither run self-merges or pushes to `main`.
 
-Only after both validation runs pass: set `enabled: true` on each routine.
+Only after both pass: set `enabled: true` on each.
 
 ### Step 3 - Ongoing management
 
-- **Kill switch**: set `enabled: false` via `schedule update` or the routines
-  UI at https://claude.ai/code/routines. Prefer disabling the planner alone
-  (pauses new work; worker keeps draining in-flight PRs); disable the worker
-  only when you intend to stop CR follow-up entirely, because disabling the
-  worker orphans every triggered PR.
-- **Model updates**: when a newer Opus or Sonnet generation ships, update
-  `model` on both routines together via `schedule update` so they stay on the
-  same generation.
-- **No API delete**: the `RemoteTrigger` API has no delete endpoint. Remove
-  routines via the UI at https://claude.ai/code/routines only.
+- **Kill switch**: `enabled: false` via `schedule update` or https://claude.ai/code/routines. Prefer
+  disabling the planner alone (pauses new work; the worker keeps draining in-flight PRs); disable the
+  worker only to stop CR follow-up entirely, because that orphans every triggered PR.
+- **Model updates**: when a newer Opus or Sonnet ships, update `model` on both together via
+  `schedule update`.
+- **No API delete**: remove routines via the UI only.
 
 ## Caveats and gotchas (scheduled-specific)
 
-The variant-independent ones - correctness from state rather than the clock,
-rebase before advancing a review, plan staleness, and the poison-item guard -
-are in the `pr-orchestration` skill §§"Coordination and concurrency", "The
-loops", "Traps". What is specific to running this on a cron:
+Variant-independent ones (state not clock, rebase before advancing a review, plan staleness, poison-item
+guard) are in `pr-orchestration` §§"Coordination and concurrency", "The loops", "Traps". Specific to cron:
 
-- **Correctness is from labels, not the clock.** Restated because it is the
-  crux *here*: cron offsets are latency tuning; the worker only ever acts on
-  durable labels, never on "the planner offset must have finished".
-- **Conflict-resolve runs as its own phase, before CR-advance**, so every PR
-  reaching CR-advance is already non-conflicting.
-- **Cross-routine atomic-coupling.** The worker routine is the durable watcher for
-  every CR trigger (the PR stays in the in-flight set and the next worker fire WILL
-  re-examine it). **Disabling the worker routine orphans every triggered PR.**
-- **Plan staleness has a wide window here** (up to a full cron gap), so the
-  worker rebases the `auto/<issue>` branch onto base and re-validates `plan.md`
-  before implementing, re-planning inline or deferring if the plan has diverged.
-- **Rare double-plan race.** With a single planner routine, a concurrent double-plan
-  can only occur if the same planner fires twice (manual `run` while a scheduled
-  fire is in-flight). Worst case is two `auto/<issue>-*` branches. The worker
-  implements exactly one (it reads the single `autopilot-branch:` marker; if two
-  markers exist it takes the newest and logs the duplicate), the issue gets
-  `pr-created` once, and the worker closes the orphan `auto/<issue>` branch as
-  cleanup.
-- **Poison-item guard**, instantiated: N=3 consecutive autopilot failures on the
-  same issue (plan-or-implement) adds `needs-human`. (N=3 for CUDly; adjust per
-  repo in the per-repo config table based on tolerance for retry cost.)
-  Eligibility excludes `needs-human`. A human clears it once handled.
-- **No subagents / no shared memory** in the cloud env. This is the reason the
-  whole design is split into separate single-model routines instead of one
-  routine that spawns tier-matched subagents.
+- **Correctness is from labels, not the clock**: the worker acts only on durable labels, never on "the
+  planner offset must have finished".
+- **Conflict-resolve runs as its own phase, before CR-advance**, so every PR reaching CR-advance is
+  non-conflicting.
+- **Cross-routine atomic-coupling.** The worker routine is the durable watcher for every CR trigger.
+  **Disabling the worker routine orphans every triggered PR.**
+- **Plan staleness has a wide window** (up to a full cron gap), so the worker rebases the `auto/<issue>`
+  branch onto base and re-validates `plan.md` before implementing, re-planning inline or deferring if it
+  diverged.
+- **Rare double-plan race.** With a single planner, a double plan needs the same planner firing twice
+  (manual `run` during a scheduled fire). Worst case: two `auto/<issue>-*` branches. The worker
+  implements exactly one (it reads the single `autopilot-branch:` marker; with two markers it takes the
+  newest and logs the duplicate), the issue gets `pr-created` once, and the worker closes the orphan
+  branch.
+- **Poison-item guard**: N=3 consecutive autopilot failures on the same issue (plan or implement) adds
+  `needs-human` (adjust N per repo in the config table). Eligibility excludes `needs-human`; a human
+  clears it once handled.
+- **No subagents / no shared memory** in the cloud env: the reason the design is separate single-model
+  routines.
 
 ## Known runtime quirks (observed)
 
-- The CCR runtime auto-appends a `Generated by Claude Code` / claude.ai session
-  footer to PR bodies. That footer is left in place (Phase 4i): the runtime adds
-  it deliberately, and stripping it cost an extra `gh pr edit` round trip per PR
-  to fight something the runtime re-adds by design.
-- Untracked files under a developer's `~/.claude` (which is the `dotclaude`
-  checkout) get wiped by sync. Commit anything that must persist (this file is an
-  example).
+- The CCR runtime auto-appends a `Generated by Claude Code` / claude.ai session footer to PR bodies. It
+  is left in place (Phase 4i): the runtime adds it deliberately, and stripping it cost an extra
+  `gh pr edit` per PR.
+- Untracked files under a developer's `~/.claude` (the dotclaude checkout) get wiped by sync. Commit
+  anything that must persist.

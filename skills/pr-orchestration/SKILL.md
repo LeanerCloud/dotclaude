@@ -7,590 +7,418 @@ description: >-
 
 # Multi-agent PR orchestration
 
-The canonical model for driving issues to merged PRs with **multiple agents
-working concurrently**: who plays which role, how they coordinate when they
-share no memory, what gates a merge, and which failure modes produce a
-confident but wrong "done". Every rule here was written after the failure it
-prevents actually happened.
+Host mapping (Claude Code: `Agent`, `SendMessage`, `TaskStop`, background Bash; other hosts: `skills/HOSTS.md`).
 
-The model is **variant-independent**. It has two execution variants (§1):
-the interactive one, which this file describes throughout, and the scheduled
-one, whose cron-specific mechanics live in the `issue-pr-autopilot` skill (user-invoked via `/issue-pr-autopilot`; agents read `~/.claude/skills/issue-pr-autopilot/SKILL.md` directly).
+How to drive issues to merged PRs with **multiple agents working concurrently**: roles, coordination
+between actors that share no memory, what gates a merge, and which failure modes produce a confident
+but wrong "done". Each rule was written after the failure it prevents.
 
-Everything already owned by another file is cross-referenced, not restated:
+Two execution variants (§1): interactive (this file) and scheduled (cron mechanics in the
+`issue-pr-autopilot` skill, user-invoked via `/issue-pr-autopilot`; agents read
+`~/.claude/skills/issue-pr-autopilot/SKILL.md` directly).
+
+Owned elsewhere, cross-referenced not restated:
 
 | Topic | Owner |
 |-------|-------|
 | Commit conventions | the `git-commit` skill |
 | Review-bot loop | the `cr-loop` skill |
 | CI watchers | the `ci-watch` skill |
-| Merge mechanics | the `pr-lifecycle` skill (project-specific gates: the project's `CLAUDE.md`) |
+| Merge mechanics | the `pr-lifecycle` skill (project gates: the project's `CLAUDE.md`) |
 | Rate limits | the `rate-limit-retry` skill |
 | Worktree isolation, staleness/disappearance, crash recovery, post-merge reclaim | the `worktrees` skill |
-| Model-tier selection, reviewer independence, subsystem pooling, agent reuse | the `subagent-strategy` skill |
-| Peer-session coordination on one repo (session messaging, per-repo locks) | the `multi-agent-comms` skill |
+| Model tiers, reviewer independence, subsystem pooling, agent reuse | the `subagent-strategy` skill |
+| Peer-session coordination (messaging, per-repo locks) | the `multi-agent-comms` skill |
 | Priority ordering of issues and PRs | the `work-selection` skill |
 | Verification standards, adversarial verification | `AGENTS.md` §4, §6 |
-| Testing rules, including asserting the defect | the `coding-standards` skill |
+| Testing rules, asserting the defect | the `coding-standards` skill |
 | Matching the CI-pinned tool version | the `tool-usage` skill |
 | Cron routines, RemoteTrigger bodies, run budget | `skills/issue-pr-autopilot/SKILL.md` |
 
-Paths below use placeholders: `<repo>` is the main checkout, `<repo-name>` its
-directory name, and `<wt>` a durable worktree path under
-`$HOME/.claude/worktrees/<repo-name>-<slug>`. Never use `/tmp`, `$TMPDIR`, or
-another reboot-cleared directory for a worktree that carries implementation or
-plan state.
+Paths use placeholders: `<repo>` main checkout, `<repo-name>` its directory name, `<wt>` a durable
+worktree at `$HOME/.claude/worktrees/<repo-name>-<slug>`. Never put a worktree that carries
+implementation or plan state under `/tmp`, `$TMPDIR`, or another reboot-cleared directory.
 
 ---
 
 ## 1. Execution variants
 
-Two ways to run the same model. Pick by which constraints you are under, not
-by preference.
+Pick by constraint, not preference.
 
 | | **Interactive** (this file) | **Scheduled** (`skills/issue-pr-autopilot/SKILL.md`) |
 |---|---|---|
-| Runs as | a local session you are watching | remote cron routines, unattended |
-| Subagents | yes, that is the whole design | **no** - a routine is one flat agent, single model, no `Agent` tool |
-| Tier split | per-agent, live (top tier reviews, a tier down implements) | across *separate routines* handing off through GitHub state |
-| Coordination state | orchestrator context + task list + the `multi-agent-comms` skill locks | GitHub labels only |
-| Watchers | background shell watchers per push (CI), `Agent`s per PR (review) | the next cron fire *is* the watcher |
-| Good for | a backlog you are actively working, high-stakes money paths | steady unattended drip, backlogs nobody is watching |
+| Runs as | a local session you watch | remote cron routines, unattended |
+| Subagents | yes | **no** - one flat agent, single model, no subagent tool |
+| Tier split | per-agent, live | across *separate routines* handing off through GitHub state |
+| Coordination state | orchestrator context + task list + `multi-agent-comms` locks | GitHub labels only |
+| Watchers | background shell watchers per push (CI), subagents per PR (review) | the next cron fire *is* the watcher |
+| Good for | an actively worked backlog, high-stakes money paths | steady unattended drip |
 
-They compose: the scheduled variant can open a PR an interactive session
-later takes over, because both drive the same GitHub state. When both are
-live on one repo, treat the autopilot as another concurrent actor (§3) and
-check its in-flight labels before claiming an issue. Before planning a claimed issue, challenge it
-against the current code (AGENTS.md §1 "Challenge the task first").
+They compose: both drive the same GitHub state, so a scheduled PR can be taken over interactively.
+When both are live on one repo, treat the autopilot as another concurrent actor (§3) and check its
+in-flight labels before claiming an issue. Before planning a claimed issue, challenge it against the
+current code (AGENTS.md §1 "Challenge the task first").
 
 ---
 
 ## 2. Roles
 
-The main session is an **orchestrator only**. It does not edit code. It
-spawns agents, tracks tasks, evaluates merge gates, and reports. Keeping it
-free of file contents is what lets it supervise many PRs at once without
-its context filling up with diffs.
+The main session is an **orchestrator only**: it does not edit code. It spawns agents, tracks tasks,
+evaluates merge gates and reports; staying free of file contents is what lets it supervise many PRs.
 
 | Role | Interactive | Scheduled | May edit code? |
 |------|-------------|-----------|----------------|
-| Orchestrator | main session | *(none - the cron is the scheduler)* | no |
-| Planner | an agent, or the orchestrator itself | the planner routine | plan only |
+| Orchestrator | main session | *(none - the cron schedules)* | no |
+| Planner | an agent, or the orchestrator | the planner routine | plan only |
 | Implementer | one agent per PR | the worker routine | yes, only its PR's worktree |
-| Adversarial reviewer | separate agent | *(gap - see §11)* | no - review only |
+| Adversarial reviewer | separate agent | *(gap - §11)* | no |
 
-**Terminology**: the scheduled variant's "planner" and "worker" are the
-planner and implementer roles above, not a different model. Read
-planner = the judgement-heavy phase, worker = the mechanical phase. The
-split exists for the same reason in both variants - to put top-tier
-reasoning only where judgement is the hard part (the `subagent-strategy` skill
-§"Routine PR-shipping splits across tiers") - and the tier rubric is the
-same one.
+The scheduled "planner" and "worker" are these roles: planner = judgement phase, worker = mechanical
+phase (`subagent-strategy` skill §"Routine PR-shipping splits across tiers"; same tier rubric).
 
-**Independence and pooling**: a reviewer must never review code it wrote,
-and never re-bless a change it already approved; reviewers are pooled by
-subsystem so a warm agent stays independent on a *different* PR. Both rules
-live in the `subagent-strategy` skill §"Reuse agents before spawning new ones",
-the owner of agent-reuse strategy. The PR-level consequence is the
-adversarial-clean merge gate (§5).
+**Independence and pooling**: a reviewer never reviews code it wrote and never re-blesses a change it
+already approved; reviewers are pooled by subsystem so a warm agent stays independent on a *different*
+PR (`subagent-strategy` skill §"Reuse agents before spawning new ones"). PR-level consequence: the
+adversarial-clean gate (§5).
 
 ### The handoff contract
 
-When the planner and the implementer **do not share a process**, they can
-communicate only through **durable state**: the plan is committed rather than
-remembered (a plan branch, or `~/.claude/projects/<project>/plans/` per
-the `worktrees` skill); the claim is the **first** durable action after it, which is
-what shrinks the §3 race window; and the handoff marker is parseable, so the
-next actor resolves it mechanically. The scheduled variant's instance (plan
-branch + `autopilot-branch:` marker + `plan-ready` label) is in
-`skills/issue-pr-autopilot/SKILL.md` §"Plan handoff".
+Planner and implementer that do not share a process communicate only through **durable state**: the
+plan is committed, not remembered (a plan branch, or `~/.claude/projects/<project>/plans/` per the
+`worktrees` skill); the claim is the **first** durable action after it (this shrinks the §3 race
+window); the handoff marker is parseable. Scheduled instance (plan branch + `autopilot-branch:` marker
++ `plan-ready` label): `skills/issue-pr-autopilot/SKILL.md` §"Plan handoff".
 
 ---
 
 ## 3. Coordination and concurrency
 
-Several actors work the same repo at once, each in its own worktree, and
-more than one may push to the *same* PR branch. Interactive sessions can
-additionally use session messaging and the per-repo locks in the `multi-agent-comms`
-skill; scheduled routines have neither, so the rules below assume only what
-both variants have.
+Several actors work one repo at once, each in its own worktree, and more than one may push to the
+*same* PR branch. Interactive sessions also have session messaging and `multi-agent-comms` locks;
+scheduled routines do not, so the rules assume only what both have.
 
-- **Durable shared state is the coordination substrate.** Issue/PR labels
-  plus a parseable marker comment are the only state isolated actors share.
-  Each phase acts on a **disjoint slice** of items so phases never fight
-  over the same one: unclaimed -> plan; planned-not-implemented ->
-  implement; PR open + conflicting -> rebase; PR open + clean -> advance
-  review; merged -> stamp done.
-- **Claims are NOT atomic locks (the load-bearing caveat).** GitHub has no
-  compare-and-swap on labels, so there is a TOCTOU window: two actors
-  running AT THE SAME TIME can both read an item as unclaimed before either
-  writes the claim, and both act on it (double plan / double PR). This is
-  the one real concurrency hazard.
-- **Mitigations (all three required):**
-  (a) **Ensure no two actors work the same slice simultaneously** - stagger
-  scheduled fires so none overlap; in an interactive session, never hand two
-  agents the same item.
-  (b) **Claim as the FIRST durable action**, per §2's handoff contract, so
-  the TOCTOU window is only that tight sequence.
-  (c) **Every downstream gate is idempotent** so a lost race degrades
-  gracefully: worst case is a duplicate branch, caught at the next claim
-  gate and cleaned up rather than shipped twice.
-- **Correctness comes from state, not from the clock.** Never gate on "the
-  previous step must have finished by now" - an item that is not yet claimed
-  is simply picked up later. Timing (cron offsets, agent spawn order) is
-  latency tuning only; if timing is load-bearing for correctness, the design
-  is wrong.
-- **Poison-item guard.** After **N consecutive failures on the same item**
-  (3 is a reasonable default), stop retrying it automatically and mark it
-  for a human. Without this, one bad item burns a slot on every pass
-  forever. Eligibility for new work must exclude items so marked.
+- **Durable shared state is the substrate.** Labels plus a parseable marker comment are the only state
+  isolated actors share. Each phase acts on a **disjoint slice**: unclaimed -> plan; planned-not-
+  implemented -> implement; PR open + conflicting -> rebase; PR open + clean -> advance review; merged
+  -> stamp done.
+- **Claims are NOT atomic locks.** GitHub has no compare-and-swap on labels: two actors running at the
+  same time can both read an item as unclaimed and both act (double plan / double PR).
+- **Mitigations (all three required):** (a) no two actors work the same slice simultaneously - stagger
+  scheduled fires; interactively never hand two agents the same item. (b) Claim as the FIRST durable
+  action (§2). (c) Every downstream gate is idempotent, so a lost race costs at worst a duplicate
+  branch, caught at the next claim gate and cleaned up.
+- **Correctness comes from state, not the clock.** Never gate on "the previous step must have finished
+  by now"; timing is latency tuning only. If timing is needed for correctness, the design is wrong.
+- **Poison-item guard.** After **N consecutive failures on the same item** (3 by default) stop retrying
+  and mark it for a human; eligibility for new work excludes marked items.
 
 ### Multi-writer branch hazards
 
-Several actors may push to one PR branch. **Never force-push** - another
-session's commits live there; `--force-with-lease` only, per
-the `cr-loop` skill. **Always check freshness before pushing** (the `worktrees` skill
-§"Staleness and disappearance", and the §7 trap it backs). **Never bare
-`git stash`** - the stack is shared across worktrees, so use a WIP commit, or
-`git stash push -u -m "<unique-tag>"` and recover by SHA with `apply`, never
+**Never force-push** (other sessions' commits live there); `--force-with-lease` only, per the
+`cr-loop` skill. **Check freshness before pushing** (`worktrees` skill §"Staleness and
+disappearance", and the §7 trap). **Never bare `git stash`** - the stack is shared across worktrees;
+use a WIP commit, or `git stash push -u -m "<unique-tag>"` and recover by SHA with `apply`, never
 `pop`. **Push explicitly**: `git push origin HEAD:<branch>`.
 
 ---
 
 ## 4. Cost control
 
-Tier selection is owned by the `subagent-strategy` skill (§"Delegate to the
-cheapest sufficient tier", §"Routine PR-shipping splits across tiers"); do
-not re-derive it here or in `skills/issue-pr-autopilot/SKILL.md`.
+Tier selection is owned by `subagent-strategy` (§"Delegate to the cheapest sufficient tier", §"Routine
+PR-shipping splits across tiers"); do not re-derive it here or in the autopilot skill.
 
-Every tool call re-sends the agent's whole context, so an agent costs
-roughly its context size times its call count, and output tokens are
-negligible by comparison. A 2026-09-28 burndown that handed each worker 7
-to 10 issues and ran about 35 agents at once re-read over 2.7 billion
-cached tokens: workers grew to about 350K tokens, so each later issue cost
-several times the first.
-The controls:
+Every tool call re-sends the agent's whole context, so an agent costs about context size times call
+count. A 2026-09-28 burndown that gave each worker 7-10 issues across about 35 agents re-read over 2.7
+billion cached tokens (workers grew to about 350K, each later issue costing several times the first).
 
-- **One issue per fresh implementer.** Never hand one agent a batch. Reap it
-  (`TaskStop`) once its deliverable lands: PR open and CI terminal. Later
-  rounds on that same PR may resume it; a new issue gets a new agent. Standing
-  rosters (the `subagent-strategy` skill) are for reviewers, whose per-round
-  delta is small. Every agent also starts at a fixed floor of about 75K
-  tokens (system prompt, CLAUDE.md files, memory index, tool and agent-type
-  schemas) that is re-sent on every call, so split a task expected to need
-  more than about 80 tool calls into separate fresh agents (for example
-  migration, then rebase, then tests), and keep the always-loaded surface
-  small: unused agent definitions and irrelevant CLAUDE.md sections cost on
-  every call of every agent. Measured 2026-09-28: single-PR agents started
-  at 75K; a 146-call rework peaked at 238K, while 26 to 50-call reviews
-  peaked at 120K to 150K.
-- **Cap concurrency at 3 to 4 working agents** unless the user asks for more.
-  Background shell watchers do not count; agents do.
-- **Waiting costs nothing only in a shell.** CI and other long waits run as
-  one background shell watcher per the `ci-watch` skill, never as a polling
-  loop inside an agent, where each poll is a full-context call.
-- **The orchestrator stays lean.** Its context is re-read on every agent
-  notification: ask agents for short verdicts rather than transcripts, do not
-  read diffs or logs yourself, and reap idle agents as soon as they reach a
-  terminal state.
-- **A cheap preflight gate** before any expensive phase, so a quiet backlog
-  costs almost nothing.
-- **Top-tier reasoning only on the bounded planning and review phases**; the
-  long implement and review-response loops run a tier down. This is the
-  whole point of the role split in §2.
-- **Per-pass caps** on how many new items enter the pipeline, so the number
-  of in-flight PRs (and their review loops) stays bounded. The scheduled
-  variant's concrete caps and run budget are in `skills/issue-pr-autopilot/SKILL.md`.
+- **One issue per fresh implementer.** Never batch. Reap it once its deliverable lands (PR
+  open, CI terminal). Later rounds on that PR may resume it; a new issue gets a new agent. Standing
+  rosters are for reviewers, whose per-round delta is small. Every agent starts at a fixed floor of
+  about 75K tokens (system prompt, CLAUDE.md files, memory index, schemas) re-sent on every call, so
+  split a task expected to need more than about 80 tool calls into separate fresh agents (migration,
+  then rebase, then tests) and keep the always-loaded surface small. Measured: single-PR agents
+  started at 75K; a 146-call rework peaked at 238K; 26-50-call reviews peaked at 120-150K.
+- **Cap concurrency at 3 to 4 working agents** unless the user asks for more. Background shell
+  watchers do not count.
+- **Wait in a shell, not an agent**: long waits are one background shell watcher (`ci-watch` skill),
+  never a polling loop inside an agent.
+- **Keep the orchestrator lean**: ask agents for short verdicts, do not read diffs or logs yourself,
+  reap idle agents at their terminal state.
+- **A cheap preflight gate** before any expensive phase, so a quiet backlog costs almost nothing.
+- **Top-tier reasoning only on bounded planning and review**; implement and review-response loops run
+  a tier down (the point of §2's split).
+- **Per-pass caps** on new items entering the pipeline. The scheduled variant's caps and run budget
+  are in `skills/issue-pr-autopilot/SKILL.md`.
 
 ---
 
 ## 5. The merge gate
 
-A PR merges only when **all four** hold. Project-specific gates in the `pr-lifecycle` skill add to
-these generic gates. A blanket "merge them" is never authorization to bypass one.
+A PR merges only when **all four** hold. The `pr-lifecycle` skill's project gates add to these. A
+blanket "merge them" never authorizes bypassing one.
 
 | Gate | Check | Prevents |
 |------|-------|----------|
 | CI green | every workflow run `success` for the exact HEAD SHA | merging broken code |
 | Review bot clean | 0 unresolved threads **AND** latest review newer than the HEAD push | the false-clean trap (§7) |
-| Adversarial clean | an independent agent **returned** a verdict against current HEAD - findings now fixed, or "NO CONFIRMED FINDINGS" plus what it attacked - **and the invoking session posted the verdict verbatim on the PR** (the `cr-loop` skill §3b) | green-CI-but-still-broken, §7, and a verdict that dies with the session |
+| Adversarial clean | an independent agent **returned** a verdict against current HEAD - findings now fixed, or "NO CONFIRMED FINDINGS" plus what it attacked - **and the invoking session posted the verdict verbatim on the PR** (`cr-loop` skill §3b) | green-CI-but-still-broken, §7, and a verdict that dies with the session |
 | Mergeable | `MERGEABLE` + `CLEAN`; no `--admin`, no `--no-verify` | merging past a pending check |
 
-The mergeable gate is the `pr-lifecycle` skill §4 ("never bypass required checks");
-this table exists because the other three are easy to skip when several PRs
-are in flight at once.
+The mergeable gate is `pr-lifecycle` §4 ("never bypass required checks"); the table exists because
+the other three are easy to skip under multi-PR load.
 
-Merge mechanics under multi-PR load: merge **one at a time**, via the REST
-endpoint (`gh api PUT .../merge`) rather than `gh pr merge`, with ~30s
-spacing plus backoff. Bursting merges trips GitHub's secondary rate limit,
-which is distinct from the hourly quota and is handled per
-the `rate-limit-retry` skill. Rebase **just in time** - only
-immediately before merging that PR. Eager mass-rebasing churns, because each
-merge invalidates the next.
+Under multi-PR load merge **one at a time** via the REST endpoint (`gh api PUT .../merge`) rather than
+`gh pr merge`, ~30s apart plus backoff; bursts trip GitHub's secondary rate limit (handled per
+`rate-limit-retry`). Rebase **just in time**, immediately before merging that PR; eager mass-rebasing
+churns because each merge invalidates the next.
 
 ---
 
 ## 6. The loops
 
-Each runs to a fixed point. "I fixed round 1" is not an exit condition, and
-that is the part orchestrating many PRs makes easy to forget.
+Each runs to a fixed point; "I fixed round 1" is not an exit.
 
-**Order the work.** Process PRs and issues in triage-priority order
-(`priority/p0` first), not by number or by interest. Rubric in the `triage-labels` skill.
+**Order the work** by triage priority (`priority/p0` first), not number or interest (`triage-labels`).
 
-**Rebase before reviewing, always.** Findings triaged against a tree that is
-not the one under review are wasted at best and misleading at worst.
+**Rebase before reviewing, always.** Findings triaged against a tree other than the one under review
+are wasted or misleading.
 
-**Review-bot loop** - full rules in the `cr-loop` skill
-(trigger/watcher atomicity, triage buckets, never `@coderabbitai resolve`,
-`full review` after a throttle). Orchestration-level: exit is *zero
-actionables on the latest review*, and §7 is what makes an apparent exit
-untrustworthy.
+**Review-bot loop**: full rules in `cr-loop` (trigger/watcher atomicity, triage buckets, never
+`@coderabbitai resolve`, `full review` after a throttle). Orchestration-level: exit is *zero
+actionables on the latest review*, and §7 is what makes an apparent exit untrustworthy.
 
-**Adversarial loop** - reviewer reports, implementer fixes, reviewer
-re-reviews, 2 passes with the same reviewer per `AGENTS.md` §1 (CR rounds are
-capped per `cr-loop` §3), every finding verified live against current HEAD. Roles and independence per §2.
+**Adversarial loop**: reviewer reports, implementer fixes, reviewer re-reviews; 2 passes with the same
+reviewer per `AGENTS.md` §1 (CR rounds are capped separately, `cr-loop` §3); every finding verified
+live against current HEAD. Roles and independence per §2.
 
-**The watcher model.** Every trigger of asynchronous work needs something
-durable that will act on the response; a trigger with no watcher is the
-defect. Interactive sessions arm background agents per push and per PR
-*before* or with the trigger, never after (the `pr-lifecycle` skill); scheduled
-routines cannot spawn anything, so the next fire is the watcher, with the
-"disabling the routine orphans every triggered PR" consequence in
-`skills/issue-pr-autopilot/SKILL.md` §"Watcher model".
+**The watcher model.** Every trigger of asynchronous work needs something durable that will act on the
+response; a trigger with no watcher is the defect. Interactive sessions arm watchers per push and per
+PR *before* or with the trigger (`pr-lifecycle` skill); scheduled routines cannot spawn anything, so
+the next fire is the watcher, with the "disabling the routine orphans every triggered PR" consequence
+in `skills/issue-pr-autopilot/SKILL.md` §"Watcher model".
 
 ---
 
 ## 7. Traps
 
-Each of these has produced a wrong "done" in practice.
+Each has produced a wrong "done".
 
 ### Absence read as success
-The most repeated defect in this model, in many costumes. **Many tools answer
-"I could not find it" and "there is nothing" with the same output**, so any
-gate that treats an absence as a pass must first establish that it *looked
-successfully*. Every other outcome announces itself; this one has to be made
-to.
+The most repeated defect. **Many tools answer "I could not find it" and "there is nothing" with the
+same output**, so a gate that treats absence as a pass must first establish that it *looked
+successfully*.
 
-**Compare SHAs, not timestamps, wherever you can.** Where a bot names the SHA
-it reviewed, compare it to HEAD directly and skip the timestamp reasoning
-entirely: a timestamp is an inference about coverage, a SHA is an identity.
-Everything below is the fallback for actors that do not name one (§11:
-SHA-bound attestation would remove this whole class).
+**Compare SHAs, not timestamps, wherever you can.** Where a bot names the SHA it reviewed, compare it
+to HEAD directly: a timestamp is an inference about coverage, a SHA is an identity. The table is the
+fallback for actors that do not name one (§11).
 
 | Instance | The tell |
 |---|---|
-| Adversarial reviewer goes idle | no verdict at all, and it cuts both ways: a dead agent reads as clean, a clean one reads as dead |
+| Adversarial reviewer goes idle | no verdict at all; a dead agent reads as clean, a clean one reads as dead |
 | Review bot shows 0 unresolved threads | it is paused or throttled, or last round's threads were resolved while the newest commit went unreviewed; compare the latest review to HEAD's `committedDate` |
 | A formal review with a fresh timestamp | an EMPTY body; freshness needs a substance test beside it |
-| A gate keyed only on `.reviews[]` | the verdict came as a plain comment, or an in-place edit of the walkthrough comment (`created_at` unchanged, `updated_at` bumped), so a reviewed commit reads as unreviewed |
-| The bot's newest reply | an acknowledgement ("reviewing the current HEAD") carries a newer timestamp than the verdict, and names no SHA and no findings |
+| A gate keyed only on `.reviews[]` | the verdict came as a plain comment or an in-place edit of the walkthrough comment (`created_at` unchanged, `updated_at` bumped), so a reviewed commit reads as unreviewed |
+| The bot's newest reply | an acknowledgement ("reviewing the current HEAD") has a newer timestamp than the verdict and names no SHA or findings |
 | The bot's commit status | `success` while rate-limited (truth only in the description), and `"Review rate limited"` five seconds after a real verdict: wrong in **both** directions, so read the comment stream, never the check |
-| `gh run list --commit <short-sha>` | an empty list rather than an error; it needs the full 40-char SHA |
-| `statusCheckRollup` reading uniformly `PENDING` | it mixes `CheckRun` (`.conclusion`/`.status`) with `StatusContext` (`.state`), and a `//` chain over absent fields manufactures the default; use `(.conclusion // .state // .status // "PENDING")` |
+| `gh run list --commit <short-sha>` | an empty list, not an error; it needs the full 40-char SHA |
+| `statusCheckRollup` reading uniformly `PENDING` | it mixes `CheckRun` (`.conclusion`/`.status`) with `StatusContext` (`.state`); a `//` chain over absent fields manufactures the default; use `(.conclusion // .state // .status // "PENDING")` |
 | `go test` printing "no tests to run", exit 0 | a `//go:build` tag excluded the file; require a count of tests executed, not an exit code |
 | A watcher that ends quietly on timeout | it must print "no verdict - do NOT read this as clean" |
 
 Guards:
 
-- **Classify bot output, do not count it.** Sort each response into
-  action-performed wrapper (keep waiting), rate-limit notice (wait the window
-  out, then re-trigger a **full** review, since an incremental pass silently
-  skips the commits the throttled one dropped), or a verdict naming findings or
-  their absence. Timestamp- and count-based tests all fail here.
-- **Treat an idle agent as *ready to report*.** An idling agent is saying
-  "finished this turn, available for more", never "done forever" - the same
-  root cause as the watcher-teardown leak in the `pr-lifecycle` skill, but yielding a wrong verdict rather than a leaked background agent.
-  Request the verdict once; replace on a second silent idle. Briefing does not
-  fix this - a reviewer respawned with "your final message is the deliverable"
-  at the top of its brief idled without reporting anyway - so the guard is
-  orchestrator-side. Replacing costs everything that agent knew, so carry its
-  known leads into the new brief, and do not replace a non-blocking agent while
-  higher-priority work is queued.
-- **Require reviewers to bracket the work** with a start line, a progress line
-  and a final verdict, per §10 items 6-7, which is where the clause that goes
-  into the brief lives. The attacked-and-failed list is what makes a clean
-  verdict auditable; without it, "no findings" is indistinguishable from "did
-  not look".
+- **Classify bot output, do not count it**: action-performed wrapper (keep waiting), rate-limit notice
+  (wait the window out, then re-trigger a **full** review; an incremental pass silently skips the
+  commits the throttled one dropped), or a verdict naming findings or their absence.
+- **Treat an idle agent as *ready to report***, never "done forever" (same root cause as the
+  watcher-teardown leak in `pr-lifecycle`, but yielding a wrong verdict). Request the verdict once;
+  replace on a second silent idle. Briefing does not fix this (a reviewer told "your final message is
+  the deliverable" idled anyway), so the guard is orchestrator-side. Replacing costs everything the
+  agent knew, so carry its known leads into the new brief, and do not replace a non-blocking agent
+  while higher-priority work is queued.
+- **Require reviewers to bracket the work** with a start line, a progress line and a final verdict
+  (§10 items 6-7). The attacked-and-failed list makes a clean verdict auditable.
 
-Detection mechanics - which API objects carry a verdict, throttle detection,
-the `full review` recovery - are owned by the `cr-loop` skill. Enumerate every channel before concluding a review happened.
+Detection mechanics (which API objects carry a verdict, throttle detection, `full review` recovery)
+are owned by `cr-loop`. Enumerate every channel before concluding a review happened.
 
 ### Stale adversarial review
-An adversarial-review comment on a PR proves nothing unless it postdates
-the current HEAD commit. Compare timestamps; re-review the delta otherwise.
+A review comment proves nothing unless it postdates the current HEAD commit. Compare timestamps;
+re-review the delta otherwise.
 
 ### Stale worktree, or no worktree
-A long-lived worktree is often a *pre-rebase copy* - same commit subjects,
-different SHAs - so tests there verify code that is not on the branch.
-Detection and recovery are in the `worktrees` skill §"Staleness and disappearance".
-The orchestration-level rule: a worktree that turns out stale or missing
-invalidates **every gate already run in it**.
+A long-lived worktree is often a *pre-rebase copy* (same subjects, different SHAs), so tests there
+verify code not on the branch. Detection and recovery: `worktrees` skill §"Staleness and
+disappearance". A stale or missing worktree invalidates **every gate already run in it**.
 
 ### Stale plan
-A plan rots while it waits. If the base advanced, re-validate the plan against
-the current tree before implementing, and re-plan or defer rather than build
-on it. The longer the gap between planning and implementing, the more this
-matters, which is why it bites the scheduled variant hardest.
+If the base advanced, re-validate the plan against the current tree before implementing; re-plan or
+defer. It bites the scheduled variant hardest.
 
 ### Tests that cannot fail
-A regression test written *after* a fix, which passes both with and without
-it, is not coverage. See §8.
+A regression test written *after* a fix that passes with and without it is not coverage (§8).
 
 ### Generated scripts
-A `sed`-built script can silently produce a 0-byte file. `bash -n` any
-generated script before arming it as a watcher (script review rules:
-the `tool-usage` skill).
+A `sed`-built script can silently produce a 0-byte file. `bash -n` any generated script before arming
+it as a watcher (review rules: `tool-usage` skill).
 
 ### A fix can be defeated by its own remediation path
-Three shapes, two of them from one script closing an over-broad IAM grant:
+Three shapes, two from one script closing an over-broad IAM grant:
 
-- **A scan scoped by a value the fix tells the operator to change.** Its
-  search for the legacy grant keyed on the *current* pool ID, so following the
-  script's own "migrate to a dedicated pool" advice rebuilt that string for the
-  NEW pool and the wildcard grant went unseen, exit 0. Walk a remediation
-  end-to-end **with its own recommendation applied**: the interesting failure
-  is rarely "the fix doesn't work", it is "the fix doesn't work for people who
-  followed the advice".
-- **Detection scope wider than removal scope**, which leaves the defect
-  *detected and surviving* - worse than not scanning, because the check reports
-  it looked. Derive both from one list, and **re-read the state after mutating
-  it**.
-- **A control the code REFERENCES may not EXIST.** A fix rested on a
-  deployment environment's approval gate; those environments did not exist, and
-  the platform auto-creates a referenced environment BARE on first use, so the
-  YAML was correct and the control vacuous. Verify an external control's live
-  configuration rather than its reference in code, prefer controls declared in
-  IaC, and state which half of a claim you verified.
+- **A scan scoped by a value the fix tells the operator to change.** The scan keyed on the *current*
+  pool ID, so following the script's own "migrate to a dedicated pool" advice rebuilt that string for
+  the NEW pool and the wildcard grant went unseen, exit 0. Walk a remediation end-to-end **with its
+  own recommendation applied**.
+- **Detection scope wider than removal scope** leaves the defect *detected and surviving*, worse than
+  not scanning. Derive both from one list and **re-read the state after mutating it**.
+- **A control the code REFERENCES may not EXIST.** A fix rested on a deployment environment's
+  approval gate; those environments did not exist and the platform auto-creates a referenced
+  environment BARE on first use, so the YAML was correct and the control vacuous. Verify an external
+  control's live configuration, prefer controls declared in IaC, and state which half of a claim you
+  verified.
 
 ### The orchestrator's own status read has a shelf life
-In a fast-moving fan-out, a state read goes stale in minutes, and the
-orchestrator is structurally the LAST to know: each agent holds fresher
-state about its own PR than the orchestrator ever can, because it is the
-thing changing it. Asserting a stale read is harmless once and corrosive if
-repeated: an agent that receives confidently wrong state starts double-checking
-everything the orchestrator says. Two habits:
-- **Re-verify immediately before ASSERTING a state to someone else**, not
-  merely before deciding. Deciding on a 3-minute-old read is usually fine;
-  telling an agent its work is missing is not.
-- **Phrase instructions conditionally when the agent owns the state**:
-  "if the README fix has not landed yet, fold it in" rather than "the README
-  fix has not landed". The conditional is correct under both readings and
-  costs nothing.
+In a fast fan-out a state read goes stale in minutes, and the orchestrator is the LAST to know: each
+agent holds fresher state about its own PR. Wrong assertions corrode trust (agents start
+double-checking everything). Two habits:
+- **Re-verify immediately before ASSERTING a state to someone else**, not merely before deciding.
+- **Phrase instructions conditionally when the agent owns the state**: "if the README fix has not
+  landed yet, fold it in", not "the README fix has not landed".
 
 ### A shared adaptive quota makes parallel retry self-defeating
-The obvious design - each PR's watcher re-triggers its own review on
-throttle - is actively wrong when the quota is shared, and catastrophically
-wrong when it is also adaptive. **Before giving each agent its own retry loop,
-ask whether the resource is per-agent or shared**; if shared, retry logic
-belongs at the orchestrator, not in the workers.
-
-Established in practice: the review bot's limit is **per-developer, per-
-organization, not per-PR**, and it tightens at the 95th percentile of recent
-volume. So N watchers retrying independently do not merely compete for one
-allowance, they *ratchet the ceiling down* for everything queued behind them.
-Independent backoff across N clients on one adaptive limit is a thundering
-herd with extra steps.
-
-The correct shape:
-- **One trigger in flight globally.** Serialise re-triggers across the whole
-  batch, highest-stakes PR first. Every other watcher is **observe-only** -
-  it classifies and reports, and never posts.
+Before giving each agent its own retry loop, ask whether the resource is per-agent or shared; if
+shared, retry logic belongs at the orchestrator. The review bot's limit is **per-developer, per-
+organization, not per-PR**, and tightens at the 95th percentile of recent volume, so N watchers
+retrying independently *ratchet the ceiling down* for everything queued behind them. The shape:
+- **One trigger in flight globally.** Serialise re-triggers across the batch, highest-stakes PR first.
+  Every other watcher is **observe-only**: it classifies and reports, never posts.
 - When the owner lands a verdict, the next PR takes the budget.
-- On throttle, wait the window out rather than retrying sooner; a retry
-  before the window both fails and counts.
+- On throttle, wait the window out; a retry before the window both fails and counts.
 
 ### Put the guard in the command, not in the memory
-A documented trap only helps if it is recalled at the instant the command is
-written, and that is exactly when it is not: the short-SHA trap above fired
-**three times in one day, across different agents**, despite being written
-down, each time because the note was read at session start and the command was
-composed an hour later. Make the mistake impossible to express rather than
-memorable to avoid - ship the assertion inline in the template:
+A documented trap is not recalled when the command is written: the short-SHA trap fired three times in
+one day across different agents. Make the mistake impossible to express; ship the assertion in the
+template:
 
 ```bash
 [ ${#SHA} -eq 40 ] || { echo "need full 40-char SHA"; exit 1; }
 ```
 
-**Recurrence across independent agents is evidence that a documentation-based
-mitigation has failed**, not evidence that the documentation needs to be
-louder. Encode the constraint where the mistake is made: a precondition in the
-script, a required argument, a wrapper that rejects the bad shape.
+Recurrence across independent agents means a documentation-based mitigation has failed; encode the
+constraint where the mistake is made (a script precondition, a required argument, a wrapper).
 
 ### A push and its PR are not atomic
-A branch can be pushed and its PR never opened - the authoring session dies in
-the gap - leaving complete, reviewed-quality work on origin that is invisible
-to every priority query and every reviewer. This is distinct from the
-merged-branch stranding case in the `pr-lifecycle` skill: the branch is live, the
-work is finished, and nothing points at it.
-
-Recovery: for each branch you pushed, confirm a PR exists. Before
-re-implementing anything, check origin for a branch that already contains it -
-one p0 security fix was recovered this way, complete with a breaking-change
-note, when re-implementation would have thrown it away.
+A branch can be pushed and its PR never opened (the session dies in the gap), leaving finished work on
+origin that no priority query or reviewer sees. For each branch you pushed, confirm a PR exists.
+Before re-implementing anything, check origin for a branch that already contains it (one p0 security
+fix was recovered this way, with its breaking-change note).
 
 ### Correlated agent failure
-Every per-agent guard assumes agents fail independently. That broke when **ten
-agents died within five minutes** on a shared account-level session limit -
-every implementer, every reviewer, and the agent holding the only copy of
-several lessons. What survived was already committed or pushed; what was
-nearly lost sat *uncommitted in a worktree*, or *only in the orchestrator's
-context*. Guards:
+Per-agent guards assume independent failure. That broke when **ten agents died within five minutes**
+on a shared account-level session limit; what survived was committed or pushed, and what was nearly
+lost sat *uncommitted in a worktree* or *only in the orchestrator's context*. Guards:
 
-- **Checkpoint before you cannot.** "Commit and push" is the unit of progress;
-  an agent working a long time without committing carries unrecoverable state.
-- **Durable state beats conversational state.** Findings, assignments and gate
-  status belong in the task list or a file (§11).
-- **On mass failure, survey before restarting anything**: for every worktree,
-  record HEAD, uncommitted files, and whether HEAD is on origin. Back
-  uncommitted diffs up to patch files (`git diff > <path>.patch`) rather than
-  committing them - a WIP commit confuses the agent that resumes there, while a
-  pruned worktree loses the work outright.
-- **Resume from the patch, never re-implement**, which discards work that
-  already exists and reintroduces decisions already made correctly.
-- **But assess the recovered work's COMPLETENESS first.** What a dead agent
-  leaves is a snapshot of *unfinished* work, and unfinished work does not
-  announce itself: one recovered double-spend fix had a well-argued rationale
-  comment on its first half, no second half, and no tests, so committing that
-  worktree as-is would have shipped a plausible-looking fix that still
-  double-spends. **A partial fix is more dangerous than no fix, because it
-  looks finished.** The resuming agent's first task is to state what it found,
-  what it kept, and what was missing.
+- **Checkpoint before you cannot**: "commit and push" is the unit of progress.
+- **Durable state beats conversational state**: findings, assignments and gate status belong in the
+  task list or a file (§11).
+- **On mass failure, survey before restarting anything**: per worktree, record HEAD, uncommitted files,
+  and whether HEAD is on origin. Back uncommitted diffs up to patch files (`git diff > <path>.patch`),
+  not WIP commits (those confuse the resuming agent; a pruned worktree loses the work outright).
+- **Resume from the patch, never re-implement.**
+- **Assess the recovered work's COMPLETENESS first.** Unfinished work does not announce itself: one
+  recovered double-spend fix had a rationale comment on its first half, no second half and no tests.
+  **A partial fix is more dangerous than no fix, because it looks finished.** The resuming agent's
+  first task is to state what it found, what it kept, and what was missing.
 
 ---
 
 ## 8. Verification discipline
 
-The standards are in `AGENTS.md` §4 (verification before done) and §6
-(root-cause bug fixing): a regression guard must fail against the pre-fix
-code, green tests are not proof the feature works, trace the real
-end-to-end path, re-check live state before asserting status. Procedure for
-the load-bearing one: revert the fix, run the new test, confirm it FAILS,
-restore, confirm it PASSES, and state both outcomes when reporting. The
-"assert the defect, not a proxy" rule is in the `coding-standards` skill
-§"Testing Philosophy"; matching the CI-pinned tool version before trusting
-a local lint or format result is in the `tool-usage` skill.
+Standards: `AGENTS.md` §4 and §6 (a regression guard must fail against the pre-fix code, green tests
+are not proof, trace the real end-to-end path, re-check live state before asserting status). The
+procedure: revert the fix, run the new test, confirm it FAILS, restore, confirm it PASSES, state both
+outcomes. "Assert the defect, not a proxy" is in `coding-standards` §"Testing Philosophy"; matching the
+CI-pinned tool version is in `tool-usage`.
 
-What running this at multi-PR scale adds:
+What multi-PR scale adds:
 
-- **Report exit codes.** Empty lint output with a nonzero exit is a failed
-  run, not a clean one. An agent reporting "lint clean" with no exit code is
-  reporting nothing.
-- **Pre-existing debt on lines you did not touch**: report it, do not fix it
-  in a review-fix commit, and never suppress it. Some autofixes are actively
-  unsafe - a blanket misspell rewrite once renamed a real DB column
-  (`cancelled_by`) and broke integration tests.
-- **Prove "pre-existing" instead of asserting it.** Run the linter on the
-  branch, again against a reverted baseline, normalise both finding sets and
-  diff. Minutes, and it turns the easiest claim in code review to make and the
-  hardest to check into a measurement. Same technique settles "is this test
-  failure mine?".
-- **When adding a requirement, ask what the most permissive value that
-  satisfies it is.** If that value is as bad as omission, requiring it achieves
-  nothing: a non-empty check is not a restriction, and a shape regex admits
-  every value of that shape.
-- **Applying one change to N parallel sites: verify each site by running it,
-  not by reading the diff.** Reading N near-identical blocks is where the eye
-  supplies what it expects, so the replication is the part most likely to be
-  incomplete and the part invisible to whoever made it.
-- **Check the new code is REACHABLE from a production entry point.** A feature
-  can be fully implemented, fully tested and **never wired up** - a state that
-  passes every gate, because CI is green, the review bot sees clean code, and
-  an adversarial reviewer finds no bugs in code that never runs. Ask what would
-  have to happen at runtime for the new line to execute, and answer it from a
-  real handler, scheduler, CLI command or consumer.
-- **Ask which layer the test exercises.** A test can prove the unit beneath the
-  defect and nothing else: one fired 50 direct calls at a service function and
-  correctly conserved counts, while the defect was that the function runs
-  *twice per request* from two layers, so it passed unchanged with the bug
-  present and looked like diligence.
-- **Verification is self-reported unless the reviewer re-runs it.** Requiring
-  the pre-fix output **verbatim** makes fabrication effortful, but it is a
-  deterrent, not a check. The check: **the round-2 reviewer re-derives the
-  failure itself** - `git checkout <fix-commit>^ -- <changed-file>`, run the
-  guard, confirm it fails on the specific assertions claimed, restore, confirm
-  clean. Make it standing in the round-2 brief. It also catches a guard that
-  fails pre-fix for the **wrong reason** (an unwired mock chain panicking into
-  an error that satisfied `require.Error`), so assert the specific observable
-  rather than "an error occurred".
+- **Report exit codes.** Empty lint output with a nonzero exit is a failed run; "lint clean" with no
+  exit code reports nothing.
+- **Pre-existing debt on lines you did not touch**: report it, do not fix it in a review-fix commit,
+  never suppress it. Some autofixes are unsafe (a blanket misspell rewrite renamed a real DB column,
+  `cancelled_by`, and broke integration tests).
+- **Prove "pre-existing"**: run the linter on the branch and on a reverted baseline, normalise both
+  finding sets and diff. The same technique settles "is this test failure mine?".
+- **When adding a requirement, ask what the most permissive value satisfying it is.** If that is as
+  bad as omission, the requirement achieves nothing (a non-empty check is not a restriction; a shape
+  regex admits every value of that shape).
+- **Applying one change to N parallel sites: verify each site by running it, not by reading the
+  diff.** The eye supplies what it expects across near-identical blocks.
+- **Check the new code is REACHABLE from a production entry point.** A feature can be implemented,
+  tested and **never wired up** and pass every gate. Answer from a real handler, scheduler, CLI
+  command or consumer what makes the new line execute.
+- **Ask which layer the test exercises.** One test fired 50 direct calls at a service function and
+  conserved counts, while the defect was that the function runs *twice per request* from two layers.
+- **Verification is self-reported unless the reviewer re-runs it.** Requiring pre-fix output
+  **verbatim** deters fabrication but is not a check. The check: **the round-2 reviewer re-derives the
+  failure itself** (`git checkout <fix-commit>^ -- <changed-file>`, run the guard, confirm it fails on
+  the specific assertions claimed, restore, confirm clean). Make it standing in the round-2 brief. It
+  also catches a guard that fails pre-fix for the **wrong reason** (an unwired mock chain panicking
+  into an error that satisfied `require.Error`), so assert the specific observable.
 
 ---
 
 ## 9. When everything is blocked
 
-Blocked means every open PR is waiting on an external signal (throttled
-review bot, CI in flight, human decision). Then: pick up unresolved GitHub
-issues in priority order (the `triage-labels` skill) and drive each through this same
-pipeline - implement, adversarial review by a *different* agent, review-bot
-loop, merge, close - until every issue is addressed.
-
-Do not idle-poll. Long-running work notifies on completion; polling just
-re-blocks the orchestrator (the `subagent-strategy` skill
-§"Background-first execution").
+Blocked = every open PR waits on an external signal (throttled bot, CI in flight, human decision).
+Then pick up unresolved issues in priority order (`triage-labels`) and drive each through the same
+pipeline (implement, adversarial review by a *different* agent, review-bot loop, merge, close) until
+all are addressed. Do not idle-poll; long-running work notifies on completion (`subagent-strategy`
+skill §"Background-first execution").
 
 ---
 
 ## 10. Agent briefing template
 
-A cold agent knows nothing. the `subagent-strategy` skill covers which tier to
-spawn and when to reuse a warm agent instead; this is what every brief must
+A cold agent knows nothing. `subagent-strategy` covers tier and warm-agent reuse; every brief must
 *contain*:
 
 1. **Goal** and the exact PR/branch/HEAD SHA.
-2. **Setup** - which worktree, or how to create one at origin tip.
+2. **Setup**: which worktree, or how to create one at origin tip.
 3. **What is already done**, so it does not re-derive or revert it.
-4. **Focus areas, hardest first** - for money paths: idempotency in *both*
-   directions (two identical requests → different tokens = double spend;
-   two different requests → same token = a real purchase silently skipped),
-   fail-closed gates, fabricated values, silent failures, cross-tenant
-   bleed.
-5. **Method** - adversarial: try to *refute* each candidate first; report
-   only survivors; each finding needs a concrete failure scenario
-   (inputs → wrong output, in dollars where applicable).
-6. **That its final message IS the deliverable, and explicit permission to
-   find nothing.** "NO CONFIRMED FINDINGS" plus what was attacked and why
-   each attack failed is a valuable result; going idle without returning one
-   is not a result at all (§7). Without this, agents either invent findings
-   to appear useful or stop without reporting.
-7. **The start/progress/stop protocol**, stated as three numbered steps so
-   it is hard to skip: send a one-line message on **starting** that names the
-   SHA under review; a brief **progress** line rather than silence if the
-   work runs long; and a **final** message carrying the verdict. Tell it
-   plainly never to end a turn holding an unsent verdict, and that a partial
-   report naming what it did not reach beats silence. A clean review is the
-   only outcome that does not announce itself (§7), so the brief has to make
-   it announce itself.
+4. **Focus areas, hardest first**. For money paths: idempotency in *both* directions (two identical
+   requests giving different tokens = double spend; two different requests giving the same token = a
+   real purchase silently skipped), fail-closed gates, fabricated values, silent failures,
+   cross-tenant bleed.
+5. **Method**: adversarial. Try to *refute* each candidate first; report only survivors; each finding
+   needs a concrete failure scenario (inputs -> wrong output, in dollars where applicable).
+6. **That its final message IS the deliverable, and explicit permission to find nothing.** "NO
+   CONFIRMED FINDINGS" plus what was attacked and why each attack failed is a valuable result; going
+   idle without one is not a result (§7). Otherwise agents invent findings or stop without reporting.
+7. **The start/progress/stop protocol** as three numbered steps: a one-line message on **starting**
+   naming the SHA under review; a brief **progress** line rather than silence on long work; a **final**
+   message carrying the verdict. Tell it never to end a turn holding an unsent verdict; a partial
+   report naming what it did not reach beats silence. A clean review is the only outcome that does not
+   announce itself (§7), so the brief must make it announce itself.
 8. **Output shape** and whether it may modify code.
-9. **What must be recorded on the PR before reporting done**, per
-   the `cr-loop` skill §3b: a read-only reviewer returns its verdict and
-   evidence, the invoking session posts the verdict verbatim and the evidence
-   on the PR, and an implementer posts what its fix commit changed and how it
-   was verified. A result that exists only in the reply to the
-   orchestrator is gone the moment the session ends, and the next reader
-   of that PR has no way to tell the review happened at all.
+9. **What must be recorded on the PR before reporting done** (`cr-loop` skill §3b): a read-only
+   reviewer returns verdict and evidence and the invoking session posts them verbatim; an implementer
+   posts what its fix commit changed and how it was verified. A result that exists only in the reply to
+   the orchestrator is gone when the session ends.
 
 ---
 
 ## 11. Known gaps
 
-Honest limitations of this model, to be closed as they bite:
-
-- **"Adversarial review done" is not machine-detectable.** It is inferred
-  from PR comments plus timestamps. A structured marker (a label, or a
-  fixed comment header) would make it a real gate instead of a heuristic.
-- **Reviewer verdicts are trusted.** A reviewer that reports "no findings"
-  because it ran out of steam is indistinguishable from a genuine clean.
-  Partial mitigation: require it to list what it attacked.
-- **The scheduled variant has no adversarial reviewer at all** (§2): a
-  routine cannot spawn one, and a single flat agent reviewing its own work
-  violates the independence rule. Scheduled PRs therefore reach the merge
-  gate with three of the four checks satisfied, and depend on an interactive
-  session or a human for the fourth.
-- **Throttle is the pacing constraint.** No orchestration fixes it; a
-  serialised central sweep re-triggers, and parallel pings make it worse.
-  Check for an existing sweep before adding a trigger.
-- **Subsystem pooling is manual.** There is no registry mapping subsystem →
-  warm agent; the orchestrator tracks it by hand.
-- **Self-review risk on orchestrator-authored code.** When the orchestrator
-  has (historically) written code, its review must be delegated to a fresh
-  agent. The fix is structural: the orchestrator does not write code.
+- **"Adversarial review done" is not machine-detectable**; it is inferred from comments plus
+  timestamps. A structured marker (a label or fixed comment header) would make it a real gate.
+- **Reviewer verdicts are trusted.** A "no findings" from an agent that ran out of steam is
+  indistinguishable from a genuine clean. Partial mitigation: require the list of what it attacked.
+- **The scheduled variant has no adversarial reviewer** (§2): a routine cannot spawn one, and a flat
+  agent reviewing its own work violates independence. Scheduled PRs reach the merge gate with three of
+  four checks and depend on an interactive session or a human for the fourth.
+- **Throttle is the pacing constraint.** No orchestration fixes it; a serialised central sweep
+  re-triggers, and parallel pings make it worse. Check for an existing sweep before adding a trigger.
+- **Subsystem pooling is manual**: no registry maps subsystem to warm agent.
+- **Self-review risk on orchestrator-authored code**: its review must go to a fresh agent. The
+  structural fix is that the orchestrator does not write code.
