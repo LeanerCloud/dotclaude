@@ -11,10 +11,11 @@ role; this table says how each host does them. `scripts/setup-agent-symlinks.sh`
 | Codex CLI | `~/.codex/AGENTS.md`, 32 KiB cap (`project_doc_max_bytes`, docs) | `~/.agents/skills/`, listing capped near 8000 chars |
 | Gemini CLI | `~/.gemini/GEMINI.md` | `~/.agents/skills/` (alias of `~/.gemini/skills/`) |
 | Kimi Code | `~/.agents/AGENTS.md` (or `~/.kimi-code/AGENTS.md`); truncates very large files (docs) | `~/.agents/skills/` |
-| Antigravity CLI (`agy`) | `~/.gemini/GEMINI.md` (also `~/.gemini/AGENTS.md`; docs, not run here) | `~/.gemini/antigravity-cli/skills/` (app/IDE: `~/.gemini/config/skills/`); not `~/.agents/skills` (docs) |
+| Antigravity CLI (`agy`) | `~/.gemini/GEMINI.md` (also `~/.gemini/AGENTS.md`) | `~/.gemini/antigravity-cli/skills/` (app/IDE: `~/.gemini/config/skills/`); not `~/.agents/skills` (docs) |
 | opencode | `~/.config/opencode/AGENTS.md` (first match wins, falls back to `~/.claude/CLAUDE.md`: docs) | `~/.agents/skills/`, `~/.claude/skills/`, `~/.config/opencode/skills/` |
 
-Global-rule loading was verified live on 2026-10-13 for Claude Code, Codex, Kimi and opencode (each
+Global-rule loading was verified live on 2026-10-13/14 for Claude Code, Codex, Kimi, opencode and
+Antigravity CLI (each
 saw `AGENTS.md` once); Codex and Gemini do not read `~/.agents/AGENTS.md`. opencode also loads an
 `AGENTS.md` from a parent directory such as `~` as project rules, so keep no stale copy there.
 
@@ -66,6 +67,6 @@ Kimi has no per-call effort flag: effort is `default_effort` (low, high, max) in
 Model IDs come from each host's model list on 2026-10-13; re-check with the host's model list command
 when a name stops resolving. An exact model pinned by a project rule always wins. Gemini CLI was not
 verifiable live (its individual tier was retired in favour of Antigravity), so its rows follow the docs.
-Antigravity CLI is its successor (`brew install --cask antigravity-cli`, browser sign-in); its rows
-follow the docs too until it is installed and checked like the others. Link files, never whole
+Antigravity CLI is its successor (`brew install --cask antigravity-cli`, browser sign-in); its rules and
+skills paths are verified live, its tier flags are from the docs. Link files, never whole
 config directories: each host keeps its own runtime config, system skills and credentials.
