@@ -143,7 +143,8 @@ for this PR's branch: safety-gate it (clean tree, nothing unpushed; recover stra
 `feedback_recover_stranded_fix_work` if not), then `git worktree remove` it, delete the build dirs
 recorded in the plan's `build_dirs:` (exact paths, only if no other plan lists them, never a glob by
 number, never shared dirs such as `build-master`), delete **both** the local branch (`git branch -D`)
-**and the remote branch** (`git push origin --delete <branch>`; a merged/wontfix head branch is dead and
+**and the remote branch** (`git push origin --delete <branch>`, unless an open PR still has it as base:
+`gh pr list --base <branch> --state open`; a merged/wontfix head branch is dead and
 stale remote refs accumulate), and archive the plan file (`plans/archive/`). If the PR was closed as
 wontfix instead of merged, the same sweep runs only after per-item user confirmation (outside the
 AGENTS.md tenet 9 exception). Pair it with the periodic no-worktree **branch sweep** in the `worktrees`
