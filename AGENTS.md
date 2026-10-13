@@ -53,6 +53,13 @@ Scale ceremony to the project (a solo repo needs no formal process), never the u
 - **Fail loud**: no silent fallbacks, magic values or stringly-typed enums (`coding-standards`).
 - **Verify before asserting**: re-check live state (PR/CI status, test results, file contents, counts)
   this turn before reporting it. If you cannot, say so. Stale or optimistic status is a defect.
+- **Asking the user**: routine calls are yours. Ask only for irreversible or destructive actions,
+  spending money, scope or product choices, or materially different outcomes. Run
+  `~/.claude/scripts/ask-user.sh --context "what/why/checked" --recommend A --default B "Q?"
+  "A|effect|tradeoffs" "B|effect|tradeoffs"` in the background; `--default` is the non-destructive
+  option, taken on timeout (exit 2) but never as approval for a tenet 9 confirmation. Exit 3 means
+  no decision: don't proceed, ask in chat. Exit 1 (no GUI): use AskUserQuestion. Only the
+  orchestrator asks; subagents escalate. Unattended runs never prompt: comment on the issue.
 - **Minimal impact**: touch only what was asked. No drive-by refactors, formatting, or comments on
   untouched code. Between two approaches, pick the simpler and proceed.
 - **Shared checkouts**: check for other sessions before editing/building/pushing; serialize shared
@@ -149,8 +156,9 @@ per `pr-lifecycle` (human merge by default; never self-merge `LeanerCloud/dotcla
 Use them to keep the main context clean; one focused task each, briefed fully (goal, context, output
 format, length cap). Reuse a live agent (`SendMessage`) holding the relevant context (<~100K tokens)
 unless independence is the point, the tier differs or its context is polluted. Background by default
-for anything >~30s; never poll; reap finished agents. At most 3-4 working agents unless asked; CI
-waits in a background shell; tests print only failures. In `Workflow` scripts batch same-file work.
+for anything >~30s; never poll; reap finished agents. Usually 1-2 working agents sized to the work
+(e.g. an implementer and a reviewer), at most 3-4 unless asked; CI waits in a background shell;
+tests print only failures. In `Workflow` scripts batch same-file work.
 Always set `model` (both Sonnet tiers are `model: sonnet`; state the effort in the brief).
 
 | Tier | Use for |
