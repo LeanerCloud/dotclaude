@@ -16,7 +16,15 @@ into a memory** (§3). 6. **No "done" without proof** (§4). 7. **Simpler beats 
    Before `rm`, `git reset --hard`, `git branch -D`, `git filter-repo`, dropping tables, or anything
    that destroys state you did not create this session, get explicit per-item confirmation, even if a
    plan seemed to authorize it. Prefer additive moves (backups dir, `git checkout --orphan`, a new
-   clone). If unsure whether a file matters, it does.
+   clone). If unsure whether a file matters, it does. **Exception:** right after a branch merges, clean up
+   without asking: remove its worktree (`git worktree remove`, never `--force`), delete the build dirs
+   recorded in its plan's `build_dirs:` header (exact paths, never a glob, never a shared dir such as
+   `build-master`) and its local and remote branch refs, and archive its plan file. "Merged" means
+   its PR is MERGED and the branch tip is that PR's head or an ancestor of it (squash merges defeat
+   `git branch --merged`), or, with no PR, the tip is an ancestor of the pushed base. Only when the
+   worktree has no uncommitted, unpushed or untracked changes, no ignored files besides build output,
+   no lock and no live owner PID. Anything else (CLOSED-unmerged, abandoned, dirty) needs
+   confirmation (`worktrees`).
 
 ## Mandatory skill triggers
 
