@@ -321,7 +321,7 @@ from `CLAUDE.md` and the skills it routes to. The ones specific to this loop:
 - NEVER post `@coderabbitai review` without first running the dedup guard (no user-authored
   re-ping in the last 5 minutes); use `full review` on rate-limit recovery.
 - NEVER dispatch a list-iteration agent (iterating over N>1 PRs/issues with side-effects) on
-  `model: haiku` - use sonnet or opus (haiku mis-indexes bash arrays and re-targets the same item).
+  `model: sonnet` at low effort - use medium (low effort has re-targeted the same item when iterating lists).
 - ALWAYS `echo "pinged #<N>"` after each successful re-ping when iterating multiple PRs.
 - NEVER silently drop a CR finding - always fix / mark-stale-with-SHA / file-follow-up-issue.
 - On a transient `tflint --init` 403 or pre-commit stash collision, sleep 2 min and retry.

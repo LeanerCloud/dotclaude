@@ -51,7 +51,7 @@ across is [`../pstack-models.md`](../pstack-models.md). Where an upstream instru
 | `tdd` | pstack | §6 demands a regression test that fails pre-fix. Chosen over superpowers' rigid red-green because it also says when *not* to write the test, matching §6's "document why and verify manually instead". |
 | `verification-before-completion`, `verify-this` | superpowers, cursor-team-kit | Tenet 6 and §4 forbid "should work". These are the gates. |
 | `create-verification-skill`, `maintain-verification-skill` | pstack | §4's per-change-type verification only works if the repo has a scripted way to drive the real app. These generate and then maintain it. |
-| `interrogate` | pstack | §4's "adversarially verify with an INDEPENDENT reviewer". Fans out independent Opus reviewers, one per lens (`../pstack-models.md`). |
+| `interrogate` | pstack | §4's "adversarially verify with an INDEPENDENT reviewer". Fans out independent Sonnet 5.5 high reviewers, one per lens (`../pstack-models.md`). |
 | `arena` | pstack | §5's "is there a simpler way?" answered by N parallel attempts instead of one, then grafting. |
 | `thermo-nuclear-code-quality-review` | cursor-team-kit | The harshest maintainability pass. Complements, not replaces, `review-staged-diff`. |
 | `figure-it-out`, `show-me-your-work` | pstack | Auditable playbook plus decision trail for long unattended runs - the missing half of `issue-pr-autopilot` and `pr-orchestration`. |

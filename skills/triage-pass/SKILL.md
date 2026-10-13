@@ -85,11 +85,11 @@ For mid-to-large backlogs (~20+ untriaged items) or when the user explicitly ask
 
 **Don't fan out for trivially small backlogs** (<15 items) — orchestration overhead exceeds the savings. Just triage serially.
 
-**Choose model tier per agent** (`Agent` tool's `model` parameter):
+**Choose model tier per agent** (`Agent` tool's `model` parameter; it carries no effort, so put the low/medium/high effort in each agent's brief):
 
-- **Haiku** (default): most chunks. Triage is mostly mechanical labelling against the rubric — typo/dup/stale, clear severity/effort calls, items with enough info in title+body to label without investigation.
-- **Sonnet**: chunks where priority calibration needs judgement — items where severity vs. impact tradeoffs aren't obvious, or where the issue needs weighing against broader project context.
-- **Opus**: rare. Chunks dominated by security findings (CVE-class issues needing exploitability assessment) or architecture proposals where evaluating the proposal itself requires deep design judgement.
+- **Sonnet 5.5 low** (default): most chunks. Triage is mostly mechanical labelling against the rubric — typo/dup/stale, clear severity/effort calls, items with enough info in title+body to label without investigation.
+- **Sonnet 5.5 medium**: chunks where priority calibration needs judgement — items where severity vs. impact tradeoffs aren't obvious, or where the issue needs weighing against broader project context.
+- **Sonnet 5.5 high**: rare. Chunks dominated by security findings (CVE-class issues needing exploitability assessment) or architecture proposals where evaluating the proposal itself requires deep design judgement.
 
 ## Three-pass approach for very large backlogs (100+ items)
 
