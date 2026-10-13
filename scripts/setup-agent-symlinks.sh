@@ -8,17 +8,18 @@ usage() {
   cat <<'USAGE'
 Usage: setup-agent-symlinks.sh [--home DIR] [--claude-dir DIR]
 
-Expose the shared Claude guidance to Codex CLI and Gemini CLI.
+Expose the shared guidance to Codex CLI, Gemini CLI, Kimi Code and opencode.
 
 Two mechanisms:
 
   1. Skills -> HOME/.agents/skills/<name>, one symlink per skill directory.
-     Codex reads $HOME/.agents/skills (user scope) and Gemini reads
-     ~/.agents/skills as an alias of ~/.gemini/skills, so a single tree serves
-     both. Claude Code reads CLAUDE_DIR/skills directly - the canonical copy.
+     Codex, Kimi Code and opencode read $HOME/.agents/skills; Gemini reads it as
+     an alias of ~/.gemini/skills, so one tree serves all four. Claude Code reads
+     CLAUDE_DIR/skills directly - the canonical copy.
 
   2. Root config (AGENTS.md as AGENTS.md/GEMINI.md, local-paths.md,
-     projects.md) -> HOME/.codex and HOME/.gemini.
+     projects.md) -> HOME/.codex and HOME/.gemini; AGENTS.md alone ->
+     HOME/.agents/AGENTS.md (Kimi Code) and HOME/.config/opencode/AGENTS.md.
 
 Options:
   --home DIR        Home directory containing .codex and .gemini (default: $HOME)
@@ -74,6 +75,7 @@ fi
 
 codex_dir="$home_dir/.codex"
 gemini_dir="$home_dir/.gemini"
+opencode_dir="$home_dir/.config/opencode"
 
 link_one() {
   target="$1"
@@ -175,3 +177,6 @@ link_shared_docs "$codex_dir"
 link_shared_docs "$gemini_dir"
 link_one "$claude_dir/AGENTS.md" "$gemini_dir/GEMINI.md"
 link_skills
+mkdir -p "$home_dir/.agents" "$opencode_dir"
+link_one "$claude_dir/AGENTS.md" "$home_dir/.agents/AGENTS.md"
+link_one "$claude_dir/AGENTS.md" "$opencode_dir/AGENTS.md"

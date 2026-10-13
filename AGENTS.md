@@ -77,7 +77,7 @@ Scale ceremony to the project (a solo repo needs no formal process), never the u
 
 For non-trivial work in an unfamiliar project (>~5 source files), build and query the Compass graph
 (`compass explain|path|affected`; binary path in `local-paths.md`, usage in `coding-standards`)
-before grep-and-read loops. Broad questions (>3 searches) go to an Explore subagent.
+before grep-and-read loops. Broad questions (>3 searches) go to a read-only research subagent.
 
 ### 1. Plan, review, implement
 
@@ -154,12 +154,12 @@ per `pr-lifecycle` (human merge by default; never self-merge `LeanerCloud/dotcla
 ### 2. Subagents
 
 Use them to keep the main context clean; one focused task each, briefed fully (goal, context, output
-format, length cap). Reuse a live agent (`SendMessage`) holding the relevant context (<~100K tokens)
+format, length cap). Continue a live agent (Claude Code: `SendMessage`) holding the relevant context (<~100K tokens)
 unless independence is the point, the tier differs or its context is polluted. Background by default
 for anything >~30s; never poll; reap finished agents. Usually 1-2 working agents sized to the work
 (e.g. an implementer and a reviewer), at most 3-4 unless asked; CI waits in a background shell;
-tests print only failures. In `Workflow` scripts batch same-file work.
-Always set `model` (both Sonnet tiers are `model: sonnet`; state the effort in the brief).
+tests print only failures. Always name the tier: in Claude Code set `model: sonnet` and state the
+effort in the brief. Other hosts' primitives and tier models: `skills/HOSTS.md`.
 
 | Tier | Use for |
 |------|---------|
@@ -168,8 +168,8 @@ Always set `model` (both Sonnet tiers are `model: sonnet`; state the effort in t
 | Sonnet 5.5 high | **deciding, reviewing, verifying**: planning, design, diagnosis, reading a large codebase cold, every review loop, triaging findings, reproducing evidence. Never writes the code |
 
 Test: writes code, medium; decides, reviews or verifies, high. A medium agent stuck on a design
-question sends it up and gets the answer back. Non-Anthropic hosts map low/medium/high to their
-cheapest/mid/top tier; an exact model pinned by a project rule wins and is never substituted.
+question sends it up and gets the answer back. Other hosts use the low/medium/high rows of
+`skills/HOSTS.md`; an exact model pinned by a project rule wins and is never substituted.
 Details: `subagent-strategy`, `pr-orchestration`.
 
 ### 2a. Tools
