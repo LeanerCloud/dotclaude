@@ -1,293 +1,191 @@
 #!/usr/bin/env bash
-# Ask the user a blocking question in a desktop modal and print the answer to stdout.
+# Put a decision to the user as a markdown doc they edit, and wait for the answers.
 #
-#   ask-user.sh [-t SECS] [--text] [--context TEXT | --context-file PATH]
-#               [--recommend LABEL] --default LABEL "Question" "Label|what happens|tradeoffs" ...
+#   ask-user.sh [-t SECS] [--reopen SECS] [--no-open] DOC.md
 #
-# At most 3 options; "what happens" and "tradeoffs" are optional ("Label" alone is fine). The dialog
-# shows the question, the context, each option as "Label: what happens" plus "Tradeoffs: ...", the
-# recommended option marked, and "No answer in N min: <default> (safe default)". --default is
-# required (the timeout, default 3600 s, always applies) and must be the safe, non-destructive
-# choice: it is printed on stdout on timeout so the caller can act on it. With --text the answer is
-# free text and --default is the text used on timeout.
+# The agent writes DOC.md (conventionally ~/.claude/decisions/<YYYY-MM-DD>-<slug>.md, gitignored)
+# from templates/decision.md, composing the prose itself:
 #
-# Exit: 0 answered (answer on stdout); 2 timeout (default on stdout); 3 cancelled; 1 no GUI
-# backend (ask in chat instead); 64 usage. Run it with run_in_background so the wait doesn't block.
+#   # Decision needed: <title>
+#   Asked by <session/agent>, <date>. If unanswered by <time>: each question's Default (safe, non-destructive).
 #
-# A button labelled "Cancel" is treated as cancelling (exit 3). Pressing Enter picks the --default
-# option on macOS and Windows; zenity and kdialog list it first, which should make Enter pick it
-# (not verified on a real Linux desktop).
+#   ## 1. <question>
+#   Context: <what is being decided, why now, what was checked>
+#   Options:
+#   - **<A>** (recommended): <what happens>. Tradeoffs: <cost, risk, what you give up>
+#   - **<B>**: <what happens>. Tradeoffs: <...>
+#   Default: <A>
+#   Decision:
+#   Notes:
 #
-# Backends in order: macOS osascript; Windows powershell.exe (Git Bash/MSYS/Cygwin, or WSL);
-# Linux zenity, else kdialog (needs DISPLAY or WAYLAND_DISPLAY). Strings reach every backend as
-# argv or environment variables, never spliced into code.
-# Test overrides: ASK_USER_OS (replaces `uname -s`), ASK_USER_PROC_VERSION (replaces /proc/version).
+# One doc may hold several numbered "## n. question" sections. Each needs a Default: line (the
+# safe, non-destructive choice) and has a Decision: line the user fills in.
+#
+# The script opens the doc in the user's default app for .md (macOS open; Linux xdg-open; WSL
+# wslview or cmd.exe start; Git Bash/MSYS/Cygwin cmd start), then polls every 5 s until every Decision: line
+# has text and the file has been unchanged for 10 s (so a half-typed answer is never read). With
+# no opener it prints the path and still waits. The doc is re-opened every --reopen seconds
+# (default 900) while unanswered. Doc content is only ever parsed by awk, never evaluated.
+#
+# Collaborative loop: the user may add a line "Q: ..." at column 0 anywhere in a section. A Q: with
+# no "A:" line (also column 0) after it, before the next Q:, makes the script exit 4 and print the
+# open questions. The agent writes "A: ..." under each and re-runs the script with --no-open (skips
+# the first open so a second window doesn't appear; --reopen still applies).
+#
+# Decision: and Notes: may continue on following lines, up to a blank line or the next Field:
+# line (Context, Options, Default, Decision, Notes, Q, A) or "## ". Continuations are joined with
+# single spaces. Every section needs a Decision: and a Default: line; a doc that loses one while
+# waiting exits 64.
+#
+# Openers run in the background so a blocking one (xdg-open on some setups) cannot outlast -t.
+# A briefly missing file (an editor saving via rename) is tolerated for up to the settle window
+# before exit 1. A modification time in the future is treated as settled once the settle window
+# has passed on our own clock.
+#
+# Exit: 0 answered; 2 timeout (-t, default 3600, max 86400): each unanswered section's Default is
+# printed as its decision, marked "(default, no answer)"; 4 user asked questions; 64 usage or
+# invalid doc; 1 the file vanished. A timeout default is never approval for anything destructive.
+# Run it with run_in_background so the wait doesn't block.
+#
+# Output on 0 (and 2): "<n>. <question>: <decision>" per section, plus "   Notes: ..." if set.
+# Test overrides: ASK_USER_OS (replaces `uname -s`), ASK_USER_PROC_VERSION (replaces /proc/version),
+# ASK_USER_POLL (poll seconds, default 5), ASK_USER_SETTLE (quiet seconds, default 10).
 set -euo pipefail
 
-TITLE="Claude Code needs your input"
-DIALOG_MAX_BODY=1800
-usage() { echo "usage: ask-user.sh [-t SECS] [--text] [--context T|--context-file P] [--recommend L] --default L QUESTION [LABEL|WHAT|TRADEOFFS ...]" >&2; exit 64; }
+poll=${ASK_USER_POLL:-5} settle=${ASK_USER_SETTLE:-10}
+usage() { echo "usage: ask-user.sh [-t SECS] [--reopen SECS] [--no-open] DOC.md" >&2; exit 64; }
 die() { echo "error: $*" >&2; exit 64; }
-need_val() {
-  [ $# -ge 2 ] || usage
-  case "$2" in -t|--text|--context|--context-file|--recommend|--default) die "$1 needs a value, got $2" ;; esac
-}
+whole() { case "$2" in ''|*[!0-9]*) die "$1 must be a whole number of seconds" ;; esac; }
 
-timeout=3600 mode=buttons context="" context_file="" recommend="" default=""
+timeout=3600 reopen=900 no_open=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    -t) need_val "$@"; timeout="$2"; shift 2 ;;
-    --text) mode=text; shift ;;
-    --context) need_val "$@"; context="$2"; shift 2 ;;
-    --context-file) need_val "$@"; context_file="$2"; shift 2 ;;
-    --recommend) need_val "$@"; recommend="$2"; shift 2 ;;
-    --default) need_val "$@"; default="$2"; shift 2 ;;
+    -t) [ $# -ge 2 ] || usage; timeout="$2"; shift 2 ;;
+    --reopen) [ $# -ge 2 ] || usage; reopen="$2"; shift 2 ;;
+    --no-open) no_open=1; shift ;;
     -h|--help) usage ;;
+    -*) usage ;;
     *) break ;;
   esac
 done
-[ $# -ge 1 ] || usage
-question="$1"; shift
-case "$timeout" in ''|*[!0-9]*) die "-t must be a whole number of seconds" ;; esac
-[ "$timeout" -gt 0 ] && [ "$timeout" -le 86400 ] || die "-t must be 1..86400 seconds"
-[ -n "$default" ] || die "--default is required: name the safe, non-destructive choice taken on timeout"
-if [ -n "$context_file" ]; then
-  [ -z "$context" ] || die "use --context or --context-file, not both"
-  [ -r "$context_file" ] || die "cannot read $context_file"
-  context=$(<"$context_file")
-fi
+[ $# -eq 1 ] || usage
+doc="$1"
+whole -t "$timeout"; whole --reopen "$reopen"
+[ "$timeout" -ge 1 ] && [ "$timeout" -le 86400 ] || die "-t must be 1..86400 seconds"
+[ "$reopen" -ge 1 ] || die "--reopen must be at least 1 second"
+[ -f "$doc" ] && [ -r "$doc" ] || die "cannot read $doc"
+doc="$(cd "$(dirname "$doc")" && pwd)/$(basename "$doc")"
 
-labels=() cons=() trades=()
-for a in "$@"; do
-  [ -n "${a%%|*}" ] || die "empty option label in: $a"
-  labels+=("${a%%|*}")
-  rest=""; [ "$a" = "${a#*|}" ] || rest="${a#*|}"
-  cons+=("${rest%%|*}")
-  trade=""; [ "$rest" = "${rest#*|}" ] || trade="${rest#*|}"
-  trades+=("$trade")
-done
-n=${#labels[@]}
-index_of() { local i; for i in "${!labels[@]}"; do [ "${labels[$i]}" = "$1" ] && { echo $((i + 1)); return; }; done; echo 0; }
-if [ "$mode" = buttons ]; then
-  [ "$n" -ge 1 ] || die "give at least one option, or use --text"
-  [ "$n" -le 3 ] || die "at most 3 options"
-  [ "$(index_of "$default")" -gt 0 ] || die "--default must be one of the option labels"
-  [ -z "$recommend" ] || [ "$(index_of "$recommend")" -gt 0 ] || die "--recommend must be one of the option labels"
-else
-  [ "$n" -eq 0 ] || die "--text takes no options"
-fi
+# awk MODE: check | openq | report. Sections start at "## "; Q:/A:/Decision:/Default:/Notes: are
+# matched at line start (leading blanks allowed).
+parse() {
+  awk -v mode="$1" '
+    function trim(s) { sub(/^[ \t\r]+/, "", s); sub(/[ \t\r]+$/, "", s); return s }
+    function join(a, b) { b = trim(b); return a == "" ? b : a " " b }
+    function val(s) { sub(/^[^:]*:/, "", s); return trim(s) }
+    /^##[ \t]/ {
+      n++; q = $0; sub(/^##[ \t]+/, "", q); sub(/^[0-9]+\.[ \t]*/, "", q); ques[n] = trim(q); next
+    }
+    n == 0 { next }
+    /^[ \t\r]*$/ { cont = ""; next }
+    /^[ \t]*Decision:/ { hasdec[n] = 1; dec[n] = val($0); decs++; cont = "dec"; next }
+    /^[ \t]*Default:/ { hasdef[n] = 1; def[n] = val($0); cont = ""; next }
+    /^[ \t]*Notes:/ { notes[n] = val($0); cont = "notes"; next }
+    /^[ \t]*(Context|Options):/ { cont = ""; next }
+    /^Q:/ { nq++; qtext[nq] = val($0); qopen[nq] = 1; cont = ""; next }
+    /^A:/ { if (nq > 0) qopen[nq] = 0; cont = ""; next }
+    cont == "dec" { dec[n] = join(dec[n], $0); next }
+    cont == "notes" { notes[n] = join(notes[n], $0); next }
+    END {
+      if (mode == "check") {
+        nodef = 0; open = 0; unans = 0; nodec = 0
+        for (i = 1; i <= n; i++) { if (!hasdef[i] || def[i] == "") nodef++; if (dec[i] == "") unans++; if (!hasdec[i]) nodec++ }
+        for (i = 1; i <= nq; i++) if (qopen[i]) open++
+        print "decisions=" decs + 0, "sections=" n + 0, "nodefault=" nodef, "nodecision=" nodec, "unanswered=" unans, "openq=" open
+      } else if (mode == "openq") {
+        for (i = 1; i <= nq; i++) if (qopen[i]) print "Q: " qtext[i]
+      } else {
+        for (i = 1; i <= n; i++) {
+          if (dec[i] != "") print i ". " ques[i] ": " dec[i]
+          else print i ". " ques[i] ": " def[i] " (default, no answer)"
+          if (notes[i] != "") print "   Notes: " notes[i]
+        }
+      }
+    }' "$doc"
+}
 
-mins=$(((timeout + 59) / 60))
-nl=$'\n'
-errf=$(mktemp "${TMPDIR:-/tmp}/ask-user.XXXXXX")
-trap 'rm -f "$errf"' EXIT
-fail() { echo "error: $1: $(<"$errf")" >&2; exit 1; }
+field() { # field NAME <check-output>
+  local kv
+  for kv in $2; do [ "${kv%%=*}" = "$1" ] && { echo "${kv#*=}"; return; }; done
+}
 
-# build_body MAX_CONTEXT_CHARS (0 = unlimited): sets $body; only the context is ever truncated.
-build_body() {
-  local max="$1" ctx="$context" rest="" i line
-  if [ "$mode" = buttons ]; then
-    rest+="${nl}${nl}Options:"
-    for i in "${!labels[@]}"; do
-      line="  ${labels[$i]}"
-      [ "${labels[$i]}" = "$recommend" ] && line+=" (recommended)"
-      [ -z "${cons[$i]}" ] || line+=": ${cons[$i]}"
-      rest+="${nl}${line}"
-      [ -z "${trades[$i]}" ] || rest+="${nl}    Tradeoffs: ${trades[$i]}"
-    done
+# validate_doc SUMMARY: print the problem and return 1 if the doc is not a usable decision doc.
+validate_doc() {
+  [ "$(field decisions "$1")" -ge 1 ] || { echo "$doc has no Decision: line in a '## n. question' section"; return 1; }
+  [ "$(field nodecision "$1")" -eq 0 ] || { echo "$doc: every '## ' section needs a Decision: line"; return 1; }
+  [ "$(field nodefault "$1")" -eq 0 ] || { echo "$doc: every '## ' section needs a non-empty Default: line"; return 1; }
+}
+msg=$(validate_doc "$(parse check)") || die "$msg"
+
+mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0; }
+
+open_doc() {
+  local os pv winpath cmdline=()
+  os=${ASK_USER_OS:-$(uname -s)}
+  case "$os" in
+    Darwin) command -v open >/dev/null 2>&1 && cmdline=(open "$doc") ;;
+    MINGW*|MSYS*|CYGWIN*)
+      winpath=$doc; command -v cygpath >/dev/null 2>&1 && winpath=$(cygpath -w "$doc")
+      if command -v cmd >/dev/null 2>&1; then cmdline=(cmd //c start "" "$winpath")
+      elif command -v cmd.exe >/dev/null 2>&1; then cmdline=(cmd.exe //c start "" "$winpath"); fi ;;
+    *)
+      pv=${ASK_USER_PROC_VERSION-$(cat /proc/version 2>/dev/null || true)}
+      case "$pv" in
+        *[Mm]icrosoft*|*WSL*)
+          if command -v wslview >/dev/null 2>&1; then cmdline=(wslview "$doc")
+          elif command -v cmd.exe >/dev/null 2>&1 && command -v wslpath >/dev/null 2>&1; then
+            cmdline=(cmd.exe /c start "" "$(wslpath -w "$doc")")
+          fi ;;
+        *) command -v xdg-open >/dev/null 2>&1 && cmdline=(xdg-open "$doc") ;;
+      esac ;;
+  esac
+  if [ ${#cmdline[@]} -gt 0 ]; then ( "${cmdline[@]}" >/dev/null 2>&1 & ); return 0; fi
+  echo "ask-user: could not open the doc automatically; please open: $doc" >&2
+}
+
+echo "ask-user: waiting for decisions in $doc" >&2
+[ "$no_open" = 1 ] || open_doc
+start=$SECONDS last_open=$SECONDS gap_start="" future_since=""
+while :; do
+  if [ ! -f "$doc" ] || ! summary=$(parse check 2>/dev/null); then
+    [ -n "$gap_start" ] || gap_start=$SECONDS
+    if [ $((SECONDS - gap_start)) -ge "$settle" ]; then echo "error: $doc vanished" >&2; exit 1; fi
+    sleep "$poll"; continue
   fi
-  rest+="${nl}${nl}No answer in ${mins} min: ${default} (safe default)"
-  if [ "$max" -gt 0 ]; then
-    local avail=$((max - ${#question} - ${#rest} - 60))
-    [ "$avail" -ge 0 ] || avail=0
-    if [ "${#ctx}" -gt "$avail" ]; then
-      ctx="${ctx:0:$avail}${nl}[truncated; see the terminal or PR for the full text]"
+  gap_start=""
+  quiet=$(( $(date +%s) - $(mtime "$doc") ))
+  if [ "$quiet" -lt 0 ]; then
+    [ -n "$future_since" ] || future_since=$SECONDS
+    quiet=$((SECONDS - future_since))
+  else
+    future_since=""
+  fi
+  if [ "$quiet" -ge "$settle" ]; then
+    msg=$(validate_doc "$summary") || { echo "error: $msg" >&2; exit 64; }
+    if [ "$(field openq "$summary")" -gt 0 ]; then
+      parse openq
+      echo "ask-user: the user asked questions; add an 'A: ...' line under each Q: in $doc and re-run with --no-open" >&2
+      exit 4
+    fi
+    if [ "$(field unanswered "$summary")" -eq 0 ]; then
+      parse report
+      exit 0
     fi
   fi
-  body="$question"
-  [ -z "$ctx" ] || body+="${nl}${nl}${ctx}"
-  body+="$rest"
-}
-
-# Each backend sets $res to BUTTON:<label>, TEXT:<text>, TIMEOUT or CANCELLED.
-backend_mac() {
-  build_body "$DIALOG_MAX_BODY"
-  local out
-  # Arguments reach AppleScript through argv, never by string splicing.
-  out=$(osascript - "$mode" "$timeout" "$(index_of "$default")" "$TITLE" "$body" "${labels[@]+"${labels[@]}"}" 2>"$errf" <<'APPLESCRIPT'
-on run argv
-  set mode to item 1 of argv
-  set secs to (item 2 of argv) as integer
-  set defIdx to (item 3 of argv) as integer
-  set ttl to item 4 of argv
-  set q to item 5 of argv
-  set btns to {}
-  repeat with i from 6 to count of argv
-    set end of btns to item i of argv
-  end repeat
-  try
-    tell current application to activate
-    if mode is "text" then
-      set r to display dialog q with title ttl default answer "" buttons {"Cancel", "Send"} default button "Send" cancel button "Cancel" giving up after secs with icon caution
-      if gave up of r then return "TIMEOUT"
-      return "TEXT:" & text returned of r
-    end if
-    set r to display dialog q with title ttl buttons btns default button defIdx giving up after secs with icon caution
-    if gave up of r then return "TIMEOUT"
-    return "BUTTON:" & button returned of r
-  on error number -128
-    return "CANCELLED"
-  end try
-end run
-APPLESCRIPT
-  ) || fail "osascript failed"
-  res="$out"
-}
-
-IFS= read -r -d '' PS_SOURCE <<'POWERSHELL' || true
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-[System.Windows.Forms.Application]::EnableVisualStyles()
-$global:r = ''
-$isText = $env:ASK_TEXT -eq '1'
-$labels = @($env:ASK_LABELS -split [char]10 | Where-Object { $_ })
-$f = New-Object System.Windows.Forms.Form
-$f.Text = $env:ASK_TITLE
-$f.TopMost = $true
-$f.StartPosition = 'CenterScreen'
-$f.Size = New-Object System.Drawing.Size(700,580)
-$tb = New-Object System.Windows.Forms.TextBox
-$tb.Multiline = $true
-$tb.ReadOnly = $true
-$tb.ScrollBars = 'Vertical'
-$tb.Dock = 'Fill'
-$tb.Text = ($env:ASK_BODY -replace '\r?\n', [Environment]::NewLine)
-$f.Controls.Add($tb)
-$in = $null
-if ($isText) {
-  $in = New-Object System.Windows.Forms.TextBox
-  $in.Multiline = $true
-  $in.Height = 80
-  $in.Dock = 'Bottom'
-  $f.Controls.Add($in)
-}
-$p = New-Object System.Windows.Forms.FlowLayoutPanel
-$p.Dock = 'Bottom'
-$p.Height = 54
-$p.AutoSize = $true
-$p.AutoSizeMode = 'GrowAndShrink'
-$f.Controls.Add($p)
-foreach ($l in $labels) {
-  $b = New-Object System.Windows.Forms.Button
-  $b.Text = $l
-  $b.AutoSize = $true
-  $b.Add_Click({
-    if ($in) { $global:r = 'TEXT64:' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($in.Text)) }
-    else { $global:r = 'BUTTON:' + [array]::IndexOf($labels, $this.Text) }
-    $f.Close()
-  })
-  $p.Controls.Add($b)
-  if ($l -eq $env:ASK_DEFAULT) { $f.AcceptButton = $b }
-}
-if ($isText) {
-  $c = New-Object System.Windows.Forms.Button
-  $c.Text = 'Cancel'
-  $c.Add_Click({ $f.Close() })
-  $p.Controls.Add($c)
-}
-$t = New-Object System.Windows.Forms.Timer
-$t.Interval = [int]$env:ASK_TIMEOUT * 1000
-$t.Add_Tick({ $t.Stop(); $global:r = 'TIMEOUT'; $f.Close() })
-$t.Start()
-$f.Add_Shown({ $f.Activate() })
-[void]$f.ShowDialog()
-[Console]::Out.Write($global:r)
-POWERSHELL
-
-backend_windows() {
-  build_body 0
-  local labs="" l out
-  if [ "$mode" = text ]; then labs="Send"; else for l in "${labels[@]}"; do labs+="$l$nl"; done; fi
-  out=$(MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' MSYS2_ENV_CONV_EXCL='ASK_*' \
-    ASK_BODY="$body" ASK_TITLE="$TITLE" ASK_LABELS="$labs" ASK_TEXT="$([ "$mode" = text ] && echo 1 || echo 0)" \
-    ASK_TIMEOUT="$timeout" ASK_DEFAULT="$default" \
-    WSLENV="ASK_BODY:ASK_TITLE:ASK_LABELS:ASK_TEXT:ASK_TIMEOUT:ASK_DEFAULT${WSLENV:+:$WSLENV}" \
-    powershell.exe -NoProfile -Sta -Command "$PS_SOURCE" 2>"$errf") || fail "powershell failed"
-  out=${out//$'\r'/}
-  case "$out" in
-    BUTTON:[0-9]*) res="BUTTON:${labels[${out#BUTTON:}]}" ;;
-    TEXT64:*) res="TEXT:$(printf '%s' "${out#TEXT64:}" | { base64 -d 2>/dev/null || base64 -D; })" ;;
-    *) res="${out:-CANCELLED}" ;;
-  esac
-}
-
-# ordered_labels: the default first, so Enter on a list backend picks the safe choice.
-ordered_labels() {
-  local l; printf '%s\n' "$default"
-  for l in "${labels[@]}"; do [ "$l" = "$default" ] || printf '%s\n' "$l"; done
-}
-
-backend_zenity() {
-  build_body "$DIALOG_MAX_BODY"
-  local out rc=0 ordered=() l
-  if [ "$mode" = text ]; then
-    out=$(zenity --entry --no-markup --title="$TITLE" --text="$body" --width=720 --timeout="$timeout" 2>"$errf") || rc=$?
-  else
-    while IFS= read -r l; do ordered+=("$l"); done < <(ordered_labels)
-    out=$(zenity --list --no-markup --title="$TITLE" --text="$body" --column=Option --hide-header \
-      --width=720 --height=600 --timeout="$timeout" -- "${ordered[@]}" 2>"$errf") || rc=$?
+  if [ $((SECONDS - start)) -ge "$timeout" ]; then
+    parse report
+    exit 2
   fi
-  case "$rc" in
-    0) if [ "$mode" = text ]; then res="TEXT:$out"; elif [ -n "$out" ]; then res="BUTTON:${out%%|*}"; else res=CANCELLED; fi ;;
-    5) res=TIMEOUT ;;
-    1) res=CANCELLED ;;
-    *) fail "zenity failed (exit $rc)" ;;
-  esac
-}
-
-backend_kdialog() {
-  build_body "$DIALOG_MAX_BODY"
-  local out rc=0 l args=()
-  command -v timeout >/dev/null 2>&1 || { echo "error: kdialog has no timeout option and 'timeout' (coreutils) is not installed; refusing to block forever. Ask the user in chat instead" >&2; exit 1; }
-  if [ "$mode" = text ]; then
-    args=(--inputbox "$body" "")
-  else
-    args=(--menu "$body")
-    while IFS= read -r l; do args+=("$l" "$l"); done < <(ordered_labels)
-  fi
-  out=$(timeout "$timeout" kdialog --title "$TITLE" "${args[@]}" 2>"$errf") || rc=$?
-  case "$rc" in
-    0) if [ "$mode" = text ]; then res="TEXT:$out"; elif [ -n "$out" ]; then res="BUTTON:$out"; else res=CANCELLED; fi ;;
-    124) res=TIMEOUT ;;
-    1) res=CANCELLED ;;
-    *) fail "kdialog failed (exit $rc)" ;;
-  esac
-}
-
-os="${ASK_USER_OS:-$(uname -s)}"
-proc_version="${ASK_USER_PROC_VERSION:-/proc/version}"
-res=""
-case "$os" in
-  Darwin) command -v osascript >/dev/null 2>&1 && backend_mac ;;
-  MINGW*|MSYS*|CYGWIN*) command -v powershell.exe >/dev/null 2>&1 && backend_windows ;;
-  Linux)
-    if [ -r "$proc_version" ] && [[ "$(<"$proc_version")" == *[Mm]icrosoft* ]] && command -v powershell.exe >/dev/null 2>&1; then
-      backend_windows
-    elif [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
-      if command -v zenity >/dev/null 2>&1; then backend_zenity
-      elif command -v kdialog >/dev/null 2>&1; then backend_kdialog
-      fi
-    fi ;;
-esac
-if [ -z "$res" ]; then
-  echo "error: no GUI dialog backend available on this machine (need osascript, powershell.exe, or zenity/kdialog with DISPLAY/WAYLAND_DISPLAY); ask the user in chat instead" >&2
-  exit 1
-fi
-
-case "$res" in
-  TIMEOUT) echo "timeout after ${timeout}s; using default" >&2; printf '%s\n' "$default"; exit 2 ;;
-  CANCELLED|BUTTON:Cancel) echo "cancelled" >&2; exit 3 ;;
-  BUTTON:*) printf '%s\n' "${res#BUTTON:}" ;;
-  TEXT:*) printf '%s\n' "${res#TEXT:}" ;;
-  *) echo "error: unexpected dialog result: $res" >&2; exit 1 ;;
-esac
+  if [ $((SECONDS - last_open)) -ge "$reopen" ]; then open_doc; last_open=$SECONDS; fi
+  sleep "$poll"
+done

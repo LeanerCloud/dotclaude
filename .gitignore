@@ -85,3 +85,6 @@ RTK.md
 
 # macOS junk
 .DS_Store
+
+# Agent decision docs: may hold sensitive context
+/decisions/

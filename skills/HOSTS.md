@@ -30,7 +30,7 @@ opencode also sees the Claude-only imported skills through `~/.claude/skills/`; 
 | Wake later | `ScheduleWakeup`, `CronCreate` | The host's scheduler, or a background `sleep N; <check>` |
 | Isolated checkout | `isolation: "worktree"` | `git worktree add` per the `worktrees` skill |
 | Peer messaging | `SendMessage` across sessions | The per-repo locks in `multi-agent-comms`, or a comment on the shared issue or PR |
-| Ask the user | `ask-user.sh`; `AskUserQuestion` when it exits 1 | `ask-user.sh`; in chat when it exits 1 |
+| Ask the user | `ask-user.sh DOC` (decision doc) | `ask-user.sh DOC` (decision doc) |
 
 **Headless session as an independent reviewer**: `codex exec --sandbox read-only`, `kimi --plan -p`
 (plan mode), `opencode run` and `gemini -p`

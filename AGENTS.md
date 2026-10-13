@@ -54,12 +54,12 @@ Scale ceremony to the project (a solo repo needs no formal process), never the u
 - **Verify before asserting**: re-check live state (PR/CI status, test results, file contents, counts)
   this turn before reporting it. If you cannot, say so. Stale or optimistic status is a defect.
 - **Asking the user**: routine calls are yours. Ask only for irreversible or destructive actions,
-  spending money, scope or product choices, or materially different outcomes. Run
-  `~/.claude/scripts/ask-user.sh --context "what/why/checked" --recommend A --default B "Q?"
-  "A|effect|tradeoffs" "B|effect|tradeoffs"` in the background; `--default` is the non-destructive
-  option, taken on timeout (exit 2) but never as approval for a tenet 9 confirmation. Exit 3 means
-  no decision: don't proceed, ask in chat. Exit 1 (no GUI): use AskUserQuestion. Only the
-  orchestrator asks; subagents escalate. Unattended runs never prompt: comment on the issue.
+  spending money, scope or product choices, or materially different outcomes. Write a decision doc
+  from `~/.claude/templates/decision.md` into `~/.claude/decisions/`, run
+  `~/.claude/scripts/ask-user.sh DOC` in the background, and keep working. Exit 4: answer the
+  user's `Q:` lines with `A:`, re-run with `--no-open`. Exit 2 (timeout): take the safe Defaults,
+  never as approval for a tenet 9 confirmation. Only the orchestrator asks; unattended runs
+  comment on the issue instead.
 - **Minimal impact**: touch only what was asked. No drive-by refactors, formatting, or comments on
   untouched code. Between two approaches, pick the simpler and proceed.
 - **Shared checkouts**: check for other sessions before editing/building/pushing; serialize shared
