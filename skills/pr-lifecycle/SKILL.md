@@ -217,33 +217,4 @@ is bidirectional. Prior successful runs listed in `~/.claude/local-paths.md` (se
 filed:` line; if none, `Follow-up issues filed: none - confirmed against the exit checklist above`. The
 orchestrator treats its absence as evidence the agent skipped step 7 and re-spawns an audit agent.
 
-### Lifecycle summary
-
-```
-gh pr create
-   v
-@coderabbitai review comment
-   v
-[cr-watch-<pr-#>] background shell -> poll per cr-loop §2, handle 429s
-   v
-CodeRabbit review arrives
-   v
-Triage: actionable / dismiss-with-justification / batch-nitpick
-   v (commits + pushes follow the pre-commit review loop)
-[ci-watch-<sha>-<wf>] watchers per §Post-push CI watcher
-   v
-CI green + CodeRabbit settled -> PR comment summarising
-   v
-[merge-watch-<pr-#>] background shell -> poll 5-10 min until MERGED/CLOSED, then spawn post-merge agent
-   v
-Deploy pipeline green
-   v
-Verification (Chrome MCP / curl / terraform plan / CLI)
-   v
-Comment on originating issue with outcome + close recommendation
-   v
-File follow-up issues for out-of-scope items
-```
-
-All four watcher classes (`cr-watch-*`, `ci-watch-*`, `merge-watch-*`, plus any project-specific
-deploy-watch) run in the background; the main session never blocks on PR review.
+All watchers (`cr-watch-*`, `ci-watch-*`, `merge-watch-*`, any deploy-watch) run in the background; the main session never blocks on PR review.

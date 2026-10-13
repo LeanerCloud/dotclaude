@@ -218,15 +218,8 @@ Generic model: `pr-orchestration` §"Coordination and concurrency". Instantiatio
   isolated fires.
 - **Disjoint slices**: unlabelled -> plan; `plan-ready` (no `pr-created`) -> implement; `pr-created` +
   open + `CONFLICTING` -> rebase; `pr-created` + open + clean -> CR-advance; merged -> stamp `pr-merged`.
-- **Mitigation (a), no simultaneous actors**: cron staggering (planner `:00`, worker `:30` of each
-  4-hour window, zero simultaneous fires); each fire must finish within its slot.
-- **Mitigation (b), claim-first**: the planner pushes the plan commit, posts the marker and adds
-  `plan-ready` immediately on selection; the worker adds `pr-created` at PR-open.
-- **Mitigation (c), idempotent gates**: worst case of a lost race is a duplicate `auto/<issue>` branch,
-  caught at the `pr-created` gate and cleaned up (close the orphan).
-- **Throughput**: to go faster, **prefer raising the per-fire cap or adding target repos** over adding
-  routines: each extra routine costs 6+ fires/day against the ~15/day cap. Simultaneous fires also trade
-  mitigation (a) for throughput.
+- **Mitigations**: stagger (planner `:00`, worker `:30`; each fire finishes within its slot), claim-first (the planner adds `plan-ready` on selection; the worker adds `pr-created` at PR-open), idempotent gates (a lost race leaves a duplicate `auto/<issue>` branch; close the orphan). Rationale: `pr-orchestration` §3.
+- **Throughput**: raise the per-fire cap or add target repos rather than routines: each extra routine costs 6+ fires/day against the ~15/day cap, and simultaneous fires forfeit the staggering.
 
 ## Per-repo config
 
