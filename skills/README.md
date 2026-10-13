@@ -15,9 +15,11 @@ constraint on how they're written, not a happy accident — the rules below are 
 | Claude Code | `~/.claude/skills/<name>/SKILL.md` — i.e. this directory directly. Symlinked skill directories are followed. |
 | Codex CLI | `$HOME/.agents/skills/<name>/` (user scope), `.agents/skills/` (repo scope) |
 | Gemini CLI | `~/.gemini/skills/<name>/` or `~/.agents/skills/<name>/` (alias, higher precedence) |
+| Kimi Code | `~/.agents/skills/<name>/`, `~/.kimi-code/skills/`, repo `.agents/skills/` |
+| opencode | `~/.agents/skills/<name>/`, `~/.claude/skills/` (so it also sees imported skills), `~/.config/opencode/skills/` |
 
-`~/.agents/skills/` is read natively by both Codex and Gemini, so one canonical copy serves all
-three. Run `scripts/setup-agent-symlinks.sh` to create `~/.agents/skills/<name>` symlinks pointing
+`~/.agents/skills/` is read natively by Codex, Gemini, Kimi Code and opencode, so one canonical
+copy serves all five hosts. Host primitives and tier models: [`HOSTS.md`](HOSTS.md). Run `scripts/setup-agent-symlinks.sh` to create `~/.agents/skills/<name>` symlinks pointing
 back here. Nothing is copied and nothing is duplicated.
 
 ## Two kinds of skill in this directory
