@@ -43,6 +43,7 @@ Create the labels if missing:
 1. Candidates: gh issue list --repo LeanerCloud/CUDly --state open --search 'label:triaged -label:plan-ready -label:pr-created -label:pr-merged -label:needs-human -label:type/question -label:status/blocked -label:status/needs-info' --limit 200 --json number,title,labels
 2. Rank highest-priority first per skills/work-selection/SKILL.md: priority band (p0->p3) -> urgency -> impact -> unblocks-others -> effort (cheapest first).
 3. Take the top 2. Log the ranked shortlist and which (<=2) you chose.
+4. Challenge each chosen issue against the current code (AGENTS.md §1 "Challenge the task first"). If it no longer makes sense or a more fundamental fix exists, comment the finding on the issue, add `status/needs-info`, and do not plan it; take the next candidate instead (challenge at most 4 candidates per fire).
 
 ## Phase 2 - Plan + claim (per chosen issue, sequentially)
 For EACH chosen issue, do the following in THIS ORDER. Treat the branch+marker+label as a tight claim sequence right after the plan commit lands, to minimise the window where the other staggered planner might grab the same issue (labels are not atomic locks - see skills/issue-pr-autopilot/SKILL.md concurrency model).

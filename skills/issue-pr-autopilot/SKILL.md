@@ -221,7 +221,7 @@ through GitHub state:
    `needs-human`, not `type/question`/`status/blocked`/`status/needs-info`). If 0,
    write a one-line summary and stop.
 2. **Select.** Rank eligible issues by the `work-selection` skill (priority -> urgency -> impact
-   -> unblocks-others -> effort). Take the top **1-2** (the per-repo plan cap).
+   -> unblocks-others -> effort). Take the top **1-2** (the per-repo plan cap), and challenge each against the current code first (AGENTS.md §1): an obsolete issue or one with a more fundamental fix gets a comment plus `status/needs-info` instead of a plan.
 3. **Plan + claim, per issue, in this order** (claim as a tight sequence right
    after the plan commit lands, to minimise the dup-window between the two
    staggered planners): create `auto/<issue#>-<slug>` off the base; write the plan

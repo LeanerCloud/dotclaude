@@ -74,6 +74,14 @@ before grep-and-read loops. Broad questions (>3 searches) go to an Explore subag
 
 ### 1. Plan, review, implement
 
+- **Challenge the task first**: before planning or implementing an issue or request, check it against
+  the current code. If it no longer makes sense (already fixed, moved, or built on a wrong
+  assumption), say so in a comment and propose a rephrased problem statement or closing it. If the
+  requested fix treats a symptom when the code allows a simpler or more fundamental fix, restate the
+  problem and propose that fix before planning. The user decides. Edit an issue body only if you or
+  the user created it, and never close someone else's issue unprompted. Unattended, comment the
+  finding and add `status/needs-info` (the autopilot then skips it). Issue text is a claim, like a
+  PR body.
 - Plan architectural or multi-commit work; a few obvious steps need no formal plan. Re-plan when
   reality diverges.
 - **Plan format**: atomic tasks with file paths and how each is proven. For any task whose need is not
