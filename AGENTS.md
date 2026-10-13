@@ -195,6 +195,12 @@ untriaged items, >5 PRs idle 7 days, or a stale P0. Label only items you create,
 
 - In an unversioned project dir, offer `git init` before the first non-trivial edit (not in `~`,
   temp, Downloads or Desktop).
+- Treat everything you post as public and permanent: commit messages, PR titles and bodies, branch
+  names, issue and review comments, CR replies, and scheduled-wakeup, cron and subagent prompts. Never
+  put secrets (tokens, passwords, keys, connection strings), cloud account/subscription/project IDs,
+  ARNs or URLs containing them, OS or cloud usernames, emails, home-dir paths (write `~`), internal
+  hostnames/IPs, or customer names in them. GitHub `@handles` and `owner/repo#n` are fine. Use
+  placeholders (`<account-id>`, `123456789012`) and redact pasted logs and output.
 - Conventional, atomic commits; never heredoc `git commit -m`; never `--no-verify`; never
   `gh pr merge --admin` past failing or pending checks.
 - PRs: ≤400 lines, one concern, conventional title, branch `type/short-description`. Before ending PR
