@@ -42,7 +42,7 @@ The rule is `AGENTS.md` section Git (repo init at task start). In short:
 
 ## ⚠️ Mandatory pre-commit review loop — NO EXCEPTIONS
 
-Before every commit, enter a review loop (same discipline as the plan review loop): run **2 review passes** over the staged diff (per `AGENTS.md` §1), fix what they find, then commit. Do NOT skip, shortcut, or batch this step. The goal is to land clean commits in the first place, so the history doesn't need fix-up commits.
+Before every commit, enter a review loop (same discipline as the plan review loop): run **2 review passes** over the staged diff (per `AGENTS.md` §1), fix what they find, then commit. A staged diff whose tree hash was already reviewed clean is not re-reviewed (`AGENTS.md` §1, same-hash rule). Do NOT skip, shortcut, or batch this step. The goal is to land clean commits in the first place, so the history doesn't need fix-up commits.
 
 **Review on Sonnet 5.5 high, as comprehensively as possible: CodeRabbit's lens is the floor, not the ceiling.** This review is judgement-heavy, so run it at the Sonnet 5.5 high tier (the §1c local review loop and the plan-review gate are its analogues, both Sonnet 5.5 high per `AGENTS.md` §2), including the hardest, highest-stakes money-path diffs. The six dimensions in `AGENTS.md` §1 are the baseline; then go wider than any single reviewer would. Review as CodeRabbit would (its Actionable / Nitpick categories, the project's CR config, recurring past CR findings) AND as a demanding staff engineer would, across at least the lenses below.
 

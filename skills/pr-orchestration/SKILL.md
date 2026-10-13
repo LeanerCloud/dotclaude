@@ -247,8 +247,8 @@ actionables on the latest review*, and §7 is what makes an apparent exit
 untrustworthy.
 
 **Adversarial loop** - reviewer reports, implementer fixes, reviewer
-re-reviews, until a round finds nothing, every finding verified live against
-current HEAD. Roles and independence per §2.
+re-reviews, 2 passes with the same reviewer per `AGENTS.md` §1 (CR rounds are
+capped per `cr-loop` §3), every finding verified live against current HEAD. Roles and independence per §2.
 
 **The watcher model.** Every trigger of asynchronous work needs something
 durable that will act on the response; a trigger with no watcher is the

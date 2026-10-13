@@ -74,7 +74,7 @@ before grep-and-read loops. Broad questions (>3 searches) go to an Explore subag
 - Share multi-commit, cross-cutting or shared-infra plans with the user before implementing.
 - **Review gates (all use 2 adversarial passes with the SAME reviewer, then close on agreement; never
   "until clean"):** the plan before any worktree/code (`review-and-implement`); each implemented task
-  (§1c); the full change before reporting done; the staged diff before commit (`git-commit`).
+  (§1c); the full change before reporting done; the staged diff before commit (`git-commit`). A clean review of an exact tree (`git write-tree`) or SHA satisfies every §1 gate that sees the same diff; it never replaces §1d/§4 independent verification, CI or CR. Record the reviewed hash in the plan file.
 - **Adversarial review**: a reviewer that did not write the change tries to prove it wrong. It treats
   every author claim (PR body, comments, test names) as a hypothesis, not context; checks the code
   against the source of truth (spec, upstream or vendor code) with `file:line`; attacks instead of

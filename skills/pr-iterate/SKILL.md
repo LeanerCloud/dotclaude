@@ -269,7 +269,7 @@ issues, skip the rest with a brief reason.
    re-invokes `/pr-iterate <N>`, OR report "Pushed pass-<K> fixes + re-pinged CR; re-invoke after
    CR responds (typically 5-15 min)."
 2. On re-entry, re-pull CR signal (Phase 1.3). If the most recent CR review says
-   `Actionable comments posted: 0` (or LGTM) -> Phase 6. If new findings -> loop to Phase 3.
+   `Actionable comments posted: 0` (or LGTM) -> Phase 6. If new findings -> loop to Phase 3, within the CR round cap in `cr-loop` §3 (escalate instead of a round 4) and the `AGENTS.md` §1 2-pass rule.
 3. CI gate: `gh pr checks <N>` should be green. Transient `tflint --init` 403 -> `gh run rerun
    <run-id> --failed`. Real gocyclo -> extract helpers. Migration collision (UNSTABLE) ->
    renumber via `git mv`. Stash collision -> sleep 2 min, retry; do NOT `--no-verify`.
