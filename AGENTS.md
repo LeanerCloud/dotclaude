@@ -156,8 +156,9 @@ per `pr-lifecycle` (human merge by default; never self-merge `LeanerCloud/dotcla
 Use them to keep the main context clean; one focused task each, briefed fully (goal, context, output
 format, length cap). Reuse a live agent (`SendMessage`) holding the relevant context (<~100K tokens)
 unless independence is the point, the tier differs or its context is polluted. Background by default
-for anything >~30s; never poll; reap finished agents. At most 3-4 working agents unless asked; CI
-waits in a background shell; tests print only failures. In `Workflow` scripts batch same-file work.
+for anything >~30s; never poll; reap finished agents. Usually 1-2 working agents sized to the work
+(e.g. an implementer and a reviewer), at most 3-4 unless asked; CI waits in a background shell;
+tests print only failures. In `Workflow` scripts batch same-file work.
 Always set `model` (both Sonnet tiers are `model: sonnet`; state the effort in the brief).
 
 | Tier | Use for |
