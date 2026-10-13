@@ -47,8 +47,8 @@ Before every commit, enter a review loop (same discipline as the plan review loo
 **Review on Sonnet 5.5 high, as comprehensively as possible: CodeRabbit's lens is the floor, not the ceiling.** This review is judgement-heavy, so run it at the Sonnet 5.5 high tier (the §1c local review loop and the plan-review gate are its analogues, both Sonnet 5.5 high per `AGENTS.md` §2), including the hardest, highest-stakes money-path diffs. The six dimensions in `AGENTS.md` §1 are the baseline; then go wider than any single reviewer would. Review as CodeRabbit would (its Actionable / Nitpick categories, the project's CR config, recurring past CR findings) AND as a demanding staff engineer would, across at least the lenses below.
 
 - **Architecture & design fit**: does the change belong where it landed, follow the module's patterns, and avoid leaking abstractions?
-- **Type design & invariants**: are illegal states unrepresentable, invariants expressed in types rather than asserted at runtime, encapsulation intact?
-- **Silent failures**: swallowed errors, empty catch blocks, fallbacks that mask real problems, `nil`/zero placeholders standing in for absent data (per `AGENTS.md` §5).
+- **Type design & invariants**: are illegal states unrepresentable, invariants expressed in types rather than asserted at runtime, encapsulation intact? (brief: `lenses/type-design.md`)
+- **Silent failures**: swallowed errors, empty catch blocks, fallbacks that mask real problems, `nil`/zero placeholders standing in for absent data (per `AGENTS.md` §5). (brief: `lenses/silent-failures.md`)
 - **Test coverage & edge cases**: are the new paths actually exercised, including boundaries, error paths, and the contract (not just the happy path)?
 - **Security**: beyond OWASP basics: trust boundaries, authz on every new path, secret handling, injection via every new input.
 - **Over-engineering & scope**: parameters with no caller, abstractions with one consumer, validation of unreachable states, machinery the current requirement doesn't need. Could a competent colleague have written this in half the lines? See the `coding-standards` skill ("Simplicity & Scope (YAGNI)").
@@ -77,7 +77,7 @@ For a sequence of atomic commits implementing one plan: review each commit's sta
 
 ### Delegation
 
-For staged changes touching multiple concerns (Go + TS + Terraform) or any substantial diff, fan out up to 3-4 `general-purpose` subagents in parallel, each briefed with the text of the lens(es) it owns (group related lenses), plus one general code reviewer. Compile their findings before committing.
+For staged changes touching multiple concerns (Go + TS + Terraform) or any substantial diff, fan out up to 3-4 `general-purpose` subagents in parallel, each briefed with the text of the lens(es) it owns (group related lenses), plus one general code reviewer. An agent owning a lens that has a brief file gets that file's full text in its prompt (`~/.claude/skills/git-commit/lenses/`). Compile their findings before committing.
 
 Spawn each on the appropriate tier (the review judgement itself is top-tier, including for the hardest money-path diffs; mechanical single-file diffs can drop to Sonnet 5.5 low), aggregate the findings, dedupe overlaps, and resolve every actionable item before the commit lands.
 

@@ -62,6 +62,7 @@ across is [`../pstack-models.md`](../pstack-models.md). Where an upstream instru
 | `terraform-skill` | antonbabenko | Depth under `conventions` and `infra-ops`, from the Terraform community's reference author. |
 | `owasp-security` | agamm | Top 10:2025 / ASVS 5.0 detail behind `coding-standards`' pre-launch checklist. |
 | `health`, `retro` | gstack | Code-quality dashboard and weekly retrospective. No local equivalent. |
+| `git-commit/lenses/*.md` (not a skill) | claude-plugins-official pr-review-toolkit, Apache-2.0 | Condensed and modified copies of `silent-failure-hunter` and `type-design-analyzer`, kept as review briefs so the plugin and its per-turn agent listing can be disabled. |
 
 ## What was deliberately not imported
 
