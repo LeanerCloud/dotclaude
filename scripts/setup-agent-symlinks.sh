@@ -20,6 +20,9 @@ Two mechanisms:
   2. Root config (AGENTS.md as AGENTS.md/GEMINI.md, local-paths.md,
      projects.md) -> HOME/.codex and HOME/.gemini; AGENTS.md alone ->
      HOME/.agents/AGENTS.md (Kimi Code) and HOME/.config/opencode/AGENTS.md.
+     Skills are also linked into HOME/.gemini/antigravity-cli/skills (Antigravity CLI).
+     Only individual files and skill dirs are linked, never whole config dirs: each host keeps
+     its own runtime config, system skills and credentials.
 
 Options:
   --home DIR        Home directory containing .codex and .gemini (default: $HOME)
@@ -127,7 +130,7 @@ link_shared_docs() {
 }
 
 link_skills() {
-  agents_skills_dir="$home_dir/.agents/skills"
+  agents_skills_dir="${1:-$home_dir/.agents/skills}"
   mkdir -p "$agents_skills_dir"
 
   found=0
@@ -180,3 +183,5 @@ link_skills
 mkdir -p "$home_dir/.agents" "$opencode_dir"
 link_one "$claude_dir/AGENTS.md" "$home_dir/.agents/AGENTS.md"
 link_one "$claude_dir/AGENTS.md" "$opencode_dir/AGENTS.md"
+# Antigravity CLI (agy) reads ~/.gemini/GEMINI.md (linked above) but not ~/.agents/skills.
+link_skills "$gemini_dir/antigravity-cli/skills"
