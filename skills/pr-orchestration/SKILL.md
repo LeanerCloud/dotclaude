@@ -60,7 +60,8 @@ by preference.
 They compose: the scheduled variant can open a PR an interactive session
 later takes over, because both drive the same GitHub state. When both are
 live on one repo, treat the autopilot as another concurrent actor (§3) and
-check its in-flight labels before claiming an issue.
+check its in-flight labels before claiming an issue. Before planning a claimed issue, challenge it
+against the current code (AGENTS.md §1 "Challenge the task first").
 
 ---
 
