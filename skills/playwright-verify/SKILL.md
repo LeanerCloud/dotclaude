@@ -1,8 +1,8 @@
 ---
 name: playwright-verify
-description: Automated browser verification of web-app changes - run the prod-parity local stack,
-  drive Playwright through the standard checklist, iterate until clean. Invoke after any web-app
-  change before declaring it done, and when setting up a new web project's run/verification harness.
+description: >-
+  Verify web-app changes in a browser via Playwright on the prod-parity local stack. Use after any
+  web-app change before declaring done, and when setting up a web harness.
 ---
 
 # Playwright Verification of Web-App Changes

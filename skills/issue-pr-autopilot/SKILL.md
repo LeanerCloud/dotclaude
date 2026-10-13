@@ -3,6 +3,7 @@ name: issue-pr-autopilot
 description: The scheduled cron-routine variant of PR orchestration - routine creation, the GitHub
   label state machine, run budget, and scheduled-context quirks. Invoke when setting up or operating
   the unattended issue-to-PR autopilot.
+disable-model-invocation: true
 ---
 
 # Issue -> PR Autopilot (scheduled, multi-routine, multi-tier)

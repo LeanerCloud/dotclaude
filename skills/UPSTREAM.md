@@ -60,8 +60,7 @@ across is [`../pstack-models.md`](../pstack-models.md). Where an upstream instru
 | `technical-writing`, `unslop`, `deslop` | pstack, cursor-team-kit | The anti-slop rules in Core Principles as executable passes: prose standard, prose cleanup, diff cleanup. |
 | `typescript-best-practices` | pstack | Depth under `conventions`' TypeScript section. |
 | `terraform-skill` | antonbabenko | Depth under `conventions` and `infra-ops`, from the Terraform community's reference author. |
-| `owasp-security`, `cso` | agamm, gstack | Top 10:2025 / ASVS 5.0 detail behind `coding-standards`' pre-launch checklist, plus a STRIDE threat-modelling pass. |
-| `mcp-builder` | anthropics | Nothing here covered authoring MCP servers. |
+| `owasp-security` | agamm | Top 10:2025 / ASVS 5.0 detail behind `coding-standards`' pre-launch checklist. |
 | `health`, `retro` | gstack | Code-quality dashboard and weekly retrospective. No local equivalent. |
 
 ## What was deliberately not imported
@@ -79,6 +78,9 @@ tuned to their own conventions; ours are tuned to CodeRabbit and the `triage-lab
   `receiving-code-review`, `finishing-a-development-branch`, `subagent-driven-development`,
   `dispatching-parallel-agents` - covered by `worktrees`, `review-and-implement`,
   `review-staged-diff`, `cr-loop`, `pr-lifecycle`, `subagent-strategy`, `pr-orchestration`.
+
+**Duplicates of built-ins.** anthropics `mcp-builder` is identical to the `anthropic-skills:mcp-builder`
+skill already available; gstack `cso` is covered by `owasp-security` and the built-in `/security-review`.
 
 **Routers.** `poteto-mode` (pstack), `using-superpowers`, and gstack's `SKILL.md` all exist to route
 a request to the right sub-skill. `CLAUDE.md` is this repo's router; a second one competing with it

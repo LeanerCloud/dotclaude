@@ -1,9 +1,9 @@
 ---
 name: cristi-voice
-description: Cristian Magherusan-Stanciu's writing voice as a measured fingerprint plus a de-AI
-  checklist. Invoke when writing or reviewing anything published under his name or LeanerCloud's -
-  website and landing-page copy, FAQs, LinkedIn posts, newsletters, blog posts, product pages - or
-  when rewriting AI-sounding prose so it reads like him.
+description: >-
+  Cristian's writing voice plus de-AI checklist. Use for site/landing copy, FAQs, LinkedIn,
+  newsletters, blog posts, any prose under his or LeanerCloud's name, or rewriting AI-sounding
+  prose to sound like him.
 ---
 
 # Cristian's voice

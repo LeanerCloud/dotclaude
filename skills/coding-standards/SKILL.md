@@ -1,8 +1,8 @@
 ---
 name: coding-standards
-description: Stack preferences, testing philosophy, error handling, security (incl. a pre-launch
-  security checklist), API design, the YAGNI and comment-density rules, and the first-visit project
-  bootstrap checklist. Invoke when writing or reviewing code, on first visit to any project, and
+description: >-
+  Stack preferences, testing, error handling, security checklist, API design, YAGNI and comment
+  rules, first-visit bootstrap. Use when writing or reviewing code, on first visit to a project,
   before launching a user-facing app.
 ---
 

@@ -1,9 +1,9 @@
 ---
 name: infra-ops
-description: Rollback awareness, secrets handling, monitoring, timeouts, CI/CD and Terraform
-  operational rules, including staging-first deploys, and multi-repo integration builds. Invoke when
-  working on infrastructure, deployments, cloud resources, any ops concern, or when assembling,
-  building and testing unmerged work across several repos.
+description: >-
+  Ops rules: rollback, secrets, monitoring, timeouts, CI/CD, Terraform, staging-first deploys,
+  multi-repo integration builds. Use for infra, deploy, cloud and ops work, or when assembling and
+  testing unmerged work across repos.
 ---
 
 # Infrastructure & Operations

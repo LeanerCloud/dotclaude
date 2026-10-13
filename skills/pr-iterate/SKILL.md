@@ -1,21 +1,15 @@
 ---
 name: pr-iterate
 description: >-
-  Drive one PR, several, or every eligible open PR to merge-ready - resolve conflicts, address
-  CodeRabbit findings, push, re-ping CR, repeat until CR has zero actionables and CI is green.
-  Invoke on "address CR on #NNN", "fix conflicts on #NNN", "iterate on #NNN", "iterate on all my
-  open PRs", "fan out pr-iterate on my backlog". Never opens a new PR and never merges.
-when_to_use: >-
-  Also triggered by "address CR comments on #NNN" and "push fixes and re-ping CR on #NNN". Takes an
-  optional PR list - no argument fans out across all eligible open PRs in the current repo behind a
-  confirmation gate.
+  Drive existing PRs to merge-ready: fix conflicts, address CodeRabbit findings, re-ping CR until
+  clean and CI green. Triggers: "address CR on #N", "fix conflicts on #N", "iterate on #N",
+  "iterate on all my PRs". No argument fans out across all eligible open PRs behind a confirmation
+  gate. Never opens or merges.
 ---
 
-<!-- NOTE: reconstructed copy committed to dotclaude so the scheduled issue-pr-autopilot
-     remote agent (which clones dotclaude) can read the CR-iteration flow. The original
-     local copy was lost and has been reconstructed here, including
-     per-pr-agent-prompt.template.md. Phase 0 still documents a fallback for environments
-     where that template happens to be unavailable. -->
+<!-- NOTE: committed to dotclaude so the scheduled issue-pr-autopilot remote agent (which
+     clones dotclaude) can read the CR-iteration flow. Phase 0 documents a fallback for
+     environments where per-pr-agent-prompt.template.md is unavailable. -->
 
 # pr-iterate - automate the recurring PR-iteration loop
 

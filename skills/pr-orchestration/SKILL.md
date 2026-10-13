@@ -1,9 +1,8 @@
 ---
 name: pr-orchestration
-description: Driving issues to merged PRs with many agents at once - roles, coordination between
-  actors sharing no memory, the four-gate merge check, verification discipline, and the traps that
-  produce a confident but wrong "done". Invoke when orchestrating several PRs, or before calling
-  multi-agent work done.
+description: >-
+  Drive many issues to merged PRs with many agents: roles, coordination, four-gate merge check,
+  false-"done" traps. Use when orchestrating several PRs, or before calling multi-agent work done.
 ---
 
 # Multi-agent PR orchestration
@@ -16,7 +15,7 @@ prevents actually happened.
 
 The model is **variant-independent**. It has two execution variants (§1):
 the interactive one, which this file describes throughout, and the scheduled
-one, whose cron-specific mechanics live in the `issue-pr-autopilot` skill.
+one, whose cron-specific mechanics live in the `issue-pr-autopilot` skill (user-invoked via `/issue-pr-autopilot`; agents read `~/.claude/skills/issue-pr-autopilot/SKILL.md` directly).
 
 Everything already owned by another file is cross-referenced, not restated:
 
@@ -34,7 +33,7 @@ Everything already owned by another file is cross-referenced, not restated:
 | Verification standards, adversarial verification | `AGENTS.md` §4, §6 |
 | Testing rules, including asserting the defect | the `coding-standards` skill |
 | Matching the CI-pinned tool version | the `tool-usage` skill |
-| Cron routines, RemoteTrigger bodies, run budget | the `issue-pr-autopilot` skill |
+| Cron routines, RemoteTrigger bodies, run budget | `skills/issue-pr-autopilot/SKILL.md` |
 
 Paths below use placeholders: `<repo>` is the main checkout, `<repo-name>` its
 directory name, and `<wt>` a durable worktree path under
@@ -49,7 +48,7 @@ plan state.
 Two ways to run the same model. Pick by which constraints you are under, not
 by preference.
 
-| | **Interactive** (this file) | **Scheduled** (the `issue-pr-autopilot` skill) |
+| | **Interactive** (this file) | **Scheduled** (`skills/issue-pr-autopilot/SKILL.md`) |
 |---|---|---|
 | Runs as | a local session you are watching | remote cron routines, unattended |
 | Subagents | yes, that is the whole design | **no** - a routine is one flat agent, single model, no `Agent` tool |
@@ -103,7 +102,7 @@ the `worktrees` skill); the claim is the **first** durable action after it, whic
 what shrinks the §3 race window; and the handoff marker is parseable, so the
 next actor resolves it mechanically. The scheduled variant's instance (plan
 branch + `autopilot-branch:` marker + `plan-ready` label) is in
-the `issue-pr-autopilot` skill §"Plan handoff".
+`skills/issue-pr-autopilot/SKILL.md` §"Plan handoff".
 
 ---
 
@@ -161,7 +160,7 @@ the `cr-loop` skill. **Always check freshness before pushing** (the `worktrees` 
 
 Tier selection is owned by the `subagent-strategy` skill (§"Delegate to the
 cheapest sufficient tier", §"Routine PR-shipping splits across tiers"); do
-not re-derive it here or in the `issue-pr-autopilot` skill.
+not re-derive it here or in `skills/issue-pr-autopilot/SKILL.md`.
 
 Every tool call re-sends the agent's whole context, so an agent costs
 roughly its context size times its call count, and output tokens are
@@ -200,7 +199,7 @@ The controls:
   whole point of the role split in §2.
 - **Per-pass caps** on how many new items enter the pipeline, so the number
   of in-flight PRs (and their review loops) stays bounded. The scheduled
-  variant's concrete caps and run budget are in the `issue-pr-autopilot` skill.
+  variant's concrete caps and run budget are in `skills/issue-pr-autopilot/SKILL.md`.
 
 ---
 
@@ -257,7 +256,7 @@ defect. Interactive sessions arm background agents per push and per PR
 *before* or with the trigger, never after (the `pr-lifecycle` skill); scheduled
 routines cannot spawn anything, so the next fire is the watcher, with the
 "disabling the routine orphans every triggered PR" consequence in
-the `issue-pr-autopilot` skill §"Watcher model".
+`skills/issue-pr-autopilot/SKILL.md` §"Watcher model".
 
 ---
 
