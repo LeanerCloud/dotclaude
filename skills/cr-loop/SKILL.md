@@ -128,6 +128,17 @@ condition above is unchanged. If round 3 still returns Actionables, stop and esc
 `AGENTS.md` §1d reviewer) instead of starting round 4. The PR is then not merge-ready: any project gate
 requiring CR clean on the final HEAD still applies, or needs an explicit user waiver.
 
+**Let CR write its own fixes.** For Actionables CR has posted, comment `@coderabbitai autofix stacked pr`
+on the PR instead of hand-writing the fix; CR opens a separate PR with the changes. It acts only on
+unresolved CR threads that carry a "Prompt for AI Agents" block, exits without changes when the PR has
+merge conflicts, and delivers its changes even when its own verification fails, so treat its PR like any
+other: triage per this section, an independent review (`AGENTS.md` §1d), CI, then merge per `pr-lifecycle`.
+It is the fix for the current round; CR's review of it counts as the next round under the cap above. Merge
+the stacked PR first, or retarget it to the base (`gh pr edit <n> --base main`) before the original merges.
+Hand-write a fix only when the autofix PR is wrong or CR cannot produce one (plan limits, rate limit). CR
+does not review closed or merged PRs (a request there returns "Pull request is closed"), so a PR merged
+while CR was rate-limited gets no CR pass; its agent reviews are the gate.
+
 **Never use `@coderabbitai resolve`, and never click "Resolve conversation" to quiet a thread.** The only
 sanctioned way through is to address every finding (a real fix commit, or a justification reply on the
 inline thread) and ping `@coderabbitai review` for a fresh pass. `resolve` clears comments from the UI
