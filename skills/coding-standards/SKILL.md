@@ -8,262 +8,218 @@ description: >-
 
 # Coding Standards
 
-Invoke this skill when writing or reviewing code, and on first visit to any project (bootstrap checklist below). Project-specific overrides live in the project's `CLAUDE.md`.
+Invoke when writing or reviewing code, and on first visit to any project. Project `CLAUDE.md` overrides.
 
 ## First Visit: Project Bootstrap Checklist
 
-When working in a project for the first time, check for and create any missing foundational files before starting the actual task. Commit each as a separate atomic commit.
+Check for and create missing foundational files before the actual task, one atomic commit each.
 
 ### Linting & Formatting
-- **Go**: `golangci-lint` config (`.golangci.yml`) with all checks enabled; disable specific checks only with inline justification. Run via pre-commit hook on every commit.
-- **TypeScript/Node**: ESLint (`eslint.config.js` or `.eslintrc`) + Prettier (`.prettierrc`); add `eslint-plugin-security` for server-side projects; use `typescript-eslint` for type-aware rules
-- **Python**: `ruff` (replaces flake8+isort+pyupgrade) + `mypy` for type checking
-- **Terraform**: `tflint` + `terraform validate` in CI
+- **Go**: `golangci-lint` (`.golangci.yml`), all checks enabled; disable only with inline justification.
+- **TypeScript/Node**: ESLint + Prettier; `eslint-plugin-security` for server-side; `typescript-eslint` for type-aware rules.
+- **Python**: `ruff` + `mypy`.
+- **Terraform**: `tflint` + `terraform validate` in CI.
 
 ### Pre-commit Hooks
-Set up [`pre-commit`](https://pre-commit.com/) (or Husky for Node projects) if not already present. Baseline hook set:
-- Trailing whitespace / end-of-file newline fixers
-- No committed secrets: use `detect-secrets` or `gitleaks` in the pre-commit hook to scan staged content; use `gitleaks` separately to audit full git history
+Set up [`pre-commit`](https://pre-commit.com/) (Husky for Node) if absent. Baseline:
+- Trailing-whitespace / EOF-newline fixers
+- Secret scan of staged content (`detect-secrets` or `gitleaks`); `gitleaks` separately for full history
 - Language formatter (gofumpt, prettier, ruff format)
-- **Go**: `golangci-lint run` with all checks enabled; `go mod tidy` to keep module files clean
-- Language type checker where applicable (`tsc --noEmit`, `mypy`)
-- Run affected tests (at minimum, tests touching changed files)
+- Go: `golangci-lint run`, `go mod tidy`
+- Type checker (`tsc --noEmit`, `mypy`)
+- Tests touching changed files
 
-Hooks must pass cleanly on all existing code before being introduced — fix violations first, then add the hook. Never skip hooks with `--no-verify` (see the `git-commit` skill).
+Hooks must pass on all existing code before being introduced (fix violations first). Never `--no-verify` (see `git-commit`).
 
 ### CI Pipeline
-Ensure `.github/workflows/` (or equivalent) has at minimum:
-- Lint + format check (same `golangci-lint` config as pre-commit)
-- Full test suite with coverage threshold enforcement (see coverage target in Preferred Stack below)
-- Security scan (`govulncheck`, `npm audit --audit-level=high`, `trivy`)
-- Build verification
-- Branch protection (see the `infra-ops` skill CI/CD section for the full policy)
+At minimum in `.github/workflows/` (or equivalent): lint + format (same config as pre-commit); full tests with coverage threshold; security scan (`govulncheck`, `npm audit --audit-level=high`, `trivy`); build verification; branch protection (`infra-ops` CI/CD section).
 
 ### Other Baseline Files
-- `.editorconfig` — consistent whitespace/encoding across editors
-- `.gitignore` — appropriate for the language/framework; never commit build artifacts, secrets, or IDE files
-- `.env.example` — commit this with all required variable names and placeholder/example values but **no real secrets**; it serves as living documentation of what config the project needs; keep it in sync with the actual required variables
-- `Makefile` or `Taskfile` with `make lint`, `make test`, `make build` targets
-- `known-issues.md` — track known bugs and tech debt; see the `project-docs` skill
+- `.editorconfig`; `.gitignore` (no build artifacts, secrets, IDE files)
+- `.env.example`: every required variable with placeholders, **no real secrets**, kept in sync
+- `Makefile` or `Taskfile` with `lint`, `test`, `build` targets
+- `known-issues.md` (see `project-docs`)
 
 ### Code graph (Compass)
 
-Build a Compass graph before non-trivial work when the project has >~5 source files or the
-architecture isn't clear from the directory listing. Compass is a local Rust binary: no model
-credentials, seconds to about a minute per build. Resolve its location from
-`~/.claude/local-paths.md`.
+Build a Compass graph before non-trivial work when the project has >~5 source files or the architecture is unclear. It is a local Rust binary (no model credentials); location in `~/.claude/local-paths.md`.
 
-- In a repo you own: `compass init . --yes` once (writes `.compass/config.toml` and `compass-out/`;
-  add `compass-out/` to `.gitignore`), then `compass update .` after changes, or `compass watch`.
-- In a repo you don't own, or one another session is working in: build out of tree so nothing lands
-  in the checkout, e.g. `compass extract <path> --code-only --out <dir>`, and run queries from `<dir>`.
-- **Query it instead of grep-and-read loops**: `compass explain <symbol>` (callers, callees,
-  location), `compass path <from> <to>`, `compass affected <symbol> --depth 3`, and
-  `compass query "<terms>"`. For an overview, `compass export html` (or `wiki` / `obsidian`).
-- **Know its limits and fall back to `rg` plus reading the source**: `query` matches identifiers and
-  words, not meaning ("mmap segment" finds `compatible_mmap`; a plain-English sentence can return
-  nothing); C macros and code pulled in through `#include "file.c"` are not indexed; dynamic dispatch,
-  reflection and generated code resolve only partially.
+- Repo you own: `compass init . --yes` once (writes `.compass/config.toml`, `compass-out/`; gitignore `compass-out/`), then `compass update .` or `compass watch`.
+- Repo you don't own or another session uses: build out of tree, e.g. `compass extract <path> --code-only --out <dir>`, and query from `<dir>`.
+- **Query instead of grep-and-read**: `compass explain <symbol>`, `compass path <from> <to>`, `compass affected <symbol> --depth 3`, `compass query "<terms>"`; overview via `compass export html` (or `wiki` / `obsidian`).
+- **Limits, then fall back to `rg` plus reading source**: `query` matches identifiers and words, not meaning; C macros and `#include "file.c"` code are not indexed; dynamic dispatch, reflection and generated code resolve partially.
 
 ---
 
 ## Simplicity & Scope (YAGNI)
 
-Sophistication is a cost, not a virtue. The simplest thing that works wins: fewer lines, fewer concepts, fewer names. When a reviewer says a change was hard to get through, the cause is usually machinery nobody asked for rather than logic that was genuinely hard.
+The simplest thing that works wins: fewer lines, fewer concepts, fewer names.
 
-**The test is not "is this correct?" or "could this ever happen?" but "does a current caller need this, and can this state be reached given the callers that exist?"** Correct, well-reasoned, well-tested code guarding an unreachable state is still waste, and it is the hardest kind to spot because every local justification for it holds up. Find out what the calling system actually does before building for the general case.
+**The test is "does a current caller need this, and can this state be reached given the callers that exist?", not "is this correct?".** Correct, well-tested code guarding an unreachable state is still waste. Find out what the calling system actually does before building for the general case.
 
-- **YAGNI.** Build only what a current caller needs. No parameters, flags, hooks, or abstraction layers for a future that hasn't arrived. If there is exactly one consumer, write it for that consumer.
-- **DRY, but rule-of-three.** Two similar pieces of code are usually fine; abstract at the third. Premature abstraction is over-engineering too, and it is harder to undo than duplication. (Complements `AGENTS.md` §1a: reuse what already exists, but don't invent an abstraction for a second case that doesn't exist yet.)
-- **Don't validate the impossible.** Validate at trust boundaries: external input, config, API payloads. Inside the module, trust your own callers instead of re-checking what the type system or the single call site already guarantees. Don't double up either (a type constraint *and* a runtime assert for the same value).
-- **Prefer removing the hazard to defending against it.** If a value needs validating because it reaches a shell, first check whether it needs to reach a shell at all. Deleting the interpolation removes the injection path and the validation with it.
-- **Elegance means fewer moving parts**, never more sophisticated ones (`AGENTS.md` §5). If the "more elegant" version is longer or introduces a new concept, it isn't the more elegant one.
+- **YAGNI.** No parameters, flags, hooks or abstraction layers for a future that hasn't arrived. One consumer: write it for that consumer.
+- **DRY, but rule-of-three.** Two similar pieces are fine; abstract at the third. Premature abstraction is harder to undo than duplication. (Complements `AGENTS.md` §1a.)
+- **Don't validate the impossible.** Validate at trust boundaries (external input, config, API payloads); trust your own callers inside the module. Don't double up (type constraint plus runtime assert).
+- **Prefer removing the hazard to defending against it.** If a value needs validating because it reaches a shell, check whether it needs to reach a shell at all.
+- **Elegance means fewer moving parts** (`AGENTS.md` §5).
 
 **Self-check before opening a PR:**
 - Does every parameter have a caller that sets it?
 - Does every abstraction have more than one implementation or consumer?
-- Does every validation guard a state that can actually occur?
+- Does every validation guard a state that can occur?
 - Could a competent colleague have written this in half the lines? If yes, cut.
 
-Cut speculation, not behaviour. A parameter a real caller sets, a timeout the platform's default gets wrong, the auth config a private dependency needs: all load-bearing, however many lines they add. "Shorter" is the usual symptom of getting this right, not the goal.
+Cut speculation, not behaviour: a parameter a real caller sets, a timeout the platform default gets wrong, auth config a private dependency needs are all required however many lines they add.
 
 ## Verifying a Refactor
 
-A cleanup that changes behaviour is a bug wearing a tidy diff. "Delete aggressively" is only safe paired with proof you deleted nothing that mattered, so cutting and proving are one task, not two.
+A cleanup that changes behaviour is a bug in a tidy diff. Cutting and proving are one task.
 
-- **Subtractive only.** Delete and inline; never introduce an abstraction to "simplify". A clever restructure is a behaviour change you haven't tested yet.
-- **Compare the generated output, not just the tests.** Where code emits an artifact (IaC plans/synth, migrations, codegen, bundles, snapshots), byte-compare it before and after and require it identical. Green tests routinely coexist with a changed artifact: in IaC a renamed logical id silently destroys and recreates live infrastructure, and no unit test sees it. Compare *every* emitted file, not just the obvious one.
-- **Carry a protected list into the work.** Name the decisions that must survive (with the one-line reason) before starting. Hard-won constraints look exactly like cruft to a reader who wasn't there, and get "cleaned up" first.
-- **Never delete a security assertion on your own judgement.** Tests pinning authorization, resource scoping, or privilege boundaries come out only with the owner's explicit sign-off, however redundant they look.
-- **"Nothing here is worth removing" is a complete answer.** Manufacturing changes to show effort is how a safe refactor becomes a risky one.
-- **Report what you left.** The candidates you considered and rejected, and why, are as useful to the reviewer as the diff.
+- **Subtractive only.** Delete and inline; never add an abstraction to "simplify".
+- **Compare generated output, not just tests.** Where code emits an artifact (IaC plans/synth, migrations, codegen, bundles, snapshots), byte-compare every emitted file before and after and require identical. A renamed IaC logical id silently destroys live infrastructure and no unit test sees it.
+- **Carry a protected list.** Before starting, name the decisions that must survive (one-line reason each); hard-won constraints look like cruft.
+- **Never delete a security assertion on your own judgement.** Tests pinning authorization, resource scoping or privilege boundaries go only with the owner's explicit sign-off.
+- **"Nothing here is worth removing" is a complete answer.**
+- **Report what you left**: candidates considered and rejected, and why.
 
-If you can't prove an edit is behaviour-preserving, don't make it. A small confident diff beats a large clever one.
+If you can't prove an edit is behaviour-preserving, don't make it.
 
 ### Deletion probes - test necessity, don't argue it
 
-Whether a piece of machinery is needed is an empirical question, so answer it empirically instead of by reasoning about the code. For each candidate: **delete it, run the full verification, and read the result.**
+For each candidate machinery: **delete it, run the full verification, read the result.**
 
-- **Something fails** -> it is load-bearing. Restore it, and record *what* failed: that failure is the evidence it earns its place, and it belongs in the PR description or the protected list.
-- **Nothing fails** -> exactly one of two things is true, and you must say which:
-  1. the code was genuinely unnecessary - delete it for real; or
-  2. **the verification is too weak to notice** - restore the code and report a coverage gap.
+- **Something fails** -> it earns its place. Restore it and record *what* failed (PR description or protected list).
+- **Nothing fails** -> say which: (1) genuinely unnecessary, delete it; or (2) **the verification is too weak to notice**, so restore the code and report a coverage gap.
 
-**Never read "nothing broke" as automatic permission to delete.** If removing a guard that protects a real invariant breaks no test, the honest finding is "this guard is untested", not "this guard is unnecessary". Those cases are usually worth more than the deletions, because they point at the hole that let the risk in.
+**"Nothing broke" is not automatic permission to delete.** A guard on a real invariant that breaks no test is "untested", not "unnecessary"; those findings are worth more than the deletions.
 
-Restore between probes so they can't interact, and probe one thing at a time - two simultaneous deletions that cancel out will read as a clean run.
-
-This is the cheap way to settle the arguments that stall a cleanup, and it cuts both directions: it deletes machinery whose justification was only ever theoretical, and it produces hard evidence for the pieces that survive. A parameter proven necessary by a failing build is no longer a matter of opinion.
+Restore between probes and probe one thing at a time (two deletions that cancel out read as a clean run).
 
 ## Preferred Stack
 
-- **Language**: Go for new backend/CLI projects; TypeScript/Node for frontend, lightweight CLIs, or when the ecosystem fit is strong; match the existing language for additions to existing projects
-- **IaC**: Terraform when infrastructure is needed
-- **Testing**: TDD wherever possible. Use the most popular framework/idioms for the language:
-  - Go: `go test` + `testify`
-  - TypeScript: `vitest` (preferred) or `jest`
-  - Python: `pytest`
-- **Coverage**: Target 80% for all new code; 100% for critical paths (auth, payments, data mutations). Enforce in CI by failing the build when coverage drops below threshold (`go test -coverprofile` + `go tool cover`, `jest --coverage --coverageThreshold`, `pytest --cov --cov-fail-under=80`)
-- **Dependencies**: Prefer stdlib over third-party when reasonable. Pin all versions. Don't add a dependency without justification — evaluate maintenance status, license, and attack surface.
-- **Task runner**: Every project needs a `Makefile` or `Taskfile` as the single entry point for build/test/lint/deploy. No undocumented one-off commands.
+- **Language**: Go for new backend/CLI; TypeScript/Node for frontend, lightweight CLIs or strong ecosystem fit; match the existing language in existing projects.
+- **IaC**: Terraform.
+- **Testing**: TDD where possible. Go: `go test` + `testify`; TypeScript: `vitest` (or `jest`); Python: `pytest`.
+- **Coverage**: 80% for new code; 100% for critical paths (auth, payments, data mutations). Enforce in CI (`go test -coverprofile` + `go tool cover`, `jest --coverage --coverageThreshold`, `pytest --cov --cov-fail-under=80`).
+- **Dependencies**: prefer stdlib; pin versions; justify each new one (maintenance, license, attack surface).
+- **Task runner**: a `Makefile` or `Taskfile` is the single entry point for build/test/lint/deploy.
 
 ## Testing Philosophy
 
-- **Test pyramid**: favour many fast unit tests, fewer integration tests, and a small number of end-to-end tests
-- **Test behaviour, not implementation**: test through public APIs and observable outcomes; avoid coupling tests to internal details
-- **Good tests are**: fast, isolated, deterministic, and readable as documentation
-- **When to use unit tests**: pure logic, algorithms, data transformations, edge cases
-- **When to use integration tests**: database queries, HTTP handlers, external service clients, message queue consumers
-- **When to use end-to-end tests**: critical user journeys only — they're slow and brittle
-- Prefer real implementations over mocks where fast enough (in-memory DB, temp files, `httptest` servers)
-- Use mocks/stubs only at true boundaries (external APIs, email services, payment processors)
-- Every bug fix should start with a failing test that captures the bug; the fix makes it pass
-- **Assert the defect, not a proxy**: the assertion must be on the thing that was actually wrong. If the bug is "two identical purchases derive different idempotency tokens", assert on the *tokens*, not on a field that happens to feed them — a proxy assertion stays green while the defect comes back through another path
-- Test names should read as sentences: `TestUserService_CreateUser_ReturnsErrorWhenEmailTaken`
-- Don't test the framework or language — test your code
+- Pyramid: many fast unit tests, fewer integration, few end-to-end (critical user journeys only).
+- Test behaviour through public APIs, not implementation. Tests are fast, isolated, deterministic, readable.
+- Unit: pure logic, algorithms, transformations, edge cases. Integration: DB queries, HTTP handlers, external clients, queue consumers.
+- Prefer real implementations (in-memory DB, temp files, `httptest`); mock only at true boundaries (external APIs, email, payments).
+- Every bug fix starts with a failing test that captures the bug.
+- **Assert the defect, not a proxy**: if the bug is "two identical purchases derive different idempotency tokens", assert on the tokens, not a field that feeds them.
+- Test names read as sentences: `TestUserService_CreateUser_ReturnsErrorWhenEmailTaken`.
+- Don't test the framework or language.
 
 ## Error Handling
 
-- Return errors explicitly — never swallow silently
-- Wrap errors with context so the caller knows where and why it failed (`fmt.Errorf("loading config: %w", err)` in Go)
-- Distinguish: recoverable errors (return), programming errors (panic in Go), expected domain errors (typed/sentinel errors)
-- Use typed/sentinel errors for errors callers need to branch on; plain strings for errors that just propagate up
-- Log at appropriate levels:
-  - `debug`: internal state useful during development
-  - `info`: normal operational events
-  - `warn`: recoverable unexpected conditions
-  - `error`: failures requiring attention
-- Use structured logging (key-value / JSON) when the project already follows this pattern
-- Include correlation/request IDs for tracing across services
-- Never log PII, secrets, or tokens — scrub before logging
-- Fail fast at startup for missing required config; don't discover it at runtime
+- Return errors explicitly; never swallow. Wrap with context (`fmt.Errorf("loading config: %w", err)`).
+- Recoverable errors return; programming errors panic (Go); expected domain errors are typed/sentinel (when callers branch on them; plain otherwise).
+- Levels: `debug` internal state, `info` normal events, `warn` recoverable unexpected, `error` failures needing attention.
+- Structured logging when the project already uses it; correlation/request IDs across services.
+- Never log PII, secrets or tokens.
+- Fail fast at startup on missing required config.
 
 ## Fallbacks, Magic Values & Enums
 
-- **No silent fallbacks — fail loud.** If something required is missing, wrong, or unavailable (a config value, an upstream/API response, a looked-up record, a price/amount), return an explicit error rather than substituting a fabricated, default, or degraded value to "keep going." This matters most on irreversible or money-affecting paths (payments, purchases, billing, data mutations) — a loud, visible failure beats a silent wrong result. Keep a fallback only with deliberate sign-off, and even then log it loudly.
-- **No hardcoded magic values or fixed ratios.** Derive values from the source data, config, or named constants — don't bake in financial assumptions (discount %, term lengths), unit ratios (e.g. memory-per-vCPU), or environment specifics (region/account/endpoint). Name any genuinely-constant value; on unrecognized or absent input, error — don't default.
-- **Prefer typed enums/constants over bare string values.** Represent enumerable concepts (status, type, payment option, term, provider) as a typed enum/const set, or the SDK's own enum — never scatter raw string literals. Parse external input into the typed value at the boundary and error on unknown. For outbound SDK/API fields use the SDK's enum constants verbatim (a wrong literal that "looks right" fails silently).
-- Address such instances proactively when reading or modifying code, each with a regression test asserting the error path.
+- **No silent fallbacks - fail loud.** If something required is missing, wrong or unavailable (config value, upstream response, looked-up record, price/amount), return an explicit error rather than a fabricated, default or degraded value. Most critical on irreversible or money-affecting paths. Keep a fallback only with deliberate sign-off, and log it loudly.
+- **No hardcoded magic values or fixed ratios.** Derive from source data, config or named constants; don't bake in financial assumptions (discount %, terms), unit ratios (memory-per-vCPU) or environment specifics (region/account/endpoint). On unrecognized or absent input, error.
+- **Typed enums/constants over bare strings** for status, type, payment option, term, provider. Parse external input into the typed value at the boundary and error on unknown. For outbound SDK/API fields use the SDK's enum constants verbatim.
+- Fix such instances proactively when you read or modify code, each with a regression test on the error path.
 
 ## Security
 
-- Never hardcode credentials, secrets, or API keys — use environment variables or a secret manager
-- Never commit `.env` files, credentials, or tokens; add to `.gitignore` proactively
-- Validate and sanitize all input at system boundaries — never trust external data
-- Parameterize all database queries — never interpolate user input into SQL
-- Sanitize output rendered in HTML to prevent XSS
-- Use allowlists over denylists for input validation where possible
-- Set security headers on web services: `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`, `Strict-Transport-Security`
-- **CORS**: configure explicitly — never use wildcard `*` in production; allowlist specific origins
-- **JWT validation**: always verify signature, expiry (`exp`), not-before (`nbf`), audience (`aud`), and issuer (`iss`); reject tokens missing any required claim
-- **File uploads**: enforce size limits, validate MIME type from content (not filename extension), scan for malware on sensitive platforms, store outside the web root
-- **Supply chain**: use lock files (`go.sum`, `package-lock.json`, `poetry.lock`); verify checksums; prefer well-maintained packages with few transitive deps
-- Scan dependencies for known CVEs (`govulncheck`, `npm audit`, Dependabot, Snyk, Trivy)
-- Apply principle of least privilege to service accounts, IAM roles, and database users
-- Use short-lived credentials; rotate secrets regularly
-- Rate-limit and throttle public-facing endpoints
+- Never hardcode credentials/API keys; use env vars or a secret manager. Never commit `.env`, credentials or tokens; gitignore proactively.
+- Validate and sanitize all input at system boundaries; allowlists over denylists.
+- Parameterize all DB queries; sanitize HTML output (XSS).
+- Security headers on web services: `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`, `Strict-Transport-Security`.
+- **CORS**: explicit; no `*` in production; allowlist origins.
+- **JWT**: always verify signature, `exp`, `nbf`, `aud`, `iss`; reject tokens missing a required claim.
+- **File uploads**: size limits, MIME from content (not extension), malware scan on sensitive platforms, store outside web root.
+- **Supply chain**: lock files (`go.sum`, `package-lock.json`, `poetry.lock`); verify checksums; prefer well-maintained packages with few transitive deps. Scan for CVEs (`govulncheck`, `npm audit`, Dependabot, Snyk, Trivy).
+- Least privilege for service accounts, IAM roles, DB users; short-lived credentials; rotate secrets.
+- Rate-limit and throttle public endpoints.
 
 ### Pre-Launch Security Checklist
 
-Run this gate before shipping any user-facing app. Several lines restate the bullets above as a launch-time checklist; the detail lives in those bullets. Tick every box or record why it doesn't apply. Numbers are for reference only.
+Gate before shipping any user-facing app. Tick every box or record why it doesn't apply. Numbers are for reference only.
 
 **Secrets & keys**
-- [ ] (1) Hide API keys: no secrets in client code, repos, or bundles; load from env/secret manager (bullets above).
-- [ ] (2) Detect and rotate leaked secrets: scan full history (`gitleaks`/`trufflehog`) and revoke or rotate anything ever committed (see the `infra-ops` skill). **Rotation is the fix, not history rewriting** — a committed secret must be treated as compromised whether or not the commit still exists, and a rewrite alone leaves it live in clones, forks and caches. Rewriting history or removing committed data is a destructive operation requiring explicit per-item confirmation (tenet 9).
-- [ ] (3) Client uses the public/anon key only (Supabase anon, Firebase web config); the service-role/admin key never ships to the browser or mobile app.
+- [ ] (1) Hide API keys: no secrets in client code, repos or bundles; load from env/secret manager.
+- [ ] (2) Detect and rotate leaked secrets: scan full history (`gitleaks`/`trufflehog`) and revoke or rotate anything ever committed (see `infra-ops`). **Rotation is the fix, not history rewriting**: a committed secret is compromised whether or not the commit still exists. Rewriting history or removing committed data is destructive and needs explicit per-item confirmation (tenet 9).
+- [ ] (3) Client uses the public/anon key only (Supabase anon, Firebase web config); service-role/admin keys never ship to browser or mobile.
 
 **Auth, sessions & abuse**
-- [ ] (6) Enforce auth server-side: never trust client-side checks; every mutation and protected read re-verifies authn + authz on the server.
-- [ ] (10) Hash passwords with argon2id (or bcrypt/scrypt) + per-user salt; never plaintext, never fast/general-purpose hashes (MD5/SHA-*). Prefer an IdP/OAuth over rolling your own.
-- [ ] (9) Secure session cookies: `HttpOnly`, `Secure`, `SameSite=Lax`/`Strict` by default, scoped domain/path, sane expiry; rotate the session id on login and privilege change. Use `SameSite=None` only where a cross-site flow genuinely needs it, and then only with `Secure` plus explicit CSRF or `Origin` checking — cookie attributes narrow CSRF exposure, they do not replace CSRF protection.
-- [ ] (11) Throttle auth endpoints (login, signup, reset, OTP) against brute force and credential stuffing: rate limits, progressive delays, and challenges. Prefer these to lockouts — locking the *account* on failed attempts hands an attacker a denial-of-service against any user whose address they know, and locking the *endpoint* denies service to everyone. Where a lockout is genuinely warranted, make it temporary and risk-based, with a recovery path that cannot itself be abused, and alert on it.
-- [ ] (12) Add bot protection on public forms/signup (CAPTCHA/Turnstile or WAF).
+- [ ] (6) Enforce auth server-side: every mutation and protected read re-verifies authn + authz on the server.
+- [ ] (10) Hash passwords with argon2id (or bcrypt/scrypt) + per-user salt; never plaintext or fast hashes (MD5/SHA-*). Prefer an IdP/OAuth over rolling your own.
+- [ ] (9) Secure session cookies: `HttpOnly`, `Secure`, `SameSite=Lax`/`Strict` by default, scoped domain/path, sane expiry; rotate the session id on login and privilege change. `SameSite=None` only where a cross-site flow needs it, with `Secure` plus explicit CSRF or `Origin` checking (cookie attributes narrow CSRF exposure, they don't replace CSRF protection).
+- [ ] (11) Throttle auth endpoints (login, signup, reset, OTP) against brute force and credential stuffing: rate limits, progressive delays, challenges. Prefer these to lockouts (account lockout lets an attacker DoS any known user; endpoint lockout denies everyone). Where a lockout is warranted, make it temporary and risk-based, with an unabusable recovery path, and alert on it.
+- [ ] (12) Bot protection on public forms/signup (CAPTCHA/Turnstile or WAF).
 
 **Data access & authorization**
-- [ ] (4) Enable row-level security (RLS) at the database and scope every query to the authenticated principal.
-- [ ] (7) Lock record access: verify object-level ownership on every read/write; deny by default to prevent IDOR / horizontal escalation.
-- [ ] (8) Block field tampering: bind writable fields via an explicit allowlist (DTO/schema); never spread untrusted request bodies into an ORM model (guards `is_admin`, `role`, `price`).
-- [ ] (5) Encrypt sensitive data: TLS in transit, encryption at rest, and app-layer encryption (KMS) for high-sensitivity fields (tokens, PII, financial).
+- [ ] (4) Row-level security (RLS) at the database; scope every query to the authenticated principal.
+- [ ] (7) Verify object-level ownership on every read/write; deny by default (IDOR / horizontal escalation).
+- [ ] (8) Block field tampering: bind writable fields via an explicit allowlist (DTO/schema); never spread untrusted request bodies into an ORM model (`is_admin`, `role`, `price`).
+- [ ] (5) Encrypt sensitive data: TLS in transit, encryption at rest, app-layer encryption (KMS) for high-sensitivity fields (tokens, PII, financial).
 
 **Input & output**
-- [ ] (14) Validate all input at boundaries; allowlist over denylist (bullets above).
-- [ ] (13) Parameterize all DB queries; never interpolate input into SQL (bullets above).
-- [ ] (15) Escape/sanitize user content rendered in HTML to prevent XSS (bullets above).
-- [ ] (16) Restrict file uploads: size limits, MIME from content, stored outside web root, scanned (bullets above).
+- [ ] (14) Validate all input at boundaries; allowlist over denylist.
+- [ ] (13) Parameterize all DB queries.
+- [ ] (15) Escape/sanitize user content rendered in HTML (XSS).
+- [ ] (16) Restrict file uploads: size limits, MIME from content, outside web root, scanned.
 - [ ] (17) Trim API responses: serialize through an explicit response DTO; never dump full DB rows or internal fields (password hashes, tokens, other users' data).
 
 **Transport, headers & supply chain**
-- [ ] (19) Force HTTPS: redirect HTTP to HTTPS, TLS everywhere, and set HSTS.
-- [ ] (18) Verify the *effective* security-header values, not merely that the headers are present: a reviewed CSP (no blanket `unsafe-inline`/`*`), a protective framing policy (`X-Frame-Options: DENY`/`SAMEORIGIN`, or `frame-ancestors`), `X-Content-Type-Options: nosniff`, and HSTS actually served over HTTPS. Read them off a real response — `X-Frame-Options: ALLOWALL` ticks a presence check while protecting nothing.
-- [ ] (20) Scan dependencies for CVEs (`govulncheck`/`npm audit`/Trivy/Dependabot) (bullets above).
+- [ ] (19) Force HTTPS: redirect HTTP, TLS everywhere, HSTS.
+- [ ] (18) Verify the *effective* header values, not just presence: reviewed CSP (no blanket `unsafe-inline`/`*`), framing policy (`X-Frame-Options: DENY`/`SAMEORIGIN` or `frame-ancestors`), `X-Content-Type-Options: nosniff`, HSTS served over HTTPS. Read them off a real response (`X-Frame-Options: ALLOWALL` passes a presence check and protects nothing).
+- [ ] (20) Scan dependencies for CVEs (`govulncheck`/`npm audit`/Trivy/Dependabot).
 
 ## Performance
 
-- Don't prematurely optimize — profile first (`go tool pprof` for CPU/memory, `py-spy`, Chrome DevTools), optimize the measured bottleneck
-- Use benchmarks (`go test -bench`, `pytest-benchmark`) to validate that an optimization actually helps
-- Watch for: n+1 queries, unnecessary allocations in hot paths, missing indexes, unbounded collection returns
-- Cache at the right layer (in-memory, CDN, DB query cache) — always document the invalidation strategy
-- Paginate all list endpoints; never return unbounded result sets
-- Use connection pooling for databases and HTTP clients; tune pool sizes based on workload
-- **Go concurrency**: Use `-race` in tests always. Prefer channels for coordination, mutexes for protecting state. Document goroutine lifecycle explicitly (who creates, who cancels, who waits).
-- **Cyclomatic complexity**: Keep below 10 on all new code. Break complex functions into named helpers with clear responsibilities.
+- Profile first (`go tool pprof`, `py-spy`, Chrome DevTools); optimize the measured bottleneck; validate with benchmarks (`go test -bench`, `pytest-benchmark`).
+- Watch for n+1 queries, hot-path allocations, missing indexes, unbounded collections.
+- Cache at the right layer and document the invalidation strategy.
+- Paginate all list endpoints; pool DB and HTTP connections, tuned to workload.
+- **Go concurrency**: `-race` in tests always; channels for coordination, mutexes for state; document goroutine lifecycle (who creates, cancels, waits).
+- **Cyclomatic complexity** below 10 on new code; split into named helpers.
 
 ## API Design
 
-- Follow REST conventions: proper HTTP methods, meaningful status codes, resource-oriented URLs
-- Use a consistent error response format across all endpoints: `{"error": {"code": "...", "message": "...", "request_id": "..."}}`
-- Version APIs on breaking changes (`/v1/`, `/v2/`) — never silently break callers
-- Validate input at the boundary; return `400` with a descriptive message, not a `500`
-- Design operations to be idempotent where possible
-- Use `PATCH` for partial updates, `PUT` for full replacement
-- Paginate list responses with a consistent cursor or offset+limit strategy; include total count where cheap
-- Return `429 Too Many Requests` with `Retry-After` header when rate-limiting
-- Use `ETag` / `Last-Modified` for cacheable resources
-- **Datetimes**: always use ISO 8601 / RFC 3339 format (`2026-04-08T14:30:00Z`); always include timezone; store in UTC
-- **Webhooks**: use HMAC signatures for payload verification; document retry behaviour and expected response codes; be idempotent (callers will retry); include an event type and timestamp in every payload
-- Document with OpenAPI/Swagger; keep specs in sync with implementation (generate from code where possible)
-- Authenticate with short-lived tokens (JWT, OAuth2); never pass credentials in query strings
+- REST conventions: proper methods, meaningful status codes, resource-oriented URLs.
+- Consistent error format: `{"error": {"code": "...", "message": "...", "request_id": "..."}}`.
+- Version on breaking changes (`/v1/`, `/v2/`).
+- Validate at the boundary; `400` with a descriptive message, not `500`.
+- Idempotent operations where possible; `PATCH` for partial updates, `PUT` for full replacement.
+- Paginate lists with a consistent cursor or offset+limit; total count where cheap.
+- `429` with `Retry-After` when rate-limiting; `ETag` / `Last-Modified` for cacheable resources.
+- **Datetimes**: ISO 8601 / RFC 3339 with timezone (`2026-04-08T14:30:00Z`); store in UTC.
+- **Webhooks**: HMAC signatures; document retry behaviour and expected response codes; idempotent receivers; event type and timestamp in every payload.
+- Document with OpenAPI, in sync with implementation (generate from code where possible).
+- Short-lived tokens (JWT, OAuth2); never credentials in query strings.
 
 ## Idempotency
 
-- Scripts, IaC, migrations, and API handlers must be safe to run multiple times without side effects
-- Use `CREATE IF NOT EXISTS`, upserts (`INSERT ... ON CONFLICT`), and idempotency keys
-- For async operations (queues, webhooks), use idempotency keys to deduplicate retries
-- Make deletes safe to repeat — return success if already deleted
+- Scripts, IaC, migrations and API handlers are safe to run repeatedly.
+- `CREATE IF NOT EXISTS`, upserts (`INSERT ... ON CONFLICT`), idempotency keys (also to deduplicate async retries).
+- Deletes are safe to repeat: succeed if already deleted.
 
 ## Comments
 
-Rationale belongs in the PR description; the source carries only what a future editor needs in order not to break something. Prose that reads as thorough to the author reads as noise to the reviewer, and buries the few comments that actually matter.
+Rationale belongs in the PR description; source carries only what a future editor needs in order not to break something.
 
-- **Default to no comment.** Naming and structure carry the meaning; reach for a comment only where they can't.
-- **Edit generated comments.** Generated code is where comment slop collects: paragraphs of narration so dense you have to read the code to decode them. Prune them to what the code cannot say. Rewriting comments down to the essential often surfaces real design issues, so treat it as part of the work.
-- **Comment only where the WHY isn't deducible from the code**: a deliberate choice a reader would otherwise "fix", a constraint that isn't visible at this spot, a workaround for an external bug (link the upstream issue or CVE), a deviation from the obvious approach.
-- **Keep it terse: 1-2 lines.** Never paragraphs, never half a page. If it needs more than that, it belongs in the PR description or the commit message.
-- **Two hard per-comment rules**, checkable one comment at a time and not subject to averaging: **no comment exceeds 2 lines**, and **no comment describes what the code does** (that one is deleted, not shortened). These bite where a ratio can't: a diff can sit under budget and still be full of three-line restatements.
-- **Budget: under ~15% comment-to-code on added lines**, measured as below. Over budget is not a veto, it is a trigger — go back through the comments and delete until you are under it or can name why this file is a genuine exception.
-- **Delete on sight**: restatements of the next line; multi-paragraph rationale essays; what-was-considered-and-rejected narrative; references to review rounds, our own past bugs, or `"as of <date>"`; JSDoc/docstrings restating types the signature already gives; long preambles on tests (the test name carries the meaning).
+- **Default to no comment.** Naming and structure carry meaning.
+- **Edit generated comments**: prune to what the code cannot say; rewriting them down often surfaces real design issues.
+- **Comment only where the WHY isn't deducible**: a deliberate choice a reader would "fix", a non-visible constraint, a workaround for an external bug (link the issue or CVE), a deviation from the obvious approach.
+- **Terse: 1-2 lines.** More belongs in the PR description or commit message.
+- **Two hard per-comment rules**, checked one comment at a time: **no comment exceeds 2 lines**, and **no comment describes what the code does** (delete, don't shorten).
+- **Budget: under ~15% comment-to-code on added lines**, measured as below. Over budget is a trigger, not a veto: delete until under, or name why the file is a genuine exception.
+- **Delete on sight**: restatements of the next line; multi-paragraph rationale; considered-and-rejected narrative; references to review rounds, past bugs or `"as of <date>"`; JSDoc/docstrings restating signature types; long test preambles.
 
-**Measure it the same way every time.** State the number in the PR description or the pre-commit self-check, so it is a fact rather than an impression:
+**Measure the same way every time** and state the number in the PR description or pre-commit self-check:
 
 ```bash
 git diff <base>...HEAD -- . ':(exclude)**/dist/*' ':(exclude)**/*.lock' | awk '
@@ -272,37 +228,27 @@ git diff <base>...HEAD -- . ':(exclude)**/dist/*' ':(exclude)**/*.lock' | awk '
   END { printf "added=%d comment=%d code=%d ratio=%.1f%%\n", t, c, t-c-b, c*100/(t-b) }'
 ```
 
-Three ways this number lies, all of which have produced a wrong answer in practice:
-- **Whole-file counts instead of added lines.** Counting every comment in a file you touched includes ones already on `main` and can inflate the figure two- or three-fold. Only `+` lines count.
-- **Generated or vendored output.** A committed bundle or lockfile swamps the ratio in both directions — exclude it and measure the hand-written slice.
-- **Stacked branches.** A PR stacked on another inherits its comments, so measure against the parent branch rather than `main`, or the shared lines are counted twice.
+The number lies if you: count whole files instead of `+` lines; include generated/vendored output (exclude it); or measure a stacked PR against `main` instead of its parent branch.
 
-**Legitimate exceptions, named rather than assumed**: a constants or config file, where the values *are* the content and the only thing unrecoverable from the code is why each holds that value; and any small file, where a handful of necessary notes over a few dozen lines of code prices in high. Say which applies; don't let "config files run higher" become a blanket excuse.
+**Legitimate exceptions, named not assumed**: a constants/config file (the values are the content; only the why of each is unrecoverable), and a small file where a few necessary notes price in high. Say which applies.
 
-**Fix stale comments adjacent to your diff.** The rules cover the comments your change sits among, not only the lines you added: the block above the function you edited, the note beside the line you moved, the comment inside the hunk. If it restates the code, runs past 2 lines, or has rotted out of sync with the code, fix or delete it while you are there — and **delete commented-out code on sight**, since version control already keeps it and nobody will uncomment it.
-
-Scope this tightly: **adjacent to the diff, not the whole file.** A stale comment at the other end of a file you happened to touch is somebody else's change. This is a narrow carve-out from "don't touch what you weren't asked to touch" (`AGENTS.md` core principles) — that rule exists to prevent unrelated drive-by refactors, not to preserve rot in the lines you are already rewriting. Put the cleanup in its own commit so the functional diff stays readable.
+**Fix stale comments adjacent to your diff** (the block above the function you edited, the note beside the line you moved, comments inside the hunk): if one restates the code, runs past 2 lines or has rotted, fix or delete it, and **delete commented-out code on sight**. Adjacent to the diff, not the whole file; this is a narrow carve-out from "don't touch what you weren't asked to touch". Put the cleanup in its own commit.
 
 ```go
-// Bad: six lines restating the code and narrating the decision
+// Bad: restates the code and narrates the decision
 // We use a 30 second timeout here. This value was chosen after considering
-// 10s (too aggressive, caused flakes in CI) and 60s (too slow to fail).
-// 30s is a good middle ground balancing responsiveness against reliability.
-// Note: raised from 10s in review round 2.
-// See PR #412 for the full discussion.
+// 10s (too aggressive) and 60s (too slow). Raised from 10s in review round 2.
 ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-defer cancel()
 
-// Good: one line, and only because the number is otherwise unexplainable
+// Good: one line, only because the number is otherwise unexplainable
 // Upstream's p99 is 25s; anything tighter flakes.
 ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-defer cancel()
 ```
 
 ## Documentation
 
-- Update READMEs when adding features, changing setup steps, or altering project structure
-- Inline comments: see **Comments** above; default to none, and document the *why* only where it isn't deducible from the code
-- Maintain a CHANGELOG if one already exists; add one for projects with releases or external users (skip for small internal tools — scale to context)
-- Keep API docs (OpenAPI, docstrings) in sync with implementation — stale docs are harmful
-- Use ADRs for significant decisions — see the `project-docs` skill for the ADR template and format
+- Update READMEs when adding features, changing setup or structure.
+- Inline comments: see **Comments**.
+- Maintain a CHANGELOG if one exists; add one for projects with releases or external users.
+- Keep API docs (OpenAPI, docstrings) in sync; stale docs are harmful.
+- ADRs for significant decisions (`project-docs`).

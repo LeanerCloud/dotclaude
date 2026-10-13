@@ -8,37 +8,25 @@ description: >-
 
 # Multi-agent coordination
 
-Several sessions on one machine regularly end up in the same checkout: one diagnosing a crash while
-another fixes it, two CI watchers pushing fixes to one branch. The failures are concrete: edits
-landing on top of someone else's uncommitted work, two builds or installs overwriting each other,
-simultaneous pushes to one ref.
+Concurrent sessions in one checkout cause edits on top of someone else's uncommitted work, builds or installs overwriting each other, and simultaneous pushes to one ref.
 
-This is the protocol between **peer** sessions. For one orchestrator directing implementers and
-reviewers through a queue of PRs, see the `pr-orchestration` skill; its interactive agents on the
-same machine still take the locks below. File locks only serialize processes on one machine, so
-scheduled routines running elsewhere coordinate through GitHub state instead.
+This is the protocol between **peer** sessions. For one orchestrator directing implementers and reviewers through PRs see `pr-orchestration`; its interactive agents on the same machine still take the locks below. File locks only serialize processes on one machine; scheduled routines elsewhere coordinate through GitHub state.
 
 ## 1. Check for other sessions before touching a shared checkout
 
-Before editing, building, installing or pushing in a repo:
-
+Before editing, building, installing or pushing:
 - **Claude Code**: `ListAgents` lists peer sessions and whether each is busy.
-- **Any tool**: `git status` showing changes you didn't make, a branch or commit you don't
-  recognize, or build output newer than your last build means someone else is working there.
+- **Any tool**: `git status` showing changes you didn't make, an unrecognized branch or commit, or build output newer than your last build means someone else is there.
 
 ## 2. Message instead of working in parallel
 
-- **Claude Code**: `SendMessage` to the peer (to reply, use the incoming message's `from` address).
-  Lead with the point: what you intend to change and where, and whether they already own it.
-- When a peer says it owns the work, stop editing, building and installing in that tree, and tell it
-  exactly what you already changed so it can decide what to keep.
-- **Tools without session messaging** (Codex CLI, Gemini CLI, scheduled routines): ask the user, or
-  comment on the issue or PR both sessions read.
+- **Claude Code**: `SendMessage` to the peer (reply to the incoming message's `from` address). Lead with what you intend to change, where, and whether they already own it.
+- If a peer says it owns the work, stop editing, building and installing in that tree and tell it exactly what you already changed.
+- **Hosts without session messaging** (Codex, Gemini, opencode, Kimi, scheduled routines; see skills/HOSTS.md): use the section 3 locks, ask the user, or comment on the issue or PR both sessions read.
 
 ## 3. Serialize shared steps with a per-repo lock
 
-Run any step that must not happen twice at once under an OS file lock. The lock is released when the
-command exits, including on a crash, so there is no stale-lock cleanup.
+Run steps that must not happen twice at once under an OS file lock (released on exit, including a crash, so no stale-lock cleanup):
 
 ```bash
 mkdir -p /tmp/agent-locks
@@ -46,21 +34,13 @@ flock -w 600 /tmp/agent-locks/<repo>-<resource>.lock <command>   # Linux (util-l
 lockf -t 600 /tmp/agent-locks/<repo>-<resource>.lock <command>   # macOS / BSD
 ```
 
-Name locks by repo so different repos never block each other, and keep the name a single path
-component: replace every `/` in a branch name with `-` to get `<branch-key>` (`feat/foo` becomes
-`feat-foo`). A `/` would point into a directory that doesn't exist, so the lock would fail to open.
-Resources worth locking:
-
-- `git-push-<branch-key>`: every push to a branch, from any workflow (`pr-iterate`, `ci-watch`, a
-  manual fix), takes `<repo>-git-push-<branch-key>`, so pushes to the same ref serialize while
-  different PRs don't block each other
-- `build` / `install`: anything writing shared build output or installing onto the system
-- `test-suite`: a full run that contends for ports, databases or CPU
+Name locks by repo, as a single path component: replace every `/` in a branch name with `-` for `<branch-key>` (`feat/foo` -> `feat-foo`), or the lock fails to open. Resources worth locking:
+- `git-push-<branch-key>`: every push to a branch from any workflow (`pr-iterate`, `ci-watch`, manual fix) takes `<repo>-git-push-<branch-key>`; same-ref pushes serialize, different PRs don't block.
+- `build` / `install`: shared build output or system installs.
+- `test-suite`: full runs contending for ports, databases or CPU.
 
 If the lock times out, don't retry blindly: find the holder (section 1) and message it (section 2).
 
 ## 4. What a lock doesn't cover
 
-A lock serializes one command; it doesn't stop two sessions making conflicting edits. For
-overlapping edits, section 2 is the protocol: one session owns the change and the other stops. Git
-history stays the source of truth for what landed.
+A lock serializes one command, not conflicting edits. For overlapping edits, section 2 applies: one session owns the change, the other stops. Git history is the source of truth for what landed.

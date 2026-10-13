@@ -8,7 +8,7 @@ description: Run 2 adversarial review passes over a plan, then implement it in d
 
 Run **2 adversarial review passes** over the plan, act on what each finds, then go with it (the 2-pass rule and its rationale are in `AGENTS.md` §1).
 
-Keep the SAME reviewer for both passes and continue it via `SendMessage` rather than respawning a fresh one, so it keeps its context. When the second pass still leaves findings you disagree with, talk them through with that reviewer until you both agree the plan is good, and proceed on that agreement instead of running another round.
+Keep the SAME reviewer for both passes and continue that subagent rather than respawning a fresh one, so it keeps its context (Claude Code: `SendMessage`; other hosts: skills/HOSTS.md). When the second pass still leaves findings you disagree with, talk them through with that reviewer until you both agree the plan is good, and proceed on that agreement instead of running another round.
 
 In each pass print a summary of the issues found before and after fixing them. Then implement the plan in distinct commits, writing tests as you go.
 

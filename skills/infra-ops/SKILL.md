@@ -8,136 +8,104 @@ description: >-
 
 # Infrastructure & Operations
 
-Invoke this skill when working on infrastructure, deployments, cloud resources, or operational concerns. Project-specific overrides live in the project's `CLAUDE.md`.
+Invoke for infrastructure, deployments, cloud resources and operational concerns. Project `CLAUDE.md` overrides.
 
 ## Rollback Awareness
 
-- Before every deploy or Terraform apply, have an explicit rollback plan — know the exact steps to revert
-- **Feature flags are the fastest rollback path** — toggling a flag requires no deploy; prefer them for risky changes
-- **Database rollbacks are much harder than code rollbacks** — a code rollback doesn't undo schema migrations; always verify the down migration path is tested and safe before running the up migration in production
-- Design changes to be reversible: feature flags, backward-compatible schema migrations, blue/green deployments
-- For Terraform: destructive operations (`destroy`, forced resource replacement) require user confirmation first; present the plan summary clearly
-- **Terraform output must never be truncated**: always capture the full output to a file (e.g. redirect to `/tmp/tf-plan.txt` or use `tee`); never pipe through `head`, `tail`, or any length-limiting filter — truncated plans hide resource deletions and replacement cascades. When running as Claude, use the Bash tool's output directly or redirect to a file and `Read` it — avoid `2>&1 | tee` piping which triggers approval prompts (see the `tool-usage` skill)
-- **Always plan before apply**: run `terraform plan` and read the full output; explicitly count destroyed/replaced resources before proceeding
-- **Never `-auto-approve` in production**: gate production applies behind a manual approval step; `-auto-approve` is acceptable only in dev/CI with no production state
-- **Avoid `-target`**: targeted applies leave state inconsistent with config — treat it as a break-glass measure only, never routine workflow
-- **State management**: always use a remote backend with state locking; never run concurrent applies; never edit `.tfstate` directly — use `terraform state mv/rm/import`; take a state backup before destructive operations: `terraform state pull > tf-state-backup-$(date +%Y%m%d).json`
-- **Commit `.terraform.lock.hcl`**: pins provider versions for reproducible applies across machines and CI — treat it like `package-lock.json`
-- **Validate and format in CI**: run `terraform validate` and `terraform fmt -check`; fail the pipeline if fmt produces a diff
-- **Security scanning**: run `tfsec` or `checkov` in CI before apply — catches IAM wildcards, public S3 buckets, and unencrypted storage before they reach the cloud
-- **Sensitive outputs**: mark secrets and tokens with `sensitive = true` in outputs so they don't appear in plan output or CI logs
-- **Drift detection**: schedule a weekly `terraform plan` run against production state in CI; alert on any diff — manual console changes are the most common source of silent drift
-- Blue/green and canary deployments reduce rollback to a traffic switch — prefer them for stateless services
-- Keep the previous container image / artifact version available until the new version is proven stable
-- For database-backed rollbacks: ensure the old code version can safely run against the new schema before switching traffic back
+- Before every deploy or Terraform apply, have an explicit rollback plan with exact revert steps.
+- **Feature flags are the fastest rollback** (no deploy); prefer them for risky changes. Also design for reversibility: backward-compatible schema migrations, blue/green or canary (rollback becomes a traffic switch; prefer for stateless services).
+- **Database rollbacks are much harder than code rollbacks**: a code rollback doesn't undo migrations. Verify the down migration is tested and safe before running the up migration in production, and that the old code can run against the new schema before switching traffic back.
+- Keep the previous image/artifact version available until the new one is proven stable.
+- Terraform:
+  - Destructive operations (`destroy`, forced replacement) need user confirmation first; present the plan summary clearly.
+  - **Never truncate plan output**: capture it fully to a file (e.g. `/tmp/tf-plan.txt`) and `Read` it; never pipe through `head`, `tail` or any length limit (truncation hides deletions and replacement cascades). As Claude, use Bash output directly or redirect to a file; avoid `2>&1 | tee` (approval prompts, see `tool-usage`).
+  - **Always plan before apply**: read the full plan and explicitly count destroyed/replaced resources.
+  - **Never `-auto-approve` in production** (manual approval gate); only in dev/CI with no production state.
+  - **Avoid `-target`**: it leaves state inconsistent with config; break-glass only.
+  - **State**: remote backend with locking; no concurrent applies; never edit `.tfstate` (use `terraform state mv/rm/import`); back up before destructive operations: `terraform state pull > tf-state-backup-$(date +%Y%m%d).json`.
+  - **Commit `.terraform.lock.hcl`** (like `package-lock.json`).
+  - **CI**: `terraform validate` and `terraform fmt -check` (fail on diff); `tfsec` or `checkov` before apply (IAM wildcards, public S3, unencrypted storage).
+  - Mark secrets/tokens `sensitive = true` in outputs.
+  - **Drift detection**: weekly `terraform plan` against production state in CI; alert on any diff.
 
 ## Secrets Management
 
-- Store secrets in a dedicated secret manager (AWS Secrets Manager, GCP Secret Manager, HashiCorp Vault) — never in environment files committed to the repo, S3/GCS without encryption, or config files
-- **Rotation**: rotate secrets on a schedule (API keys quarterly, DB passwords monthly, or immediately on suspected compromise); automate rotation where the service supports it
-- **Emergency rotation procedure**: document and test it before you need it — know how to rotate every secret without causing an outage; use blue/green secret rotation (create new → update consumers → delete old) to avoid downtime
-- **Scan git history**: use `gitleaks`, `truffleHog`, or `git-secrets` to detect secrets that were ever committed, even if removed; a secret in git history is compromised — rotate it
-- Inject secrets at runtime via environment variables or secret manager SDK calls — never bake into images or config files
-- Apply least privilege to secret access: each service reads only the secrets it needs; use separate credentials per environment
-- Audit secret access logs — alert on unexpected access patterns
+- Use a secret manager (AWS Secrets Manager, GCP Secret Manager, Vault); never committed env files, unencrypted S3/GCS, or config files. Inject at runtime via env vars or SDK; never bake into images.
+- **Rotation**: on a schedule (API keys quarterly, DB passwords monthly) or immediately on suspected compromise; automate where supported.
+- **Emergency rotation**: document and test before needed; rotate without outage via blue/green rotation (create new, update consumers, delete old).
+- **Scan git history** (`gitleaks`, `truffleHog`, `git-secrets`); a secret ever committed is compromised: rotate it.
+- Least privilege per service, separate credentials per environment; audit access logs and alert on unexpected patterns.
 
 ## Cost Awareness
 
-- Tag all cloud resources: `project`, `environment`, `owner` at minimum; add `cost-center` for billing attribution
-- Prefer spot/preemptible instances for batch workloads, CI runners, and dev environments
-- Right-size resources — don't default to large instance types; start small and scale with data
-- Set up budget alerts and cost anomaly detection (AWS Cost Anomaly Detection, GCP Budget Alerts) early — before the bill surprises you
-- Review and clean up orphaned resources (unattached EBS volumes, unused Elastic IPs, old snapshots) regularly; automate cleanup where possible
-- Choose storage classes appropriately: use lifecycle policies to move cold data to cheaper tiers and expire data that's no longer needed
-- Consider data transfer costs: egress between regions/AZs/internet adds up; keep services co-located where possible
-- Use auto-scaling policies to avoid over-provisioning — scale down aggressively in non-prod environments outside business hours
-- Prefer managed services over self-hosted when the operational burden is high relative to cost difference
+- Tag all resources: `project`, `environment`, `owner`; `cost-center` for billing.
+- Spot/preemptible for batch, CI runners, dev; right-size (start small, scale with data); auto-scale and scale non-prod down outside business hours.
+- Budget alerts and cost anomaly detection (AWS Cost Anomaly Detection, GCP Budget Alerts) early.
+- Clean up orphaned resources (unattached EBS volumes, unused Elastic IPs, old snapshots), automated where possible; lifecycle policies to move cold data to cheaper tiers and expire the rest.
+- Mind egress between regions/AZs/internet; co-locate services.
+- Prefer managed services when the operational burden is high relative to the cost difference.
 
 ## Monitoring & Health Checks
 
 ### Service Endpoints
-- Expose `/health` (liveness) and `/ready` (readiness) on all services
-- `/health` returns `200` if the process is alive — no DB queries; keep it in-memory
-- `/ready` verifies downstream dependencies (DB, cache, critical APIs) — used by load balancers and orchestrators to route traffic
+- `/health` (liveness): `200` if the process is alive, in-memory only, no DB queries.
+- `/ready` (readiness): verifies downstream dependencies (DB, cache, critical APIs); used by load balancers/orchestrators.
 
 ### Metrics & Alerting
-- Track the four golden signals: latency, traffic, errors, saturation
-- Define SLOs (e.g. p99 latency < 500ms, error rate < 0.1%) and alert on **SLO burn rate**, not just raw thresholds — burn rate alerts fire earlier and with less noise
-- **Dashboards are for investigation; alerts are for action** — dashboards show trends and context; alerts fire only when human intervention is needed
-- Every alert must have a runbook: what it means, how to investigate, how to mitigate — link from the alert to the runbook
-- Use structured, correlated logs alongside metrics — a spike in errors should be traceable to specific requests/users
-- Add **synthetic monitoring** (external uptime checks from outside your infrastructure) — it's the only way to detect issues that affect all infrastructure simultaneously (e.g. DNS, CDN, region outages)
-- Define an on-call rotation with clear escalation paths; ensure runbooks are up to date and accessible to anyone on call
+- Four golden signals: latency, traffic, errors, saturation.
+- Define SLOs (e.g. p99 < 500ms, error rate < 0.1%) and alert on **SLO burn rate** (earlier, less noise).
+- **Dashboards are for investigation; alerts are for action**, fired only when a human must intervene.
+- Every alert links to a runbook (meaning, investigation, mitigation).
+- Structured, correlated logs so error spikes trace to requests/users.
+- **Synthetic monitoring** from outside your infrastructure catches DNS, CDN and region outages.
+- On-call rotation with escalation paths and up-to-date runbooks.
 
 ### Observability Stack
-- Logs → metrics → traces form a complete picture; invest in all three for production services
-- Use distributed tracing (OpenTelemetry) for multi-service architectures to trace request flows end-to-end
-- Instrument at key boundaries: HTTP handlers, DB queries, external API calls, queue consumers
+- Logs, metrics and traces for production services; OpenTelemetry tracing for multi-service systems.
+- Instrument HTTP handlers, DB queries, external API calls, queue consumers.
 
 ## Timeouts & Resilience
 
-- Always set explicit timeouts on HTTP clients, DB connections, and all external calls — never rely on OS defaults
-- Recommended baseline timeouts: HTTP client 30s, DB query 10s, DB connection 5s — adjust per workload
-- **Only retry idempotent operations** — retrying a non-idempotent operation (e.g. charge a card) without an idempotency key causes duplicate side effects
-- Use retries with exponential backoff and jitter for transient failures; set a max retry budget (e.g. 3 attempts over 10s)
-- **Propagate deadlines**: before making a downstream call, check if the context is already cancelled — don't fan out work that will be discarded
-- Implement circuit breakers for external dependencies to prevent cascade failures (open after N failures, half-open to probe recovery)
-- Bulkheads: isolate resource pools per dependency so one slow dependency can't exhaust all threads/connections
-- Graceful degradation: serve degraded functionality rather than failing completely when a non-critical dependency is down
-- Graceful shutdown: drain in-flight requests, flush buffers, close DB connections before exiting — handle `SIGTERM`
-- Chaos engineering: periodically inject faults (latency, errors, outages) in staging to verify resilience assumptions hold in practice
+- Explicit timeouts on HTTP clients, DB connections and all external calls; baseline HTTP 30s, DB query 10s, DB connection 5s, adjusted per workload.
+- **Retry only idempotent operations** (or with an idempotency key); exponential backoff with jitter and a max budget (e.g. 3 attempts over 10s).
+- **Propagate deadlines**: check for a cancelled context before downstream calls.
+- Circuit breakers for external dependencies (open after N failures, half-open to probe).
+- Bulkheads: separate resource pools per dependency.
+- Graceful degradation when a non-critical dependency is down.
+- Graceful shutdown on `SIGTERM`: drain in-flight requests, flush buffers, close DB connections.
+- Periodically inject faults (latency, errors, outages) in staging to verify resilience.
 
 ## Multi-Environment Awareness
 
-- Maintain dev/staging/prod parity — same Docker image, same IaC modules, same migration tooling; only config differs
-- Environment-specific config via environment variables only — never via code branches or build-time conditionals
-- Secrets per environment via a secret manager — never shared secrets across environments
-- Test infrastructure changes in a lower environment before promoting; staging should mirror production topology
-- Production access should be audited, time-limited, and require explicit approval — no standing prod access for day-to-day work
-- Keep environment parity by running the same smoke tests post-deploy in every environment
+- dev/staging/prod parity: same image, IaC modules, migration tooling; only config differs, via environment variables (never code branches or build-time conditionals).
+- Per-environment secrets from a secret manager; never shared across environments.
+- Test infrastructure changes in a lower environment first; staging mirrors production topology; run the same post-deploy smoke tests everywhere.
+- Production access audited, time-limited, explicitly approved; no standing access for day-to-day work.
 
 ## Dependency Updates
 
-- Keep dependencies current — don't let them drift for months; schedule a regular update cadence
-- Read changelogs and release notes before updating; look for breaking changes, deprecations, and security fixes
-- Batch minor/patch updates together; handle major version bumps individually with dedicated testing
-- Enable automated dependency PRs (Dependabot, Renovate) to surface updates continuously
-- Pin to exact versions in application code; use ranges only in library code
-- Audit transitive dependencies — a direct dep with a clean record can pull in a vulnerable transitive dep
-- Remove unused dependencies — they're attack surface and build overhead with no benefit
+- Update on a regular cadence; read changelogs for breaking changes, deprecations and security fixes.
+- Batch minor/patch updates; handle major bumps individually with dedicated testing.
+- Automated dependency PRs (Dependabot, Renovate).
+- Exact pins in application code, ranges only in libraries.
+- Audit transitive dependencies; remove unused ones.
 
 ## CI/CD
 
-- Every merge to the main branch should be automatically deployable (trunk-based development)
-- Deployment pipeline stages: lint → test → build → security scan → deploy to staging → smoke test → deploy to prod
-- **Branch protection rules**: require CI to pass and at least one reviewer before merging to main; prohibit force-pushes to main; pick either linear history (squash/rebase) or merge commits — enforce one strategy consistently, never mix
-- **Deployment environment approvals**: use GitHub Environments (or equivalent) to require manual approval before deploying to production; log who approved and when
-- Use deployment gates: don't auto-promote to prod if staging smoke tests fail
-- Store build artifacts in a registry (container registry, artifact repo) — never rebuild from source for prod deploys
-- **Immutable artifacts**: the same image/binary that passed tests is what gets deployed — no rebuilds between environments
-- Keep pipeline configs in version control; treat CI/CD changes with the same review rigour as application code
-- Use short-lived deploy credentials (OIDC tokens) rather than long-lived CI secrets where possible
-- **Release strategy**: tag releases in git with semantic versions (`v1.2.3`); maintain a CHANGELOG; automate release notes generation from commit messages or PR titles; in container registries also push a `latest` tag pointing to the most recent production image
+- Every merge to main is automatically deployable (trunk-based).
+- Pipeline: lint, test, build, security scan, deploy to staging, smoke test, deploy to prod; gates: no auto-promote to prod if staging smoke tests fail.
+- **Branch protection**: CI must pass and at least one reviewer before merging to main; no force-pushes to main; one consistent strategy (linear history via squash/rebase, or merge commits), never mixed.
+- **Environment approvals**: GitHub Environments (or equivalent) require manual approval for production; log who and when.
+- Build artifacts live in a registry; never rebuild from source for prod. **Immutable artifacts**: the image/binary that passed tests is what deploys.
+- Pipeline configs in version control with application-code review rigour; short-lived deploy credentials (OIDC) over long-lived CI secrets.
+- **Releases**: semantic version git tags (`v1.2.3`); CHANGELOG; release notes generated from commits or PR titles; container registries also get a `latest` tag on the newest production image.
 
 ## Multi-Repo Integration Builds
 
-Assembling unmerged work across several repos, building it, and testing the result has its own
-failure modes, all of which fail *silently*:
+Assembling unmerged work across several repos, building and testing it fails *silently* in these ways:
 
-- **Enumerate loudly.** A loop over repos, PRs or submodules must surface failures, not print only
-  successes. Default branches differ (`main` vs `master`), queries fail, repos get missed. Report
-  counts as "what I found", never as "what exists", and re-check before claiming completeness.
-- **One clean build exit is not a complete build.** After new targets appear, the first run may
-  regenerate the build graph and execute the old one, exiting 0 with work still pending. Ask the
-  build system what remains (`ninja -n`) before believing it.
-- **Say which layer is under test.** A component built from integration branches running against
-  stock system libraries is not "the integrated stack". Name the parts that are, and the parts that
-  are not.
-- **Prefer testing a private runtime over installing one.** A locally built runtime exercised from a
-  disposable location beats replacing the machine's. When a project guards that path (setuid
-  binaries commonly ignore environment overrides under `AT_SECURE`), treat the guard as correct and
-  find a supported route rather than defeating it.
-- **Never install or publish from a tree with uncommitted changes.** The artifact becomes
-  unreproducible by anyone the moment that working tree is cleaned. Commit first, even to a
-  throwaway branch, so the artifact is attributable to a SHA; record what was actually built rather
-  than what should have been.
+- **Enumerate loudly.** A loop over repos, PRs or submodules must surface failures, not print only successes (default branches differ, `main` vs `master`; queries fail; repos get missed). Report counts as "what I found", not "what exists"; re-check before claiming completeness.
+- **One clean build exit is not a complete build.** After new targets appear, the first run may regenerate the build graph and run the old one, exiting 0 with work pending. Ask the build system what remains (`ninja -n`).
+- **Say which layer is under test.** A component built from integration branches against stock system libraries is not "the integrated stack"; name what is and isn't integrated.
+- **Prefer testing a private runtime over installing one**: a locally built runtime exercised from a disposable location beats replacing the machine's. If a project guards that path (setuid binaries ignore environment overrides under `AT_SECURE`), treat the guard as correct and find a supported route.
+- **Never install or publish from a tree with uncommitted changes.** Commit first, even to a throwaway branch, so the artifact is attributable to a SHA; record what was actually built.
