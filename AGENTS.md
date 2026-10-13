@@ -104,6 +104,9 @@ before grep-and-read loops. Broad questions (>3 searches) go to a read-only rese
   reading: edge cases (null/empty, alternate enums/providers, cross-tenant data, untested branches),
   deletion probes, and mutation probes that must make a test fail; tries to refute each of its own
   findings before reporting; and reports what it attacked and how, so "no findings" is evidence.
+  It reviews the real change as written. A mutation probe is a temporary edit in a scratch copy that
+  checks one test can fail, reverted at once; nobody plants bugs in the change for a reviewer to
+  catch, and no loop of planting and catching is ever run.
   Every reviewer is a non-author. Gate reviews (§1, §1c) keep one reviewer across both passes;
   verification (§1d, §4) starts a fresh agent with a cold brief and no author transcript, then keeps
   it through the fix rounds. On a PR, the verdict is against the current HEAD and is posted on the
@@ -141,15 +144,15 @@ machinery the plan lacks, re-plan.
 ### 1d. Cross-agent PR review
 
 A pushed PR is not mergeable until a fresh agent with a cold brief and no author transcript has
-reviewed it; obtain that
-review yourself, never stop at "needs review". Brief it cold: project and what correct means, PR
-number, head SHA, base and stack, build/test commands, applicable rules, output format, and that the
-PR body is a claim, not evidence. Make it compare against the source of truth (upstream code, spec,
-vendor source) with a `file:line` per field checked, and reproduce evidence (rebuild the parent with
-the new tests; mutate the implementation and confirm the probe fails). Verify each finding before
-acting; close unreproducible ones with a note. Fixes go back through the same reviewer. Reviewers
-never merge; a finding fixed after a clean review lands as a follow-up PR, not an amend. Then merge
-per `pr-lifecycle` (human merge by default; never self-merge `LeanerCloud/dotclaude`).
+reviewed it; obtain that review yourself, never stop at "needs review". Brief it cold: project and
+what correct means, PR number, head SHA, base and stack, build/test commands, applicable rules,
+output format, and that the PR body is a claim, not evidence. Make it compare against the source of
+truth (upstream code, spec, vendor source) with a `file:line` per field checked, and reproduce
+evidence (rebuild the parent with the new tests; mutate a scratch copy of the implementation and
+confirm the probe fails). Verify each finding before acting; close unreproducible ones with a note.
+Fixes go back through the same reviewer. Reviewers never merge; a finding fixed after a clean review
+lands as a follow-up PR, not an amend. Then merge per `pr-lifecycle` (human merge by default; never
+self-merge `LeanerCloud/dotclaude`).
 
 ### 2. Subagents
 
