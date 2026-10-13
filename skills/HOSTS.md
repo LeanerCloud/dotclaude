@@ -35,7 +35,8 @@ opencode also sees the Claude-only imported skills through `~/.claude/skills/`; 
 
 **Headless session as an independent reviewer**: `codex exec --sandbox read-only`, `kimi --plan -p`
 (plan mode), `opencode run`, `gemini -p` and `agy -p --sandbox`
-(no read-only flag found for the first three; the brief is the only guard). Give it the diff or a worktree path, the cold brief and an explicit
+(none of these four documents a read-only mode; agy's `--sandbox` only restricts the terminal, so the
+brief is the guard). Give it the diff or a worktree path, the cold brief and an explicit
 read-only instruction (use the host's sandbox or read-only mode where it has one). It cannot be
 continued, so a second pass re-sends the brief plus the first findings. A different vendor's model
 gives stronger independence than the same model in a fresh session.
@@ -52,7 +53,7 @@ reviews, verifies).
 | opencode | `-m opencode/claude-sonnet-5-5`, low effort in the brief | same, medium | same, high |
 | Kimi Code | `-m kimi-code/k3`, effort low | `kimi-code/k3`, effort high | `kimi-code/k3`, effort max |
 | Gemini CLI | Flash-Lite | Flash | Pro |
-| Antigravity CLI | `agy -p --effort low` (Flash) | `--effort medium` (Flash) | `--effort high` (top model your plan offers) |
+| Antigravity CLI | `agy -p --effort low` | `--effort medium` | `--effort high` (pick `--model` from `agy models`; unverified) |
 
 The Sonnet-only rule in `AGENTS.md` §2 covers Claude models (Claude Code, opencode); other hosts use
 their own models. Kimi's medium row is effort high because `k3` offers only low, high and max.
