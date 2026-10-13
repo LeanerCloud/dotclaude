@@ -8,16 +8,14 @@ description: >-
 
 # Cristian's voice
 
-The target is prose that reads like a competent engineer explaining his work: long, plain, additive
-sentences, contractions everywhere, specific services and dollar figures instead of adjectives, and
-no theatre. The test is not an AI detector (they flag everything, and optimizing against them just
-produces a different kind of artificial prose). The test is whether a skeptical technical reader
-would pause on a line and think "this was generated".
+Target: prose like a competent engineer explaining his work: long, plain, additive sentences,
+contractions everywhere, specific services and dollar figures instead of adjectives, no theatre.
+The test is whether a skeptical technical reader would pause on a line and think "this was
+generated", not an AI detector.
 
-Everything below was measured, not guessed. Corpus: 27 LinkedIn long-form pieces from the
-2022-2023 export (31k words, exported straight from LinkedIn, so definitely his) plus 5 blog posts on
-leanercloud.com verified as his by `git log --diff-filter=A`. See "Verify the corpus" before adding
-to it.
+Everything below was measured. Corpus: 27 LinkedIn long-form pieces from the 2022-2023 export (31k
+words, definitely his) plus 5 leanercloud.com blog posts verified as his by
+`git log --diff-filter=A`. See "Verify the corpus" before adding to it.
 
 ## 1. The fingerprint
 
@@ -83,14 +81,13 @@ A paragraph in his voice states a fact, then the reason, then what he did about 
 > disallowed instance types. After I noticed this I simply switched the default configuration of
 > allowed instance types to "", which makes it work as we expected.
 
-## 2. AI tells to remove, ranked by how often they appear
+## 2. AI tells to remove, ranked by frequency
 
-Hunt these deliberately. Every before/after below is from the leanercloud.com audit; the "after" is
-what shipped or what he accepted.
+Every before/after below is from the leanercloud.com audit; the "after" is what shipped or he accepted.
 
 1. **Setup-then-reversal antithesis.** "Not X. Y." / "It isn't A, it's B" / "X was never the
-   problem" / "all of the X and none of the Y". The worst and most common offender. Fix: state the
-   point once, as a plain clause, or cut.
+   problem" / "all of the X and none of the Y". Worst and most common. Fix: state the point once as
+   a plain clause, or cut.
    - Before: "You don't need a better business case. You need implementation capacity."
      After: "The missing piece is an engineer to do the work"
    - Before: "Not borrowed from the engineering team and pulled onto a feature next sprint. Someone
@@ -99,8 +96,7 @@ what shipped or what he accepted.
    - Before: "They all stop at information, and information was never the problem. What's missing
      is somebody to do the work." After: "None of them add anyone who does the work."
 2. **Short fragments as rhetorical beats.** "Ever." "By design." "Some teams do." "Every time, in
-   every company." He writes under 1% of sentences at 5 words or fewer; a marketing page written by
-   AI runs 5-10%. Fix: join the fragment to the sentence before it, or cut it.
+   every company." Fix: join to the previous sentence, or cut.
    - Before: "No AI touches your production account. Ever." After: "No AI touches your production
      account"
    - Before: "They can. They mostly won't, and it isn't because they're lazy." After: "They can, but
@@ -108,13 +104,12 @@ what shipped or what he accepted.
      tickets aren't features."
 3. **Rule-of-three drumbeats and perfectly parallel clauses.** "Dashboards find the waste. Reports
    document it. Tickets get filed." / "assess, report, recommend, leave" / "$988,000 a year. Nine
-   changes. One engineer." Fix: one sentence with "and", using the natural number of items.
+   changes. One engineer." Fix: one sentence with "and", the natural number of items.
    - After: "Dashboards find the waste and tickets get filed, but somebody still has to make the
-     change." / "$988,000 a year from nine changes, made by one engineer"
-4. **Portentous one-line summary closing a paragraph.** A short abstract sentence restating the
-   concrete paragraph as a principle, often bold: "The arithmetic works for us, because we automated
-   it." / "What you're buying is a lower bill next month." / "That is where most of the idle spend
-   hides." Fix: cut it, or fold it into the paragraph as a plain clause ("For us the arithmetic
+     change." / "$988,000 a year from nine changes, made by one engineer" (His short-sentence rate: under 1% at 5 words or fewer; AI marketing pages: 5-10%.)
+4. **Portentous one-line summary closing a paragraph**, often bold: "The arithmetic works for us,
+   because we automated it." / "What you're buying is a lower bill next month." / "That is where
+   most of the idle spend hides." Fix: cut it, or fold in as a plain clause ("For us the arithmetic
    works because we automated most of it").
 5. **Rhetorical instructions and questions.** "Have a look at your ticket queue and count how
    many...", "Read that name again", "Picture a chip as...", "So why isn't everything on Spot?
@@ -122,12 +117,12 @@ what shipped or what he accepted.
    oversized instances, orphaned volumes, filed months ago and still open."
 6. **Throat-clearing before the point.** "Here's the part that doesn't make it into the survey.",
    "The reason is structural, and it's worth saying plainly:", "Below is what actually gets changed.
-   It is deliberately specific, because...". Fix: delete the lead-in, start with the point.
+   It is deliberately specific, because...". Fix: delete the lead-in.
 7. **Semicolons joining clauses for balance, and any em-dash.** "A tool finds things; we implement
    them." becomes "A tool finds things, and we fix them". Use a comma, "and", "so", or a new
-   sentence. Where a dash is unavoidable, a spaced hyphen " - " is what he types.
+   sentence; if a dash is unavoidable, a spaced hyphen " - ".
 8. **Uncontracted forms.** "You have heard all of this before", "It is a work plan", "tooling I
-   have been building", "engineering will not prioritize". Contract them all unless emphatic.
+   have been building", "engineering will not prioritize". Contract unless emphatic.
 9. **Do-nothing adverbs.** actually, genuinely, precisely, simply, really, truly. "AWS cost
    optimization that actually gets implemented" becomes "AWS cost optimization that gets
    implemented". Keep "actually" only in his sense: "it actually works", "actually made".
@@ -140,7 +135,7 @@ what shipped or what he accepted.
     happens: "pushing engineers into work they aren't measured on".
 12. **Claims with no number where he'd give one.** "helped thousands of companies save over
     $100,000,000" with no source; "typically costs less than a FinOps SaaS subscription" with no
-    price on either side. Either attach the figure and its source or mark it `[NEEDS: ...]`.
+    price on either side. Attach the figure and source, or mark `[NEEDS: ...]`.
 
 ## 3. Corporate-speak he rejected, and what he wrote instead
 
@@ -161,60 +156,50 @@ what shipped or what he accepted.
 
 ## 4. Voice conventions for LeanerCloud copy
 
-- **"We" is the default** for the company, the service, the process, pricing, security, procurement
-  and the specialist network. "We make the changes ourselves", "we only ask for more access per
-  change", "we'd rather confirm it with you than promise it".
+- **"We" is the default** for the company, service, process, pricing, security, procurement and the
+  specialist network. "We make the changes ourselves", "we only ask for more access per change",
+  "we'd rather confirm it with you than promise it".
 - **Cristian is referred to in the third person, by name**, for credentials and history:
   "LeanerCloud is a FinOps implementation team, led by Cristian Magherusan-Stanciu, who has spent 12
   years in AWS cost optimization, some of them at AWS itself, in the EC2 team, as a Specialist
   Solutions Architect for Spot and Graviton." / "Cristian spent years waiting on engineering teams
   himself, so the whole approach was built around not having to."
-- **"LeanerCloud"** is a name for the company and its products ("the LeanerCloud GUI", "our EBS
-  Optimizer"), used sparingly. Never "at LeanerCloud we".
+- **"LeanerCloud"** names the company and its products ("the LeanerCloud GUI", "our EBS
+  Optimizer"), sparingly. Never "at LeanerCloud we".
 - **The company is "a FinOps implementation team".** Never "a consultancy" (the site argues against
-  consultants who produce a PDF and leave) and never "a practice" (that word belongs to the
-  customer's FinOps practice, which the service feeds rather than replaces).
+  consultants who produce a PDF and leave) or "a practice" (that is the customer's FinOps practice,
+  which the service feeds rather than replaces).
 - **Facts that carry a claim are not style choices.** "I run every engagement myself" or "nothing
   reaches production that I haven't checked" promise something; changing the pronoun changes the
-  promise. Flag these instead of rewording them.
-- **In his own posts and newsletters** (LinkedIn, blog under his byline) the voice is "I". He uses
-  "we" only for the product and release voice ("we're happy to announce", "we now charge one month
-  of savings per volume"), for the engagement process with a customer ("We usually start such
-  engagements by going through the latest AWS bill"), and for himself plus the customer's team in a
-  story. Never "we" for his own credentials or opinions.
+  promise. Flag, don't reword.
+- **In his own posts and newsletters** (LinkedIn, blog under his byline) the voice is "I". "We" only
+  for the product and release voice ("we're happy to announce", "we now charge one month of savings
+  per volume"), the customer engagement process ("We usually start such engagements by going
+  through the latest AWS bill"), and himself plus the customer's team in a story. Never "we" for his
+  own credentials or opinions.
 
 ## 5. Process rules
 
-- **Never invent facts, numbers, client details or capabilities.** If a rewrite would read better
-  with a specific detail you don't have, write `[NEEDS: what is missing]` and move on.
-- **Preserve every figure, pricing term, spend threshold, security commitment and Marketplace/EDP
-  wording exactly.** If a claim looks wrong or two pages contradict each other, put it in a separate
-  "factual issues" list. Don't fix it silently inside a style rewrite.
-- **Shorter is usually right.** If a paragraph survives at 60% of its length, cut it to 60%. When a
-  sentence exists only for rhythm, delete it rather than rewording it.
-- **Keep the persuasive structure.** The pages follow deliberate copywriting frameworks; fix the
-  prose, don't reorder the argument.
-- **Watch for over-correction.** A first de-AI pass pushed the site's mean sentence length past his
-  own average and produced unreadable 60-word sentences that then had to be split again. Aim at his
-  distribution (mean 25-30, plenty of 35-45 word sentences, almost nothing under 6 words), not at
-  "longer". A sentence over ~50 words that isn't a list needs a second look.
-- **Don't optimize against AI-detection tools.** They flag his real writing too. Re-read as the
-  skeptical technical buyer instead.
+- **Never invent facts, numbers, client details or capabilities.** Where a rewrite needs a detail you don't have, write `[NEEDS: what is missing]`.
+- **Preserve every figure, pricing term, spend threshold, security commitment and Marketplace/EDP wording exactly.** Claims that look wrong or pages that contradict go in a separate "factual issues" list, not silently fixed in a style rewrite.
+- **Shorter is usually right**: if a paragraph survives at 60%, cut it to 60%; delete sentences that exist only for rhythm.
+- **Keep the persuasive structure**; fix the prose, don't reorder the argument.
+- **Watch for over-correction.** A first de-AI pass pushed mean sentence length past his average and produced unreadable 60-word sentences. Aim at his distribution (mean 25-30, plenty of 35-45 word sentences, almost nothing under 6 words), not "longer". A non-list sentence over ~50 words needs a second look.
+- **Don't optimize against AI-detection tools** (they flag his real writing too); re-read as the skeptical technical buyer.
 - **US spelling** on the sites (optimization, anonymized). No em-dashes anywhere.
 
 ## 6. Verify the corpus before measuring against it
 
-Before building or extending a fingerprint from a folder of posts, confirm each file is his:
+Before extending the fingerprint from a folder of posts, confirm each file is his:
 
 ```bash
 git log --diff-filter=A --format='%h %ad %s' --date=short -- <file>
 ```
 
-Anything added in a bulk SEO or "content" commit is almost certainly AI-written, and calibrating
-against it produces a fingerprint of the AI. On leanercloud.com, 8 of the 14 `content/blog/*.md`
-posts were added in two 2026-08-20 SEO commits (`d754656`, `45d0da6`) and have zero contractions in
-600 words; they are excluded. The 5 posts imported in the 2026-07 theme migration (`4e37989`) carry
-the original beehiiv footer and match the LinkedIn corpus, so they count.
+Files added in a bulk SEO or "content" commit are almost certainly AI-written. On leanercloud.com, 8
+of the 14 `content/blog/*.md` posts came from two 2026-08-20 SEO commits (`d754656`, `45d0da6`) with
+zero contractions in 600 words, and are excluded. The 5 posts imported in the 2026-07 theme
+migration (`4e37989`) carry the original beehiiv footer and match the LinkedIn corpus, so they count.
 
 The LinkedIn export is the primary source:
 `/Users/cristi/Dropbox_Maestral/devel/linkedin-content-downloader/Basic_LinkedInDataExport_05-04-2025.zip/Articles/Articles/*.html`
@@ -222,20 +207,17 @@ The LinkedIn export is the primary source:
 
 ## 7. Measure a draft
 
-`scripts/fingerprint.py` in this skill directory strips HTML or Markdown, prints contraction rate,
-sentence-length distribution, banned words, connectives he never uses, and regex hits for the
-structural tells, and marks each metric against the targets above:
+`scripts/fingerprint.py` in this skill directory strips HTML/Markdown and prints contraction rate, sentence-length distribution, banned words, connectives he never uses and regex hits for the structural tells, marked against the targets above:
 
 ```bash
 python3 ~/.claude/skills/cristi-voice/scripts/fingerprint.py content/_index.md data/home_faq.json
 ```
 
-The numbers are a smoke test, not the goal. A page can hit every target and still read as generated
-if the antithesis and the drumbeats are still there, so do the checklist pass by hand as well.
+The numbers are a smoke test: a page can hit every target and still read as generated, so also do the checklist pass by hand.
 
 ## 8. Review checklist
 
-Run on every paragraph before handing copy back:
+Run on every paragraph before handing copy back (details in section 2):
 
 1. Any "Not X. Y." / "isn't A, it's B" / "was never the problem" / "all of X and none of Y"? Flatten or cut.
 2. Any sentence of 5 words or fewer that isn't a heading or a sign-off? Join or cut.

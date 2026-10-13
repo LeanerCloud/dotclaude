@@ -7,25 +7,23 @@ description: Worktree isolation per change - creation preconditions, plan persis
 
 # Worktree Isolation Per Change
 
-Multi-commit or long-running work, and any work in a checkout another session may be using, happens in a dedicated git worktree branched off the current branch — never commit in-progress work directly on the branch you started from. The base branch stays clean until the change is fully implemented and verified, so a broken or abandoned attempt never pollutes it.
-
-This file is the full worktree-isolation protocol: when to create one, how to persist the plan, the PID/ownership lifecycle, crash recovery, the merge gate, and cleanup. AGENTS.md §1b carries a short headline + pointer here.
+Multi-commit or long-running work, and any work in a checkout another session may be using, happens in a dedicated git worktree branched off the current branch; never commit in-progress work on the branch you started from. This file is the full protocol (AGENTS.md §1b carries the headline).
 
 ## Preconditions and creation
 
-- **Precondition — plan has passed the §1 review gate** (2 adversarial review passes, acted on). The worktree is the commitment to implement. Don't create one while the plan is still being iterated on, or it becomes a dumping ground for exploratory edits made on an unverified plan (and once commits start landing, reviewing the plan becomes fighting the code's momentum instead of shaping its design). If the plan needs more revision, stay on the base branch, revise, re-review, then come back.
-- **Use the durable root** `~/.claude/worktrees/<repo-name>-<slug>`. Never put a persistent worktree under `/tmp`, `$TMPDIR`, or another directory cleared at reboot. `<repo-name>` is the main checkout's directory name.
-- **Record the base branch** (the branch checked out when the task starts — e.g., `feat/multicloud-web-frontend`, `main`) in the plan. That's what you'll rebase/merge onto at the end. If the base branch is `main` or another protected branch, still use a worktree — PR discipline from the `git-commit` skill applies on top.
-- **Create the worktree after the plan review gate passes**, before the first commit:
+- **Precondition: the plan has passed the §1 review gate** (2 adversarial passes, acted on). The worktree is the commitment to implement; while the plan is still being revised, stay on the base branch.
+- **Durable root**: `~/.claude/worktrees/<repo-name>-<slug>` (`<repo-name>` is the main checkout's directory name). Never under `/tmp`, `$TMPDIR` or another directory cleared at reboot.
+- **Record the base branch** (the branch checked out at task start) in the plan; that is what you rebase onto. A `main`/protected base still gets a worktree.
+- **Create after the review gate, before the first commit**:
   ```bash
   mkdir -p "$HOME/.claude/worktrees"
   git worktree add "$HOME/.claude/worktrees/<repo-name>-<slug>" -b <type>/<slug> <base-branch>
   ```
-  where `<type>` matches conventional commit types (`feat`, `fix`, `refactor`, `chore`, etc.) and `<slug>` is a short kebab-case name for the change. All implementation, commits, tests, and reviews run inside the worktree.
+  `<type>` is a conventional-commit type, `<slug>` short kebab-case. All implementation, commits, tests and reviews run inside the worktree.
 
 ## Persisting the plan
 
-Persist the plan outside the worktree so it survives crashes: write the authoritative plan to `~/.claude/projects/<project>/plans/<slug>.md` (create the dir if missing). The plan file has three mandatory sections in order: (1) a YAML header, (2) an embedded workflow checklist (so the process travels with the plan even if a reader skips CLAUDE.md), and (3) the task breakdown itself.
+Write the authoritative plan to `~/.claude/projects/<project>/plans/<slug>.md` (outside the worktree, so it survives crashes), with three sections in order: YAML header, embedded workflow checklist, task breakdown.
 
 ### Header block (YAML frontmatter)
 
@@ -36,8 +34,8 @@ base_branch: <base-branch>
 feature_branch: <type>/<slug>
 started: <ISO-8601 timestamp>
 status: in-progress   # in-progress | verifying | merged | abandoned
-pid: <PID of the owning Claude process — $$ from the shell the session runs in>
-host: <hostname — $(hostname) output>
+pid: <PID of the owning Claude process - $$ from the shell the session runs in>
+host: <$(hostname)>
 pid_updated: <ISO-8601 timestamp of the last pid write>
 build_dirs: []   # absolute paths of every build dir created for this branch; the only dirs cleanup may delete
 ---
@@ -45,20 +43,20 @@ build_dirs: []   # absolute paths of every build dir created for this branch; th
 
 ### Embedded workflow checklist
 
-Paste verbatim below the header — copy-paste, don't paraphrase, so every plan carries the same rules:
+Paste verbatim below the header (copy, don't paraphrase):
 
 ```markdown
-## Workflow (embedded from ~/.claude/skills/worktrees/SKILL.md — DO NOT SKIP)
+## Workflow (embedded from ~/.claude/skills/worktrees/SKILL.md - DO NOT SKIP)
 
 **Before touching any file in the worktree, resolve ownership**:
 1. Read `pid:`, `host:`, and `pid_updated:` from the header.
-2. If `host:` equals the current hostname, run `kill -0 <pid> 2>/dev/null`. Exit code 0 → another session owns this plan. STOP and coordinate with that session (`ListAgents` / `SendMessage`, see the `multi-agent-comms` skill) — do not adopt.
-3. If `host:` differs OR `kill -0` fails OR `pid_updated:` is older than 24h, the plan is orphaned. Adopt it: overwrite `pid:` with your own PID, `host:` with your hostname, `pid_updated:` with now (ISO-8601). Save the header BEFORE any code edit. The adoption write is the lock — whichever session writes last wins; the other must abandon if it discovers the change.
-4. Re-read the header after a short delay (~2s) to detect a competing adopter. If your PID is still there, you own the plan; otherwise back off.
+2. If `host:` equals the current hostname, run `kill -0 <pid> 2>/dev/null`. Exit code 0 -> another session owns this plan. STOP and coordinate with that session (see the `multi-agent-comms` skill); do not adopt.
+3. If `host:` differs OR `kill -0` fails OR `pid_updated:` is older than 24h, the plan is orphaned. Adopt it: overwrite `pid:` with your own PID, `host:` with your hostname, `pid_updated:` with now (ISO-8601). Save the header BEFORE any code edit. The adoption write is the lock: whichever session writes last wins; the other must abandon if it discovers the change.
+4. Re-read the header after ~2s to detect a competing adopter. If your PID is still there, you own the plan; otherwise back off.
 
 **While working**: refresh `pid_updated:` at least every 30 min (or at each task checkpoint) so a watchdog can tell a live session from a stuck one.
 
-**Merge gate — ALL must hold before rebasing onto `base_branch:`**:
+**Merge gate - ALL must hold before rebasing onto `base_branch:`**:
 - Every item in this plan is implemented (tick each line).
 - The AGENTS.md §1 post-implementation review is clean.
 - **2 verification passes are done and acted on** (two, whatever the stakes). A pass covers tests, lint/typecheck, the §4 per-change-type verification (UI smoke, API curl, etc.), and a re-read of the diff against the plan. Fix what each pass finds; don't keep re-verifying for a pass that finds nothing. A clean pass on the exact same SHA counts for every gate that sees it (`AGENTS.md` §1, same-hash rule).
@@ -70,105 +68,98 @@ Paste verbatim below the header — copy-paste, don't paraphrase, so every plan 
 
 ### Task breakdown
 
-The actual plan — atomic tasks with file paths and verification steps per AGENTS.md §1.
+Atomic tasks with file paths and verification steps per AGENTS.md §1.
 
 ### Symlink and exclusion
-
-Then symlink the plan into the worktree:
 
 ```bash
 ln -s ~/.claude/projects/<project>/plans/<slug>.md <worktree>/plan.md
 ```
 
-Add `plan.md` to the worktree's `.git/info/exclude` (per-clone, local-only — keeps it untracked without touching the committed `.gitignore`). Update the plan file in place as the work evolves — it's the single source of truth; `plan.md` inside the worktree is just a convenient handle.
+Add `plan.md` to the worktree's `.git/info/exclude` (local-only). Update the plan file in place; it is the single source of truth.
 
 ### Submodules are not isolated
 
-Submodule gitdirs live centrally in the main clone's `.git/modules`, so a linked worktree points at the same ones. `git submodule update` inside a worktree therefore moves the **main clone's** submodule HEADs for every worktree on it, while `init` and `sync` change shared configuration: the submodule URL in the common `.git/config`. Superproject-only edits are fine, and so is an index-only pointer fix (`git update-index --cacheinfo 160000,<sha>,<path>`), which never enters the submodule. Anything needing populated submodules, a build, or a recursive operation gets an **independent clone with `--reference`** instead: alternates share the superproject's objects, while refs, HEAD and every submodule gitdir stay its own, which keeps the blast radius inside your clone. The reference covers the superproject only, so hand it to the submodules explicitly (`git submodule update --init --recursive --reference <path>`, or `--dissociate` to stop depending on it) or they fetch their own objects from the origin. And the clone depends on the reference repo's object store, so never `git gc`/`prune`/`repack` the tree it borrows from.
+Submodule gitdirs live in the main clone's `.git/modules`, so `git submodule update` inside a linked worktree moves the **main clone's** submodule HEADs for every worktree, and `init`/`sync` change shared config (submodule URL in the common `.git/config`). Superproject-only edits and index-only pointer fixes (`git update-index --cacheinfo 160000,<sha>,<path>`) are fine. Anything needing populated submodules, a build, or a recursive operation gets an **independent clone with `--reference`** (alternates share the superproject's objects; refs, HEAD and submodule gitdirs stay its own). The reference covers the superproject only: pass it to submodules explicitly (`git submodule update --init --recursive --reference <path>`, or `--dissociate`). The clone depends on the reference repo's object store, so never `git gc`/`prune`/`repack` the tree it borrows from.
 
-## PID lifecycle — writes are the ownership protocol
+## PID lifecycle - writes are the ownership protocol
 
-- On plan creation: set `pid:` to the current Claude process PID (the shell's `$$` from the same terminal the session runs in), `host:` to `$(hostname)`, `pid_updated:` to now.
-- On every task checkpoint or at least every 30 min while actively editing: rewrite `pid_updated:` (and `pid:` if it changed). This is the liveness heartbeat.
-- On adoption by a new session: rewrite `pid:`, `host:`, `pid_updated:` in one atomic write BEFORE any code change. Then verify after ~2s that your PID is still there — if not, another adopter raced you; yield.
-- On clean exit (merge or abandon): clear `pid:` (set to empty or omit) so the plan is trivially identifiable as not-owned even before file deletion.
+- Plan creation: set `pid:` (the session shell's `$$`), `host:` (`$(hostname)`), `pid_updated:` (now).
+- Every task checkpoint or at least every 30 min while editing: rewrite `pid_updated:` (and `pid:` if changed). This is the heartbeat.
+- Adoption: rewrite `pid:`, `host:`, `pid_updated:` in one write BEFORE any code change; verify after ~2s that your PID is still there, else yield.
+- Clean exit (merge or abandon): clear `pid:`.
 
 ## Crash recovery and orphan detection
 
-The next session enumerates `~/.claude/projects/<project>/plans/` and reads each header. For every plan with `status: in-progress` or `verifying`:
+The next session enumerates `~/.claude/projects/<project>/plans/` and reads each header with `status: in-progress` or `verifying`:
 
-- `host:` matches current hostname AND `kill -0 <pid>` succeeds → **active**, leave alone.
-- `host:` matches AND `kill -0` fails → **orphaned locally**, safe to adopt.
-- `host:` differs → can't verify PID across machines; treat as orphaned only if `pid_updated:` is older than 24h (stale heartbeat). Otherwise leave alone and coordinate with that session (the `multi-agent-comms` skill).
-- After adoption, `cd` to the `worktree:` path, re-read the embedded workflow, run `git status` and `git log <base_branch>..HEAD` to see progress, and resume from the first unchecked task.
+- `host:` matches AND `kill -0 <pid>` succeeds: **active**, leave alone.
+- `host:` matches AND `kill -0` fails: **orphaned locally**, safe to adopt.
+- `host:` differs: PIDs can't be verified across machines; orphaned only if `pid_updated:` is older than 24h. Otherwise coordinate (`multi-agent-comms`).
+- After adoption, `cd` to `worktree:`, re-read the embedded workflow, run `git status` and `git log <base_branch>..HEAD`, resume from the first unchecked task.
 
 ## Staleness and disappearance
 
-A worktree that has been around a while is not necessarily current, and is not necessarily still there. Both failure modes let you verify code that isn't the code under review, so check before doing any work in a pre-existing worktree.
+Check before doing any work in a pre-existing worktree; both failure modes let you verify code that isn't the code under review.
 
-- **Stale = a pre-rebase copy.** After the branch is rebased (by you elsewhere, by another session, or by a CR-loop force-push), a long-lived worktree still holds the *old* commits: same commit subjects, different SHAs. Tests there pass against code that is not on the branch, and the push fails as non-fast-forward at the very end, after all the work. Detect it with the ahead/behind count, never by eyeballing:
+- **Stale = a pre-rebase copy.** After the branch is rebased (by you, another session, or a CR-loop force-push), an old worktree holds the *old* commits (same subjects, different SHAs): tests pass against code not on the branch and the push fails non-fast-forward at the end. Detect it only with the ahead/behind count (mtimes and byte-identical build artifacts mislead):
   ```bash
   git fetch origin <branch>
   git rev-list --left-right --count origin/<branch>...HEAD   # left = origin-only
   ```
-  If behind: branch from the origin tip, cherry-pick your commits across, and **re-run every gate** — the base changed, so earlier verification no longer applies. Never resolve this with `--force` (`--force-with-lease` only, per the `git-commit` skill).
-  What does *not* detect staleness: file mtimes merely look "old", and externally-visible artifacts (generated schemas, build outputs) can be byte-identical across versions. Only the ahead/behind count is conclusive.
-- **Gone entirely.** Worktrees get pruned mid-session (`git worktree prune`, a cleanup sweep, a reboot clearing `$TMPDIR`). The symptom is `fatal: not a git repository` from a directory that worked minutes ago. Recreate it at the origin tip and re-run the gates; do not assume the prior run's verification still stands. This is distinct from the plan-file orphan detection above: the plan can be perfectly intact while the tree it described is gone.
+  If behind: branch from the origin tip, cherry-pick your commits across, and **re-run every gate** (the base changed). Never `--force` (`--force-with-lease` only, per `git-commit`).
+- **Gone entirely.** Worktrees get pruned mid-session (`git worktree prune`, a cleanup sweep, a reboot clearing `$TMPDIR`); the symptom is `fatal: not a git repository` from a directory that worked minutes ago. Recreate at the origin tip and re-run the gates; prior verification no longer stands. The plan file can be intact while the tree is gone.
 
 ## Subagent worktrees
 
-Do not rely on the `Agent` tool's host-managed `isolation: "worktree"` location for crash-recoverable work. Create the worktree explicitly under `~/.claude/worktrees/`, then pass its absolute path to the subagent. For subagent worktrees, still persist the plan to `~/.claude/projects/<project>/plans/` with the subagent's PID in the header so the parent session can recover if the subagent crashes.
+Don't rely on a host-managed subagent worktree (Claude Code: `Agent` `isolation: "worktree"`; other hosts: skills/HOSTS.md) for crash-recoverable work. Create the worktree explicitly under `~/.claude/worktrees/` and pass its absolute path to the subagent. Still persist the plan under `~/.claude/projects/<project>/plans/` with the subagent's PID in the header so the parent can recover.
 
 ## Merge gate
 
-ALL of these must hold before rebasing/merging back onto the base branch:
+ALL must hold before rebasing/merging onto the base branch:
 
-1. Every item in the plan is implemented (cross-check the plan line-by-line).
+1. Every plan item is implemented (cross-check line by line).
 2. The §1 post-implementation review is complete and clean.
-3. **2 verification passes are done and acted on** (two, whatever the stakes). A pass covers: tests, lint/typecheck, the §4 per-change-type verification (UI smoke, API curl, etc.), and a re-read of the diff against the plan. Fix whatever a pass surfaces (missing behaviour, regression, hack, duplication, security concern), but don't restart a counter: after the second pass, go with it.
+3. **2 verification passes are done and acted on** (two, whatever the stakes), as defined in the embedded checklist. Fix what a pass surfaces but don't restart a counter: after the second pass, go with it.
 
 ## Rebase and cleanup
 
-- **Rebase, don't merge, by default**: `git rebase <base-branch>` inside the worktree to keep history linear, then fast-forward the base branch. Use a merge commit only if the base branch protects against force-pushes or the team convention demands it.
-- **Immediately after the merge**: push the base branch (triggering the post-push CI watcher per the `ci-watch` skill). The rest of this bullet is inside the AGENTS.md tenet 9 exception only when the branch tip is an ancestor of the pushed base (`git merge-base --is-ancestor <branch> origin/<base>`); otherwise ask first. Then `git worktree remove "$HOME/.claude/worktrees/<repo-name>-<slug>"`, delete the build dirs recorded in the plan's `build_dirs:` (exact paths only, and only if no other plan lists them; never glob by number; never delete shared dirs such as `build-master`), delete the feature branch if it's no longer needed, and archive the plan file at `~/.claude/projects/<project>/plans/<slug>.md` (flip its `status:` header to `merged` and move it to `plans/archive/`). Crash-recovery enumeration should only surface active work — stale plan files and worktrees confuse future sessions.
-- **If a worktree is abandoned** (idea didn't pan out, approach superseded): flip the plan's `status:` to `abandoned` before removing the worktree, so recovery doesn't try to resume dead work. Then archive the plan file, and remove the worktree once the user confirms.
+- **Rebase, don't merge, by default**: `git rebase <base-branch>` in the worktree for linear history, then fast-forward the base. Merge commit only if the base protects against force-pushes or the team convention demands it.
+- **Immediately after the merge**: push the base branch (post-push CI watcher per `ci-watch`). The rest of this bullet is inside the AGENTS.md tenet 9 exception only when the branch tip is an ancestor of the pushed base (`git merge-base --is-ancestor <branch> origin/<base>`); otherwise ask first. Then `git worktree remove "$HOME/.claude/worktrees/<repo-name>-<slug>"`, delete the build dirs recorded in the plan's `build_dirs:` (exact paths only, only if no other plan lists them; never glob by number; never shared dirs such as `build-master`), delete the feature branch if no longer needed, and archive the plan (flip `status:` to `merged`, move to `plans/archive/`).
+- **If a worktree is abandoned**: flip `status:` to `abandoned` first, archive the plan, and remove the worktree once the user confirms.
 
 ## Reclaiming worktrees after the PR merges or closes (run the sweep)
 
-The creating session is usually **not** the one that observes its PR reach a terminal state: in a PR-based repo, merges happen through GitHub (a human clicking merge, or another agent's `merge-watch`, see the `git-commit` skill), and the creating session may be long dead by then. Likewise a PR can be closed as wontfix/superseded by someone else entirely. So worktree cleanup **cannot** rely only on the creating session's "on completion" step above, or worktrees pile up (a stale `git worktree list` full of merged branches poisons crash-recovery enumeration and wastes disk). Every session treats a worktree whose PR has merged or closed as reclaimable, and sweeps proactively.
+The creating session usually isn't the one that sees its PR merge or close (a human merges, or another agent's `merge-watch`, see `git-commit`). So every session treats a worktree whose PR has merged or closed as reclaimable, and sweeps proactively; otherwise merged-branch worktrees pile up and poison crash-recovery enumeration.
 
-**When to sweep** (cheap, so run it liberally):
-- At session start and before ending a session.
-- Immediately after observing any PR merge (yours, or a peer's via `merge-watch`) or any PR you close as wontfix.
+**When** (cheap, run liberally): at session start and before ending; right after observing any PR merge (yours or a peer's) or closing one as wontfix.
 
-**The sweep**: enumerate `git worktree list`, and for each worktree branch resolve its PR state, then reclaim only the terminal + clean ones:
+**The sweep**: enumerate `git worktree list`, resolve each branch's PR state, reclaim only terminal + clean ones:
 
-1. **Classify by PR state**: `gh pr list --head <branch> --state all --json number,state,mergedAt,headRefOid` (or `gh pr view <branch>`). Reclaim `MERGED` without asking (AGENTS.md tenet 9 exception) only when the branch tip equals `headRefOid` or is its ancestor (`git merge-base --is-ancestor <branch> <headRefOid>`); otherwise treat it as a reused branch name, outside the exception, and ask; a `CLOSED` (wontfix/superseded) PR's worktree and branches need per-item user confirmation. Leave `OPEN` PRs and any branch with **no** PR (could be pre-PR work) alone.
-2. **Safety gate before removal** (the worktree must be clean and hold nothing unpushed):
-   - `git -C <worktree> status --porcelain` is empty (no uncommitted or untracked changes), AND
-   - `git -C <worktree> status --porcelain --ignored` lists only build output (the plan's recorded `build_dirs:` plus standard dependency/build caches: `node_modules`, `target`, `dist`, `__pycache__`; no `.env`, credentials, logs or local data; `git worktree remove` deletes ignored files silently), AND
-   - `git -C <worktree> log --oneline @{u}..` is empty (nothing ahead of upstream); if the upstream branch is already gone from origin, the commits are on the merged PR / base branch.
-   - If **either** check is non-empty, do NOT remove; this is the `feedback_recover_stranded_fix_work` case (a dead agent left finished-but-uncommitted or unpushed work). Recover it first (commit, gate, fresh PR, or cherry-pick), then remove.
-3. **Never reclaim a `locked` worktree** (a running agent owns it) or one whose plan header shows a live PID on this host; coordinate with that session first (the `multi-agent-comms` skill).
-4. **Remove**: `git worktree remove <worktree>` (never `--force` without user confirmation: if git balks, report why). For a `MERGED` PR also delete the build dirs recorded in the plan's `build_dirs:` (exact paths, only if no other plan lists them, never a glob by number, never shared dirs such as `build-master`); AGENTS.md tenet 9's exception covers this. Then delete BOTH sides of the now-orphaned branch and the plan file:
-   - **Local branch**: `git branch -D <branch>`.
-   - **Remote branch**: `git push origin --delete <branch>` — the head branch of a `MERGED` or wontfix-`CLOSED` PR serves no further purpose, and leaving it strands a remote ref that clutters `git branch -r`, breaks branch pickers, and (over a busy repo) accumulates into hundreds of dead refs. Skip only if origin already lacks it (GitHub auto-deleted it on merge — check `git ls-remote --heads origin <branch>` first, or just ignore the "remote ref does not exist" error). NEVER delete the remote of an `OPEN`-PR branch, `main`, or a protected/base branch.
-   - **Plan file**: flip its `status:` to `merged`/`abandoned` and move it to `plans/archive/`.
+1. **Classify by PR state**: `gh pr list --head <branch> --state all --json number,state,mergedAt,headRefOid` (or `gh pr view <branch>`). Reclaim `MERGED` without asking (AGENTS.md tenet 9 exception) only when the branch tip equals `headRefOid` or is its ancestor (`git merge-base --is-ancestor <branch> <headRefOid>`); otherwise it is a reused branch name, outside the exception: ask. A `CLOSED` (wontfix/superseded) PR's worktree and branches need per-item user confirmation. Leave `OPEN` PRs and branches with **no** PR (possibly pre-PR work) alone.
+2. **Safety gate before removal** (clean, nothing unpushed):
+   - `git -C <worktree> status --porcelain` is empty, AND
+   - `git -C <worktree> status --porcelain --ignored` lists only build output (the plan's `build_dirs:` plus standard caches: `node_modules`, `target`, `dist`, `__pycache__`; no `.env`, credentials, logs or local data; `git worktree remove` deletes ignored files silently), AND
+   - `git -C <worktree> log --oneline @{u}..` is empty (if the upstream is gone from origin, the commits are on the merged PR / base).
+   - If **any** is non-empty, do NOT remove: this is the `feedback_recover_stranded_fix_work` case (a dead agent's finished-but-uncommitted or unpushed work). Recover first (commit, gate, fresh PR, or cherry-pick), then remove.
+3. **Never reclaim a `locked` worktree** (a running agent owns it) or one whose plan header shows a live PID on this host; coordinate (`multi-agent-comms`).
+4. **Remove**: `git worktree remove <worktree>` (never `--force` without user confirmation; if git balks, report why). For a `MERGED` PR also delete the build dirs in the plan's `build_dirs:` (exact paths, only if no other plan lists them, never a glob by number, never shared dirs such as `build-master`); the tenet 9 exception covers this. Then delete BOTH sides of the orphaned branch and archive the plan:
+   - **Local**: `git branch -D <branch>`.
+   - **Remote**: `git push origin --delete <branch>` (a merged/wontfix head branch is dead; stale remote refs accumulate by the hundreds). Skip if origin already lacks it (GitHub auto-deleted it; check `git ls-remote --heads origin <branch>` or ignore "remote ref does not exist"). NEVER delete the remote of an `OPEN`-PR branch, `main`, or a protected/base branch.
+   - **Plan file**: flip `status:` to `merged`/`abandoned`, move to `plans/archive/`.
 
-**Never bulk-remove blindly**: enumerate, classify by PR state, safety-gate each, remove only the confirmed-terminal-and-clean. A worktree that fails the safety gate is a signal (stranded work to recover), not an obstacle to force past.
+**Never bulk-remove blindly**: enumerate, classify, safety-gate each, remove only confirmed-terminal-and-clean. A worktree that fails the gate is a signal (stranded work), not an obstacle to force past.
 
 ## Sweep merged/closed branches that have NO worktree
 
-The worktree sweep above only reaches branches that still have a worktree. Local and remote **branch refs outlive their worktrees** — every merged PR leaves a `refs/heads/<branch>` (and often a `refs/remotes/origin/<branch>`) behind, and these pile into the hundreds on a busy repo, poisoning branch pickers and `gh`/`git` autocompletion. So pair the worktree sweep with a **branch sweep** at session start/end (also cheap):
+Branch refs outlive their worktrees, so pair the worktree sweep with a **branch sweep** at session start/end:
 
-1. **Build the authoritative merged set** — squash-merges mean `git branch --merged` MISSES most merges (the squashed commit has a different SHA), so do NOT gate on it. Use the PR state instead: `gh pr list --state merged --limit 3000 --json headRefName,headRefOid --jq '.[] | [.headRefName, .headRefOid] | @tsv' | sort -u > merged.txt` (`headRefName<TAB>headRefOid`). Delete a branch only when its tip equals that SHA or is its ancestor (`git merge-base --is-ancestor`); a mismatch is a reused branch name, so ask. Closed-unmerged branches are outside the tenet 9 exception: list them for the user to confirm instead of deleting.
-2. **Compute delete sets by intersection, with hard exclusions**: also fetch the current **open**-PR head branches (`--state open`) and a protected list (`main`, any long-lived base). `local_del = local ∩ merged − open − protected`; `remote_del = origin ∩ merged − open − protected`. Print the counts and explicitly assert the open-PR branches and `main` are absent from both delete sets before deleting anything.
-3. **Delete**: `git branch -D` each local; `git push origin --delete` each remote **in batches** (~25 refs per push) with a few seconds between batches, to stay under GitHub's secondary/abuse rate limit (see `feedback_pace_merges_secondary_ratelimit`). A per-branch fallback handles refs GitHub already auto-deleted without failing the batch.
-4. **Dirty-worktree safety still applies**: a to-be-deleted branch whose worktree has uncommitted, unpushed or non-build ignored files is outside the exception. Snapshot it (`git diff HEAD > <preserved-path>.patch`) and ask the user before removing it.
-
-This is exactly the cleanup that keeps a repo from reaching hundreds of stale worktrees/branches; run it as routine hygiene, not a one-off rescue.
+1. **Build the merged set from PR state**, not `git branch --merged` (squash-merges change the SHA): `gh pr list --state merged --limit 3000 --json headRefName,headRefOid --jq '.[] | [.headRefName, .headRefOid] | @tsv' | sort -u > merged.txt` (`headRefName<TAB>headRefOid`). Delete a branch only when its tip equals that SHA or is its ancestor (`git merge-base --is-ancestor`); a mismatch is a reused name, so ask. Closed-unmerged branches are outside the tenet 9 exception: list them for the user to confirm.
+2. **Delete sets by intersection, with hard exclusions**: also fetch open-PR head branches (`--state open`) and a protected list (`main`, long-lived bases). `local_del = local ∩ merged − open − protected`; `remote_del = origin ∩ merged − open − protected`. Print the counts and assert the open-PR branches and `main` are absent from both sets before deleting.
+3. **Delete**: `git branch -D` each local; `git push origin --delete` each remote **in batches** (~25 refs per push, a few seconds apart) to stay under GitHub's secondary rate limit (`feedback_pace_merges_secondary_ratelimit`). A per-branch fallback handles refs GitHub already auto-deleted.
+4. **Dirty-worktree safety still applies**: a to-be-deleted branch whose worktree has uncommitted, unpushed or non-build ignored files is outside the exception. Snapshot it (`git diff HEAD > <preserved-path>.patch`) and ask the user first.
 
 ## When to use one
 
-- **Use a worktree when the work is multi-commit or long-running, or when another session may be working in the same checkout.** A small single-commit change can stay on a feature branch in the main checkout, as long as no other session is using that checkout.
-- **If a plan turns out to require multiple independent changes**, create one worktree per change. Land them one at a time onto the base branch in dependency order, re-running the verification for each.
+- **Use a worktree when the work is multi-commit or long-running, or another session may be using the checkout.** A small single-commit change can stay on a feature branch in the main checkout if no other session uses it.
+- **If a plan needs multiple independent changes**, one worktree per change, landed one at a time in dependency order, re-verifying each.

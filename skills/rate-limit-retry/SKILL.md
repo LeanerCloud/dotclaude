@@ -9,16 +9,16 @@ description: >-
 
 ## The rule
 
-When an operation is throttled (a `429` / `403 secondary rate limit` / "rate limit" / a usage limit with a reset time / "try again later" from the GitHub API, CodeRabbit, the model/API itself, or any CLI reporting a cooldown), do NOT abandon the work and do NOT block the session busy-waiting. Schedule a retry for that operation.
+When an operation is throttled (`429`, `403 secondary rate limit`, "rate limit", a usage limit with a reset time, "try again later" from the GitHub API, CodeRabbit, the model/API, or any CLI reporting a cooldown), do NOT abandon the work and do NOT busy-wait. Schedule a retry for that operation.
 
-**Exhausted credits and billing blocks are not throttles.** A message such as `You've run out of usage credits` or a billing error won't clear by waiting: escalate to the user with the verbatim message and schedule no retry (the same distinction the `cr-loop` skill makes).
+**Exhausted credits and billing blocks are not throttles.** `You've run out of usage credits` or a billing error won't clear by waiting: escalate to the user with the verbatim message and schedule no retry (same distinction as `cr-loop`).
 
-Don't start a retry cron pre-emptively at the start of a request. A standing cron that fires every couple of minutes costs tokens and context on every tick, even when nothing was ever throttled.
+Don't start a retry cron pre-emptively; a standing cron burns tokens every tick even if nothing was throttled.
 
-- **Retry at the stated time.** If the provider returns a `Retry-After` or a reset time, retry then plus ~30s. Otherwise retry after ~2-5 minutes and back off on repeated throttles.
-- **Use a cron that survives the agent** (`CronCreate` in Claude Code) when the work must resume even if the current agent or session is reaped mid-cooldown. An in-agent sleep (e.g. the cr-watch "sleep 120s, retry") is fine for a short blip inside a live agent.
-- **Self-terminate.** Once the operation succeeds (or hits a terminal non-retryable state), the cron deletes itself (`CronDelete`). A retry must never outlive the work it was created for.
-- **Cap and escalate.** Give up after a sensible ceiling (e.g. ~24h for a CR review, much shorter for interactive work) and escalate to the user rather than retrying forever.
-- **One retry per throttled operation**, named so it is identifiable (e.g. `retry-<operation>-<id>`). Don't fold unrelated retries into one cron.
+- **Retry at the stated time.** `Retry-After` or reset time plus ~30s; otherwise ~2-5 minutes, backing off on repeated throttles.
+- **Use a cron that survives the agent** (`CronCreate`) when the work must resume even if the agent or session is reaped mid-cooldown. An in-agent sleep (e.g. cr-watch "sleep 120s, retry") is fine for a short blip in a live agent.
+- **Self-terminate**: the cron deletes itself (`CronDelete`) on success or a terminal non-retryable state; a retry never outlives its work.
+- **Cap and escalate** after a sensible ceiling (~24h for a CR review, much less for interactive work).
+- **One named retry per throttled operation** (`retry-<operation>-<id>`); don't fold unrelated retries together.
 
-> **CodeRabbit-specific: recover a rate-limited review with `@coderabbitai full review`, not the incremental `@coderabbitai review`.** A CR rate-limit can leave the in-flight commits uncovered while CR's incremental cursor advances past them, so a plain re-ping reviews only the next delta and the skipped commits never get looked at — a false-clean (green check, zero findings). After any CR throttle, the recovery trigger must be `@coderabbitai full review`. Full rationale and the exact mechanism are in the `cr-loop` skill, §2 ("after ANY CodeRabbit rate-limit, force a full review").
+> **CodeRabbit: recover a rate-limited review with `@coderabbitai full review`, not the incremental `@coderabbitai review`.** A CR rate-limit can leave in-flight commits uncovered while the incremental cursor advances past them, so a plain re-ping reviews only the next delta: a false-clean (green check, zero findings). Mechanism: `cr-loop` §2 ("after ANY CodeRabbit rate-limit, force a full review").

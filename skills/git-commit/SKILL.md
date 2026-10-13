@@ -6,11 +6,9 @@ description: Conventional-commit format, atomic commits, the repo-init-at-task-s
   Invoke before staging or writing a commit message.
 ---
 
-# Commits — repo init, message format, and the pre-commit review loop
+# Commits - repo init, message format, and the pre-commit review loop
 
-Applies to every project unless the project's `CLAUDE.md` overrides a specific rule. For what happens
-after the commit: invoke the `ci-watch` skill after pushing and the `pr-lifecycle` skill when opening
-a PR.
+Applies to every project unless its `CLAUDE.md` overrides a rule. After the commit: `ci-watch` after pushing, `pr-lifecycle` when opening a PR.
 
 ## ⚠️ Initialize a repo BEFORE any non-trivial work
 
@@ -22,88 +20,79 @@ The rule is `AGENTS.md` section Git (repo init at task start). In short:
 
 ## Commit messages
 
-- Use **conventional commits** format: `type(scope): subject` — e.g. `feat(auth): add OAuth2 login`, `fix(api): handle nil pointer on empty response`.
-  - Common types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf`, `ci`, `build`.
-  - `scope` is optional but useful for larger repos; omit when the repo is small.
-  - This enables automated changelog and release notes generation (see the `infra-ops` skill CI/CD).
-- Subject line: imperative mood, lowercase, no trailing period, ≤72 chars.
-- Body (when needed): bullet points explaining the *why*, not the *what*; wrap at 72 chars.
+- **Conventional commits**: `type(scope): subject`, e.g. `feat(auth): add OAuth2 login`, `fix(api): handle nil pointer on empty response`. Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf`, `ci`, `build`. Scope optional (omit in small repos). Enables changelog/release notes (`infra-ops` CI/CD).
+- Subject: imperative, lowercase, no trailing period, <=72 chars. Body (when needed): bullets on the *why*, wrapped at 72.
 - **NEVER** mention Anthropic or Claude in commit messages (no Co-Authored-By lines).
-- **Avoid heredocs for `git commit -m`**: patterns like `git commit -m "$(cat <<'EOF' ... EOF)"` are fragile — the `$(...)` command substitution can trigger approval prompts, the heredoc-inside-substitution interacts badly with pre-commit hooks that stash unstaged changes (the stash/restore cycle has been observed to fail repeatedly), and quoting/escaping bugs are easy to introduce. Instead, for each commit **`Write` a fresh file** to `/tmp/claude/` with a unique name, commit via `git commit -F <path>`, and delete the file once the commit has landed.
-  - **Why `/tmp/claude/`**: see the `tool-usage` skill § "Two script locations by lifetime" for the rationale. Create the directory lazily with `mkdir -p /tmp/claude` before the first write if it doesn't exist.
-  - **One file per commit, always created fresh with `Write`**: use a unique name like `/tmp/claude/commit-<short-subject>.txt` or include a timestamp so consecutive commits never collide. Because `Write` echoes the full file content back on creation, the final message is visible in full before the commit lands — no separate `Read` pass is needed. Do NOT `Edit` an existing commit-msg file in place; always `Write` a fresh one.
-  - **Clean up after every commit**: once `git commit -F` has succeeded, `rm` the file. Single-file deletion on an explicit path is safe and avoids leaving stale buffers behind.
+- **No heredocs for `git commit -m`** (`$(cat <<'EOF' ...)` triggers approval prompts and breaks pre-commit hooks that stash unstaged changes). For each commit **`Write` a fresh file** under `/tmp/claude/` (`mkdir -p /tmp/claude` first; rationale in `tool-usage` § "Two script locations by lifetime"), commit with `git commit -F <path>`, then `rm` that file.
+  - Use a unique name per commit (`/tmp/claude/commit-<short-subject>.txt` or timestamped). `Write` echoes the content, so no separate `Read`. Never `Edit` an existing message file; always `Write` a new one.
 
 ## Atomic commits
 
-- **Small atomic commits**: one distinct piece of functionality per commit; independently revertable.
-- Stage and commit small chunks within a file separately rather than the whole file at once.
-- **Don't commit throwaway or personal-only artefacts**: one-off scripts, debugging helpers, scratch files, and session-specific tooling do NOT belong in the project repo. Before staging, ask: "would another contributor find this useful, or is this just something I needed for this session?" If the answer is personal/temporary, keep it in `/tmp/claude/` (outside any repo) or delete it. Concrete examples of things to *not* commit: ad-hoc data-migration scripts that ran once, curl loops for manual testing, log-parsing one-liners, scaffolding scripts that bootstrap local dev state. If a throwaway script turns out to be genuinely reusable, promote it to a proper committed location (`scripts/`, `tools/`, `Makefile` target) with documentation and tests — don't just leave it in the tree because it was convenient.
+- One distinct, independently revertable piece of functionality per commit; stage small chunks within a file separately.
+- **Don't commit throwaway or personal-only artefacts** (one-off scripts, debugging helpers, scratch files, session tooling, ad-hoc migration scripts, curl loops, log one-liners). Ask: would another contributor find this useful? If not, keep it in `/tmp/claude/` or delete it. If genuinely reusable, promote it to `scripts/`, `tools/` or a `Makefile` target with docs and tests.
 
-## ⚠️ Mandatory pre-commit review loop — NO EXCEPTIONS
+## ⚠️ Mandatory pre-commit review loop - NO EXCEPTIONS
 
-Before every commit, enter a review loop (same discipline as the plan review loop): run **2 review passes** over the staged diff (per `AGENTS.md` §1), fix what they find, then commit. A staged diff whose tree hash was already reviewed clean is not re-reviewed (`AGENTS.md` §1, same-hash rule). Do NOT skip, shortcut, or batch this step. The goal is to land clean commits in the first place, so the history doesn't need fix-up commits.
+Before every commit run **2 review passes** over the staged diff (per `AGENTS.md` §1), fix what they find, then commit. A staged diff whose tree hash was already reviewed clean is not re-reviewed (`AGENTS.md` §1, same-hash rule). Don't skip, shortcut or batch this step; the goal is clean commits with no fix-up history.
 
-**Review on Sonnet 5.5 high, as comprehensively as possible: CodeRabbit's lens is the floor, not the ceiling.** This review is judgement-heavy, so run it at the Sonnet 5.5 high tier (the §1c local review loop and the plan-review gate are its analogues, both Sonnet 5.5 high per `AGENTS.md` §2), including the hardest, highest-stakes money-path diffs. The six dimensions in `AGENTS.md` §1 are the baseline; then go wider than any single reviewer would. Review as CodeRabbit would (its Actionable / Nitpick categories, the project's CR config, recurring past CR findings) AND as a demanding staff engineer would, across at least the lenses below.
+**Review on Sonnet 5.5 high, as comprehensively as possible: CodeRabbit's lens is the floor, not the ceiling.** The judgement is top-tier (like the §1c loop and plan-review gate, per `AGENTS.md` §2), even for the hardest money-path diffs. The six `AGENTS.md` §1 dimensions are the baseline; review as CodeRabbit would (Actionable / Nitpick categories, the project's CR config, recurring past findings) AND as a demanding staff engineer, across at least:
 
-- **Architecture & design fit**: does the change belong where it landed, follow the module's patterns, and avoid leaking abstractions?
-- **Type design & invariants**: are illegal states unrepresentable, invariants expressed in types rather than asserted at runtime, encapsulation intact? (brief: `lenses/type-design.md`)
-- **Silent failures**: swallowed errors, empty catch blocks, fallbacks that mask real problems, `nil`/zero placeholders standing in for absent data (per `AGENTS.md` §5). (brief: `lenses/silent-failures.md`)
-- **Test coverage & edge cases**: are the new paths actually exercised, including boundaries, error paths, and the contract (not just the happy path)?
+- **Architecture & design fit**: belongs where it landed, follows the module's patterns, no leaked abstractions.
+- **Type design & invariants**: illegal states unrepresentable, invariants in types not runtime asserts, encapsulation intact (brief: `lenses/type-design.md`).
+- **Silent failures**: swallowed errors, empty catch blocks, masking fallbacks, `nil`/zero placeholders for absent data (`AGENTS.md` §5) (brief: `lenses/silent-failures.md`).
+- **Test coverage & edge cases**: new paths exercised, including boundaries, error paths and the contract, not just the happy path.
 - **Security**: beyond OWASP basics: trust boundaries, authz on every new path, secret handling, injection via every new input.
-- **Over-engineering & scope**: parameters with no caller, abstractions with one consumer, validation of unreachable states, machinery the current requirement doesn't need. Could a competent colleague have written this in half the lines? See the `coding-standards` skill ("Simplicity & Scope (YAGNI)").
-- **Comment accuracy & density**: do comments match the code, or did they rot during edits? Is the diff over-commented (restatements of the next line, rationale essays, review-round references)? **Measure it, don't eyeball it**: run the one-liner in the `coding-standards` skill ("Comments") and check the two per-comment rules - nothing over 2 lines, nothing describing what the code does. Over ~15% means delete until under it or name the exception.
-- **Performance & resources**: N+1s, unbounded growth, leaked handles/goroutines, needless allocation on hot paths.
-- **API, naming & convention consistency**: does it match the surrounding code's idiom, naming, and the project's documented conventions?
+- **Over-engineering & scope**: parameters with no caller, single-consumer abstractions, validation of unreachable states, machinery the requirement doesn't need (`coding-standards` "Simplicity & Scope (YAGNI)").
+- **Comment accuracy & density**: comments match the code; no restatements, rationale essays or review-round references. **Measure it**: run the one-liner in `coding-standards` ("Comments") and check the two per-comment rules (nothing over 2 lines, nothing describing what the code does). Over ~15% means delete until under it or name the exception.
+- **Performance & resources**: N+1s, unbounded growth, leaked handles/goroutines, hot-path allocation.
+- **API, naming & convention consistency** with surrounding code and documented conventions.
 
-For multi-concern or substantial diffs, fan out the specialised review agents in parallel (see Delegation below) so each lens gets a dedicated pass, then compile. The goal is a PR that lands clean for CodeRabbit AND human reviewers on the first pass. The economics strongly favour this: catching a finding here costs one local pass, while catching it after CR (or a human) flags it costs a push, a 60–120s review wait, a fix commit, another CI pass, and another review round. It is much faster to ship it well the first time — every issue you preempt locally is a full round-trip you don't pay for later. This does not replace the CR loop (CodeRabbit still reviews and you still iterate to a clean pass), it shrinks it toward one pass.
+For multi-concern or substantial diffs, fan out specialised review agents in parallel (Delegation below), then compile. A finding caught here costs one local pass; after CR or a human flags it, it costs a push, a 60-120s wait, a fix commit, another CI pass and another review round. This doesn't replace the CR loop; it shrinks it toward one pass.
 
 ### Each pass
 
-Read the full staged diff (`git diff --cached`) and the relevant unstaged context, and check the six dimensions in `AGENTS.md` §1, plus the memory garden match:
+Read the full staged diff (`git diff --cached`) and the relevant unstaged context; check the six `AGENTS.md` §1 dimensions plus:
 
 - **Sensitive info in the message and the diff**: no secret, account/subscription/project ID, ARN with an account number, OS/cloud username, email, home-dir path or internal host (AGENTS.md Git); pasted logs and output redacted. Before `git commit -F`, scan the message file and the added lines (`git diff --cached | grep '^+'`) with `grep -inE '\b[0-9]{12}\b|[0-9]{4}-[0-9]{4}-[0-9]{4}|/Users/|/home/|[a-z0-9._-]+@[a-z0-9-]+\.[a-z]+|AKIA|ghp_|github_pat_|xox[bp]-|BEGIN [A-Z ]*PRIVATE KEY|password *=' | grep -viE 'noreply@|123456789012|@example\.'` and resolve every hit. Use the same scan on PR bodies and comments before posting.
-- **Memory garden match**: Scan the per-project memory at `~/.claude/projects/<project-slug>/memory/feedback_*.md` (and any matching `project_*.md`) and apply every entry whose `**How to apply:**` line matches the changeset. This is the **highest-leverage step** because the entries encode patterns CR already taught us on this project — finding a match here means CR will NOT raise the same nit again. If a finding from the current review surfaces a pattern that's NOT in memory but is generalisable, file the new `feedback_<slug>.md` after the commit lands per §"Per-project feedback memory".
+- **Memory garden match**: scan `~/.claude/projects/<project-slug>/memory/feedback_*.md` (and matching `project_*.md`) and apply every entry whose `**How to apply:**` matches the changeset. This is the **highest-leverage step**: the entries encode patterns CR already taught on this project. If this review surfaces a generalisable pattern not in memory, file a new `feedback_<slug>.md` after the commit lands (§"Per-project feedback memory").
 
-**If CR later finds something this review missed, treat it as a §1 process failure** — not just "CR is a useful second pair of eyes." Either the dimension wasn't checked, the memory-garden scan was skipped, or the specialised reviewer fan-out wasn't dispatched on a substantial diff. Save the lesson (new `feedback_*.md` entry) and tighten the next §1 pass.
+**If CR later finds something this review missed, treat it as a §1 process failure** (a dimension unchecked, the memory scan skipped, or no fan-out on a substantial diff). Save the lesson as a new `feedback_*.md` entry and tighten the next pass.
 
 ### Each iteration
 
-- Print a short summary of issues found before and after fixing them (matches the plan-review-loop format).
-- Fixes from pass 1 are reviewed by pass 2; fixes from pass 2 are not reviewed again. No counter resets; after the second pass, commit.
+- Print a short summary of issues found before and after fixing them.
+- Pass 2 reviews pass 1's fixes; pass 2's fixes are not reviewed again. No counter resets; after the second pass, commit.
 
 ### Multi-commit work
 
-For a sequence of atomic commits implementing one plan: review each commit's staged diff individually AND think about how it interacts with already-committed work in the sequence.
+For a sequence of atomic commits implementing one plan, review each commit's staged diff individually AND how it interacts with already-committed work.
 
 ### Delegation
 
-For staged changes touching multiple concerns (Go + TS + Terraform) or any substantial diff, fan out up to 3-4 `general-purpose` subagents in parallel, each briefed with the text of the lens(es) it owns (group related lenses), plus one general code reviewer. An agent owning a lens that has a brief file gets that file's full text in its prompt (`~/.claude/skills/git-commit/lenses/`). Compile their findings before committing.
-
-Spawn each on the appropriate tier (the review judgement itself is top-tier, including for the hardest money-path diffs; mechanical single-file diffs can drop to Sonnet 5.5 low), aggregate the findings, dedupe overlaps, and resolve every actionable item before the commit lands.
+For diffs touching multiple concerns (Go + TS + Terraform) or any substantial diff, fan out up to 3-4 `general-purpose` subagents in parallel, each given the full text of the lens brief file(s) it owns (`~/.claude/skills/git-commit/lenses/`; group related lenses) plus one general code reviewer. Spawn each on the appropriate tier (the review judgement is top-tier, even for the hardest money-path diffs; mechanical single-file diffs can drop to Sonnet 5.5 low), then aggregate, dedupe overlaps and resolve every actionable item before committing.
 
 ### Fix before committing, never after
 
-If the review finds issues, fix them in the same staged changeset — do not commit and then create a follow-up fix commit. The history should not contain "oops, fixing previous commit" patterns when the issue could have been caught before the commit landed.
+Fix findings in the same staged changeset; don't commit and then add a "fixing previous commit" commit.
 
 ## Post-commit sanity check
 
-After committing, run a quick sanity scan (`git show HEAD`) to catch anything the pre-commit loop missed. If this finds issues, treat it as a process failure (the pre-commit loop should have caught them). Fix-forward in a new commit only when strictly necessary (e.g., pre-commit hook caught a legitimate issue that required the commit to land first).
+After committing, scan `git show HEAD`. If it finds something, the pre-commit loop failed; fix-forward in a new commit only when strictly necessary (e.g. a hook caught a legitimate issue that required the commit to land first).
 
-**Hooks may silently not run in a worktree.** When a repo sets `core.hooksPath` to a gitignored, install-generated directory (husky's `.husky/_` is the common case), that path exists only where the install ran — usually the main checkout. Git skips hooks with no warning when it doesn't resolve, so commits from a worktree can quietly bypass lint, formatting and generated-artifact rebuilds. Since §1b puts non-trivial work in worktrees, check once per worktree (`git config core.hooksPath`, then confirm the directory exists) and run the checks by hand if it doesn't. Never paper over it with `--no-verify`.
+**Hooks may silently not run in a worktree.** When `core.hooksPath` points at a gitignored, install-generated directory (husky's `.husky/_`), it exists only where the install ran (usually the main checkout); git skips hooks with no warning when it doesn't resolve, so worktree commits can bypass lint, formatting and generated-artifact rebuilds. Check once per worktree (`git config core.hooksPath`, then confirm the directory exists) and run the checks by hand if it doesn't. Never paper over it with `--no-verify`.
 
 ## Hooks & docs
 
-- **Pre-commit hooks**: projects must have hooks for linting, formatting, and tests. Never skip with `--no-verify`.
-- **Docs with code**: each commit includes relevant doc updates (README, CHANGELOG, inline comments) when warranted.
+- Projects must have hooks for linting, formatting and tests. Never `--no-verify`.
+- Each commit includes relevant doc updates (README, CHANGELOG, inline comments) when warranted.
 
 ## Per-project feedback memory
 
-The per-project memory garden (`~/.claude/projects/<project-slug>/memory/feedback_*.md`, entry structure per `AGENTS.md` §3) is read in four contexts:
+The garden (`~/.claude/projects/<project-slug>/memory/feedback_*.md`, entry structure per `AGENTS.md` §3) is read in four contexts:
 
-1. **Before / during writing new code on any branch.** Skim relevant entries up front and apply them proactively. This is the cheapest place to apply a known rule and the biggest leverage.
-2. **During the pre-commit review gate**, as the memory garden match above.
-3. **During the §1 post-implementation review gate.** Same usage.
-4. **Before pushing CR-fix commits.** After CodeRabbit lands a review pass, scan the memory to catch other matching entries CR might raise next round.
+1. **Before / during writing new code on any branch**: skim relevant entries and apply proactively (cheapest place, biggest leverage).
+2. **During the pre-commit review gate** (the memory garden match above).
+3. **During the §1 post-implementation review gate.**
+4. **Before pushing CR-fix commits**: scan for other matching entries CR might raise next round.
 
-**Write to it after any CR review pass** when an addressed finding is a recurring class of issue (style / idiom / cross-cutting concern), searching first and preferring a new PR citation on an existing entry over a parallel file. The quality bar: a clear one-line rule, a `**Why:**` with at least one PR citation, and a `**How to apply:**` naming the concrete code location or pattern to scan for. One-off PR-specific bugs (a typo, a logic error unique to this PR's feature, a wrong fixture) do not qualify.
+**Write to it after any CR review pass** when an addressed finding is a recurring class of issue (style / idiom / cross-cutting concern). Search first and prefer a new PR citation on an existing entry over a parallel file. Quality bar: a clear one-line rule, a `**Why:**` with at least one PR citation, and a `**How to apply:**` naming the code location or pattern to scan for. One-off PR-specific bugs (typo, logic error unique to the feature, wrong fixture) don't qualify.
