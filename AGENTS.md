@@ -75,6 +75,16 @@ before grep-and-read loops. Broad questions (>3 searches) go to an Explore subag
 - **Review gates (all use 2 adversarial passes with the SAME reviewer, then close on agreement; never
   "until clean"):** the plan before any worktree/code (`review-and-implement`); each implemented task
   (§1c); the full change before reporting done; the staged diff before commit (`git-commit`).
+- **Adversarial review**: a reviewer that did not write the change tries to prove it wrong. It treats
+  every author claim (PR body, comments, test names) as a hypothesis, not context; checks the code
+  against the source of truth (spec, upstream or vendor code) with `file:line`; attacks instead of
+  reading: edge cases (null/empty, alternate enums/providers, cross-tenant data, untested branches),
+  deletion probes, and mutation probes that must make a test fail; tries to refute each of its own
+  findings before reporting; and reports what it attacked and how, so "no findings" is evidence.
+  Every reviewer is a non-author. Gate reviews (§1, §1c) keep one reviewer across both passes;
+  verification (§1d, §4) starts a fresh agent with a cold brief and no author transcript, then keeps
+  it through the fix rounds. On a PR, the verdict is against the current HEAD and is posted on the
+  PR (`cr-loop` §3b).
 - **Six review dimensions**: completeness; correctness; security (injection, auth, secrets, input
   validation); bugs (races, nulls, edge cases, leaks); duplication (§1a); over-engineering, reviewed
   adversarially: ask what breaks if the machinery is deleted, and where arguable run a deletion probe
