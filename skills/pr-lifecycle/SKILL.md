@@ -90,7 +90,7 @@ armed at PR creation (§3 step 5) polls `gh pr view <#> --json state,merged,merg
 5-10 minutes until MERGED or CLOSED, then exits. Only then spawn the post-merge agent. Tiering: the fully
 prescribed §5 checks (terraform plan, curl, simple Chrome MCP walkthroughs) are mechanical (`model:
 sonnet` at low effort), but judging whether the evidence verifies the change is verification and goes to
-**Sonnet 5.5 high**. If §5 turns out to need exploratory UI debugging, re-spawn that step on **Sonnet 5.5
+the **host reviewer mapping (`skills/HOSTS.md` §Reviewer models)**. If §5 turns out to need exploratory UI debugging, re-spawn that step on **Sonnet 5.5
 high** (hypothesis iteration per AGENTS.md §2); step down to Sonnet 5.5 medium only once the exploration
 narrows to a single decided fix. The watcher's exit state decides the path:
 

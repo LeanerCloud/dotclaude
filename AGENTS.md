@@ -135,7 +135,7 @@ submodule HEADs for every worktree. Details: `worktrees`.
 ### 1c. Local review loop
 
 One atomic task at a time: the implementer (Sonnet 5.5 medium) writes exactly the plan's task, runs
-deletion probes on its own additions, then a distinct reviewer agent (Sonnet 5.5 high) reviews the
+deletion probes on its own additions, then a distinct reviewer agent (host reviewer mapping in `skills/HOSTS.md`) reviews the
 diff on the six dimensions plus reuse and scope, returning `file:line` findings or "no actionable
 findings". Implementer fixes; design calls go to the reviewer; second pass; done. Keep both agents
 alive across passes; log findings in the plan file. Review each task as it lands; if it needs
@@ -162,7 +162,7 @@ unless independence is the point, the tier differs or its context is polluted. B
 for anything >~30s; never poll; reap finished agents. Usually 1-2 working agents sized to the work
 (e.g. an implementer and a reviewer), at most 3-4 unless asked; CI waits in a background shell;
 tests print only failures. Always name the tier: in Claude Code set `model: sonnet` and state the
-effort in the brief. Other hosts' primitives and tier models: `skills/HOSTS.md`.
+effort in the brief. Other hosts' primitives and tier models, plus the reviewer-role overrides: `skills/HOSTS.md`.
 
 | Tier | Use for |
 |------|---------|
@@ -170,7 +170,9 @@ effort in the brief. Other hosts' primitives and tier models: `skills/HOSTS.md`.
 | Sonnet 5.5 medium | **all code writing**, any difficulty: implementation, tests, applying decided fixes, rebases, refactors, `gh`/`git` mechanics |
 | Sonnet 5.5 high | **deciding, reviewing, verifying**: planning, design, diagnosis, reading a large codebase cold, every review loop, triaging findings, reproducing evidence. Never writes the code |
 
-Test: writes code, medium; decides, reviews or verifies, high. A medium agent stuck on a design
+Test: writes code, medium; plans or diagnoses, high. Reviews, review-findings triage and independent
+verification use the host reviewer mapping in `skills/HOSTS.md`; prescribed mechanical checks keep
+their existing tiers. A medium agent stuck on a design
 question sends it up and gets the answer back. Other hosts use the low/medium/high rows of
 `skills/HOSTS.md`; an exact model pinned by a project rule wins and is never substituted.
 Details: `subagent-strategy`, `pr-orchestration`.
