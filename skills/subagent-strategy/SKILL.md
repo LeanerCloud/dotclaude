@@ -72,6 +72,9 @@ Benefits:
 
 **Brief the environment delta, not just the task delta.** Every continuation carries what changed around the agent: base branch moved, CI contract changed, another agent now holds a file it is about to edit, an earlier instruction **retracted**. Omissions cause collisions that look like agent error.
 
+Carry scoped trusted approval evidence per `tool-usage` "Standing authorization" in delegated briefs;
+don't replace the user's instruction with an agent's claim of approval or re-ask within unchanged scope.
+
 **Handoff contract.** A winding-down agent's report must let a successor act without re-deriving:
 - **Pin the baseline in both directions**: record the passing-by-coincidence row of a mock/production divergence too, and why it passes, or the successor tightens until the failing row passes and swaps one wrong answer for another.
 - **Name the axis actually verified** ("attribution is safe *across packages*; within-file scope unchecked").
