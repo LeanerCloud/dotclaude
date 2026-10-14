@@ -214,6 +214,11 @@ Escalate decisions, not investigations.
 
 ### 7. Triage and work selection
 
+Before starting work on a new PR, invoke `work-selection` and actively advance at least one
+eligible open PR toward merge; aim for two. This applies to explicitly requested new work too,
+unless the user explicitly overrides it. If no open PR has an authorized next action, record why
+and proceed. Existing queue ordering, ownership, review and merge gates still apply.
+
 "Triage"/"prioritize the backlog" → `triage-pass`. "What next?" → `work-selection` (or `triage-pass`
 first if >10 items lack a clear order). Offer, don't run, a pass when a session start shows >30
 untriaged items, >5 PRs idle 7 days, or a stale P0. Label only items you create, own, or were asked to work on.

@@ -1,8 +1,8 @@
 ---
 name: work-selection
-description: Picking the next thing to work on from a triaged backlog - PRs almost always outrank
-  issues, then priority, urgency, impact, unblocks-others, effort - and filing follow-ups found
-  mid-issue. Invoke on "what should I work on next?".
+description: Advance eligible open PRs before starting new PR work; pick the next item from a
+  triaged backlog, with PRs before issues, then priority, urgency, impact, dependencies and effort.
+  Invoke before new PR work or on "what should I work on next?".
 ---
 
 # Picking the next thing to work on
@@ -12,6 +12,24 @@ Assumes a triaged backlog; if items aren't labelled, invoke `triage-pass` first 
 ## Picking the next thing to work on (after triage)
 
 The selection rule when the user asks "what should I work on next?" or after a triage pass.
+
+### Before starting a new PR
+
+Inspect open PRs in the requested project's queue, including related repositories when the work
+spans them. Advance at least one eligible PR toward merge before starting new PR work; aim for
+two. Eligible means your own PR, one you are asked to review, or one the user explicitly authorized
+you to work on, with an authorized meaningful next action available.
+
+Use the open-PR ranking below to choose. Progress means fixing failing CI or conflicts, addressing
+review findings, completing required review or verification, or handing a newly verified ready
+PR to its human merger. Inspection alone or repeating an existing ready handoff does not count.
+A merge blocker does not make a PR ineligible if an authorized next action remains. Respect
+ownership, product holds and all review/CI/merge gates; this rule does not authorize a merge.
+
+Record the PR and concrete progress before starting the new work. If no open PR has an authorized
+next action, record the inspected queue and concrete reasons, then proceed. Only explicit user
+direction overrides this gate. Meeting the minimum does not override the queue-first ordering
+below when autonomously selecting work.
 
 ### Issues
 
