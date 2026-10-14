@@ -12,15 +12,31 @@ Multi-commit or long-running work, and any work in a checkout another session ma
 ## Preconditions and creation
 
 - **Precondition: the plan has passed the §1 review gate** (2 adversarial passes, acted on). The worktree is the commitment to implement; while the plan is still being revised, stay on the base branch.
-- **Precondition: the base is current and the work is still wanted.** In a repo several agents push to, the base branch moves under you and the issue you picked may have been closed by someone else in the meantime. Before creating the worktree:
+- **Precondition: the base is current and the work is still wanted.** Immediately before creating the worktree, fetch and record the remote base:
   ```bash
   git fetch origin
-  gh issue view <n> --json state,title        # still open, and still the problem you think it is
-  gh pr list --state open --limit 20          # someone already on it?
+  git rev-parse origin/<base-branch>
   ```
-  Branch from `origin/<base-branch>`, not from the local ref, and record the fetched SHA in the plan. Repeating this before the push is what catches a collision that happened while you were building; branching off a stale local `master` is the failure mode, and it is silent.
+  For a tracked issue, resolve the repository and issue number, then read its actual body and challenge it against current code (AGENTS.md §1):
+  ```bash
+  gh issue view <n> --repo <owner>/<repo> --json state,title,body,labels,assignees
+  gh api --paginate repos/<owner>/<repo>/issues/<n>/comments --jq '.[] | {url:.html_url,author:.user.login,body}'
+  ```
+  Require OPEN and still relevant. Inspect assignments, repository claim labels (including `plan-ready` and `pr-created`), and durable claim markers/handoffs across all comment pages. A foreign or unclear claim means stop duplicate implementation and coordinate. A shared GitHub identity does not prove ownership. Continue an existing claim only after verifying ownership against the exact authorized plan/branch or PR and satisfying the plan/worktree ownership protocol below. Autopilot claims require their durable marker to resolve to that plan/branch. Manual continuations may instead use prior explicit authorization plus verified owned plan/PR identity; no autopilot marker is required. The authorized worker's own `plan-ready` label stays present; `pr-created` means continue the authorized matching PR, not create another. Unknown ownership permits neither adopting a foreign plan nor deleting anything.
+
+  Check all pages of the issue's linked PRs, retaining open ones:
+  ```bash
+  gh api graphql --paginate -F owner='<owner>' -F name='<repo>' -F number='<n>' -f 'query=query($owner:String!,$name:String!,$number:Int!,$endCursor:String){repository(owner:$owner,name:$name){issue(number:$number){closedByPullRequestsReferences(first:100,after:$endCursor){nodes{number url state headRefName headRepository{nameWithOwner}} pageInfo{hasNextPage endCursor}}}}}' --jq '.data.repository.issue.closedByPullRequestsReferences.nodes[] | select(.state == "OPEN")'
+  ```
+  Where the repository uses non-default-base PRs or matches issues by `(#N)`, title mirror or plain references (as in `issue-pr-autopilot`), also inspect every page of open PRs for the exact issue reference and relevant matching work. GitHub does not interpret closing keywords against a non-default base; this scan supplements the formal lookup, which can include manually linked cross-repository PRs:
+  ```bash
+  gh api --paginate 'repos/<owner>/<repo>/pulls?state=open&per_page=100' --jq '.[] | {number,html_url,title,body,head:{ref:.head.ref,repo:.head.repo.full_name}}'
+  ```
+  An existing relevant open PR means coordinate/advance it rather than duplicate it. When pushing an existing PR's fix, allow the exact authorized PR only after matching its repository, number/URL and head branch to the current work; another relevant PR still means stop and coordinate. Author login or branch name alone is insufficient.
+
+  Any fetch/API/query failure, missing or unreadable issue/claim data, or incomplete pagination stops creation/publication: partial output and empty failed queries prove no absence. Successful empty comment/PR lists are legitimate for an unclaimed issue. These checks reduce races; they are not atomic locks. A directly authorized task without a tracked issue needs no invented issue; existing coordination rules still apply. Branch from `origin/<base-branch>` after successful checks, and repeat the checkpoint before pushing (see Rebase and cleanup).
 - **Durable root**: `~/.claude/worktrees/<repo-name>-<slug>` (`<repo-name>` is the main checkout's directory name). Never under `/tmp`, `$TMPDIR` or another directory cleared at reboot.
-- **Record the base branch and the SHA you branched from** in the plan; that is what you rebase onto. A `main`/protected base still gets a worktree.
+- **Record the base branch and the SHA you branched from** in the plan. The SHA is the initial baseline; later rebases target the newly fetched `origin/<base-branch>`. A `main`/protected base still gets a worktree.
 - **Create after the review gate, before the first commit**:
   ```bash
   mkdir -p "$HOME/.claude/worktrees"
@@ -63,12 +79,12 @@ Paste verbatim below the header (copy, don't paraphrase):
 
 **While working**: refresh `pid_updated:` at least every 30 min (or at each task checkpoint) so a watchdog can tell a live session from a stuck one.
 
-**Merge gate - ALL must hold before rebasing onto `base_branch:`**:
+**Merge gate - ALL must hold before rebasing onto `origin/<base_branch>`**:
 - Every item in this plan is implemented (tick each line).
 - The AGENTS.md §1 post-implementation review is clean.
 - **2 verification passes are done and acted on** (two, whatever the stakes). A pass covers tests, lint/typecheck, the §4 per-change-type verification (UI smoke, API curl, etc.), and a re-read of the diff against the plan. Fix what each pass finds; don't keep re-verifying for a pass that finds nothing. A clean pass on the exact same SHA counts for every gate that sees it (`AGENTS.md` §1, same-hash rule).
 
-**On completion**: rebase onto `base_branch:`, push, then (inside the AGENTS.md tenet 9 exception only when the branch tip is an ancestor of the pushed base, `git merge-base --is-ancestor <branch> origin/<base>`; otherwise ask) `git worktree remove` the worktree, flip `status:` to `merged`, then archive this plan file (`plans/archive/`). If the PR merges out-of-band (a human or another agent's `merge-watch` merges it after this session is gone), any later session reclaims this worktree via the sweep in the `worktrees` skill ("Reclaiming worktrees after the PR merges or closes").
+**On completion**: repeat the pre-push checkpoint and rebase onto the freshly fetched `origin/<base_branch>` as described in Rebase and cleanup, push under existing PR rules, then (inside the AGENTS.md tenet 9 exception only when the branch tip is an ancestor of the pushed base, `git merge-base --is-ancestor <branch> origin/<base>`; otherwise ask) `git worktree remove` the worktree, flip `status:` to `merged`, then archive this plan file (`plans/archive/`). If the PR merges out-of-band (a human or another agent's `merge-watch` merges it after this session is gone), any later session reclaims this worktree via the sweep in the `worktrees` skill ("Reclaiming worktrees after the PR merges or closes").
 
 **On abandonment**: flip `status:` to `abandoned`, clear `pid:`, archive the plan file, and remove the worktree only after user confirmation (abandoned work is outside the AGENTS.md tenet 9 exception).
 ```
@@ -124,7 +140,13 @@ The gate is the "Merge gate" block in the embedded checklist above (all plan ite
 
 ## Rebase and cleanup
 
-- **Rebase, don't merge, by default**: `git rebase <base-branch>` in the worktree, then fast-forward the base. Merge commit only if the base protects against force-pushes or the team convention demands it.
+- **Before pushing**: fetch origin and repeat the issue, ownership and complete PR checks from Preconditions and creation. Challenge the issue against current code again, especially if the base moved since the recorded baseline. After the embedded pre-rebase gate, rebase onto the freshly fetched remote branch:
+  ```bash
+  git fetch origin
+  git rebase origin/<base-branch>
+  ```
+  Never substitute the recorded initial SHA or stale local base, or reset the shared local base to make it current. If HEAD changes, repeat affected verification/review gates against the new SHA. Immediately before publication, recheck issue/claim/PR state if it could have changed during those gates. Push the authorized feature branch under existing PR rules, including force-with-lease, CI watching, CodeRabbit and human merge gates; this grants no new permission to push a protected base, self-merge or delete data.
+- **Rebase, don't merge, by default**. Merge commit only if the base protects against force-pushes or the team convention demands it.
 - **Immediately after the merge**: push the base branch (post-push CI watcher per `ci-watch`), then clean up per "On completion" in the embedded checklist and delete the feature branch if no longer needed; build dirs follow step 4 of the sweep below.
 - **Abandoned worktree**: see "On abandonment" in the checklist.
 
