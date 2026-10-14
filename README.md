@@ -44,6 +44,7 @@ portability contract and the per-tool discovery paths.
 | [`work-selection`](skills/work-selection/) | "what should I work on next?" |
 | [`infra-ops`](skills/infra-ops/) | infrastructure, deployments, cloud resources, ops |
 | [`project-docs`](skills/project-docs/) | project documentation, ADRs, `known-issues.md` |
+| [`ai-tax-preparation`](skills/ai-tax-preparation/) | tax preparation from websites or country; statement collection, purpose tagging, reconciliation, draft returns and audits |
 | [`playwright-verify`](skills/playwright-verify/) | after any web-app change, before declaring it done |
 | [`cristi-voice`](skills/cristi-voice/) | writing or reviewing prose published under Cristian's or LeanerCloud's name |
 

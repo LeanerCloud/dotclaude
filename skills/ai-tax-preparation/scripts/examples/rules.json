@@ -1,0 +1,5 @@
+[
+  {"id": "fictional-invoice", "field": "purpose", "regex": "^Invoice DEMO-ALPHA-001$", "category": "Income:Consulting", "vendor": "Fictional Alpha Studio", "sign": "credit"},
+  {"id": "fictional-software-review", "field": "counterparty", "regex": "Fictional Example Software", "category": "Review:Business share needed", "vendor": "Fictional Example Software", "sign": "debit"},
+  {"id": "fictional-travel-review", "field": "combined", "regex": "Fictional Example Airline", "category": "Review:Trip purpose needed", "vendor": "Fictional Example Airline", "sign": "any"}
+]
