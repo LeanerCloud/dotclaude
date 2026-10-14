@@ -12,12 +12,19 @@ Multi-commit or long-running work, and any work in a checkout another session ma
 ## Preconditions and creation
 
 - **Precondition: the plan has passed the §1 review gate** (2 adversarial passes, acted on). The worktree is the commitment to implement; while the plan is still being revised, stay on the base branch.
+- **Precondition: the base is current and the work is still wanted.** In a repo several agents push to, the base branch moves under you and the issue you picked may have been closed by someone else in the meantime. Before creating the worktree:
+  ```bash
+  git fetch origin
+  gh issue view <n> --json state,title        # still open, and still the problem you think it is
+  gh pr list --state open --limit 20          # someone already on it?
+  ```
+  Branch from `origin/<base-branch>`, not from the local ref, and record the fetched SHA in the plan. Repeating this before the push is what catches a collision that happened while you were building; branching off a stale local `master` is the failure mode, and it is silent.
 - **Durable root**: `~/.claude/worktrees/<repo-name>-<slug>` (`<repo-name>` is the main checkout's directory name). Never under `/tmp`, `$TMPDIR` or another directory cleared at reboot.
-- **Record the base branch** (the branch checked out at task start) in the plan; that is what you rebase onto. A `main`/protected base still gets a worktree.
+- **Record the base branch and the SHA you branched from** in the plan; that is what you rebase onto. A `main`/protected base still gets a worktree.
 - **Create after the review gate, before the first commit**:
   ```bash
   mkdir -p "$HOME/.claude/worktrees"
-  git worktree add "$HOME/.claude/worktrees/<repo-name>-<slug>" -b <type>/<slug> <base-branch>
+  git worktree add "$HOME/.claude/worktrees/<repo-name>-<slug>" -b <type>/<slug> origin/<base-branch>
   ```
   `<type>` is a conventional-commit type, `<slug>` short kebab-case. All implementation, commits, tests and reviews run inside the worktree.
 
