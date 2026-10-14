@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI Tax Preparation"
+  short_description: "Prepare tax records and drafts from bank websites"
+  default_prompt: "Use $ai-tax-preparation with my bank website and tax-form website, or my country, to collect records, tag transactions and prepare my draft return."
