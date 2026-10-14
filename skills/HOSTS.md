@@ -42,6 +42,23 @@ read-only instruction (use the host's sandbox or read-only mode where it has one
 continued, so a second pass re-sends the brief plus the first findings. A different vendor's model
 gives stronger independence than the same model in a fresh session.
 
+## Reviewer models
+
+Use an independent non-author for every review gate, review-findings triage and independent
+verification. This mapping takes precedence over the general tiers below and review-tier examples in
+other skills; an exact project-specific reviewer pin still wins.
+
+| Host | Reviewer selection |
+|---|---|
+| Codex CLI | `gpt-6.1-sol`, medium effort (`-m gpt-6.1-sol -c model_reasoning_effort=medium`) |
+| Claude Code | Opus (`model: opus`); retain it as the default Claude reviewer, not a mandatory gate |
+| opencode using Claude | Opus; choose the available provider/model ID from `opencode models` |
+| Other hosts | Their existing high-tier reviewer mapping below |
+
+Keep the same reviewer across the two passes of its loop. Fresh exact-head independent verification
+uses a cold brief and no author transcript. Planning, diagnosis, implementation and prescribed
+mechanical checks keep their existing tiers; model selection grants no merge or approval-bypass authority.
+
 ## Tiers
 
 `AGENTS.md` §2 names three tiers by role: low (mechanical), medium (writes code), high (decides,
@@ -56,7 +73,8 @@ reviews, verifies).
 | Gemini CLI | Flash-Lite | Flash | Pro |
 | Antigravity CLI | `agy -p --effort low` | `--effort medium` | `--effort high` (pick `--model` from `agy models`; unverified) |
 
-The Sonnet-only rule in `AGENTS.md` §2 covers Claude models (Claude Code, opencode); other hosts use
+The Sonnet-only general tiers in `AGENTS.md` §2 cover Claude models outside the reviewer role above;
+other hosts use
 their own models. Kimi's medium row is effort high because `k3` offers only low, high and max.
 Exercised live: `kimi-code/k3` (the default) and opencode's free model; the opencode Sonnet ID is from
 `opencode models` (that account had no funds to run it).

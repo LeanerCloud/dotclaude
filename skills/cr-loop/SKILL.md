@@ -28,11 +28,10 @@ watchers, which never read PR comments.
 **Model tiers (the single statement; other skills point here):** no model waits. When the script exits,
 the session or agents on the tiers `subagent-strategy` assigns to iteration loops handle the result. The
 §3 triage (fix vs. dismiss-with-justification, and whether a "tiny fix" reveals an architectural gap) is
-review and runs on **Sonnet 5.5 high**; the fix commits, the re-ping and re-arming the script are coding
+review and uses **`skills/HOSTS.md` §Reviewer models**; the fix commits, the re-ping and re-arming the script are coding
 and run on **Sonnet 5.5 medium** once triage has decided each fix, iterating to silence. The triage brief
 carries the full §3 triage rules, the §3a rebase rules and the obligation to re-ping after each fix push.
-Use Sonnet 5.5 high for triage however localised the diff looks (medium has empirically gotten it
-wrong). Step down to Sonnet 5.5 low only to apply a fully-prescribed diff verbatim.
+Use the host reviewer mapping for triage however localised the diff looks. Step down to Sonnet 5.5 low only to apply a fully-prescribed diff verbatim.
 
 The script, and whoever its exit wakes:
 
