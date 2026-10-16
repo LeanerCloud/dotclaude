@@ -213,8 +213,8 @@ Verify each finding against current code; fix only still-valid issues, skip the 
    highest-severity finding, stash-verify (stash the prod change, run the test, confirm failure, pop).
    Green tests are NOT proof (AGENTS.md §4): trace the real end-to-end path after fixing. For a
    finding a prior "fix" already claimed to resolve, verify adversarially against the committed code.
-4. Atomic commits per file or concern, `type(scope): subject`. NO `Co-Authored-By: claude-flow`; NO
-   Anthropic/Claude mentions; NO em-dashes. Write the message to a unique file under `/tmp/claude/`
+4. Atomic commits per file or concern, `type(scope): subject`. NO `Co-Authored-By: claude-flow`; keep the
+   harness attribution trailer; NO em-dashes. Write the message to a unique file under `/tmp/claude/`
    and `git commit -F <path>`. NO heredoc `-m`.
 5. Verify before push (all must pass): `gofmt -l ./...`, `go vet ./...`, `go build ./...`,
    `go test ./<touched-pkg>/... -count=1`; frontend `npm test` + `npx tsc --noEmit` if touched.

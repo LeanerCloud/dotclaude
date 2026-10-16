@@ -35,7 +35,7 @@ remind() {
 
 case "$command" in
   *"git commit"*)
-    remind "Reminder (git-commit skill): the pre-commit review loop is mandatory and runs 2 review passes, whatever the stakes; fix findings in the same changeset, never in a follow-up commit. Conventional-commit format, no Anthropic/Claude mention, no heredoc -m. Invoke the git-commit skill if it is not already loaded." git-commit
+    remind "Reminder (git-commit skill): the pre-commit review loop is mandatory and runs 2 review passes, whatever the stakes; fix findings in the same changeset, never in a follow-up commit. Conventional-commit format, keep the harness attribution trailer, no heredoc -m. Invoke the git-commit skill if it is not already loaded." git-commit
     ;;
   *"git push"*)
     remind "Reminder (ci-watch skill): after this push, enumerate every workflow run for the pushed commit and launch one background watcher per run. If this is an open PR branch, also re-request CodeRabbit and arm its watcher in the same action (cr-loop skill)." ci-watch

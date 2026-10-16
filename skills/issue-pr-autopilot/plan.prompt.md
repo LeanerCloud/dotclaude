@@ -59,7 +59,7 @@ If any step (c-g) fails, do NOT add plan-ready (so the issue stays eligible for 
 
 ## GLOBAL HARD CONSTRAINTS (non-negotiable)
 - NO em-dashes (U+2014) anywhere - chat, plan.md, commits, comments. Use commas/hyphens/colons.
-- NO Anthropic/Claude mentions and NO 'Co-Authored-By: claude-flow' in commits or comments.
+- Keep the harness attribution trailer; NO 'Co-Authored-By: claude-flow' in commits or comments.
 - git commit -F, never heredoc -m; never --no-verify; never --yes on project CLIs.
 - Only ever push the issue's own auto/<issue#>-<slug> branch; never push main.
 - You do PLANNING ONLY: never implement code, never open a PR, never trigger or respond to CodeRabbit, never add pr-created/pr-merged. Those are the worker routine's job.

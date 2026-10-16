@@ -87,7 +87,7 @@ Scope: EVERY open issue labelled pr-created but not pr-merged whose linked PR is
 
 ## GLOBAL HARD CONSTRAINTS (non-negotiable)
 - NO em-dashes (U+2014) anywhere - chat, code, comments, commits, PR text. Use commas/hyphens/colons.
-- NO Anthropic/Claude mentions and NO 'Co-Authored-By: claude-flow' in commit messages or in PR prose you write. The runtime's own attribution footer on a PR body is left alone.
+- Keep the harness attribution trailer; NO 'Co-Authored-By: claude-flow' in commit messages or in PR prose you write. The runtime's own attribution footer on a PR body is left alone.
 - git commit -F, never heredoc -m; never --no-verify; never --yes on project CLIs.
 - Only ever push a PR's OWN auto/ feature branch; never push main.
 - Never self-merge; never @coderabbitai resolve. Never try to spawn background watcher/subagents (impossible here; the cron is the watcher).
