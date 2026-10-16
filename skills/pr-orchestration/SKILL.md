@@ -172,6 +172,10 @@ Under multi-PR load merge **one at a time** via the REST endpoint (`gh api PUT .
 `rate-limit-retry`). Rebase **just in time**, immediately before merging that PR; eager mass-rebasing
 churns because each merge invalidates the next.
 
+The merge driver reclaims right after each merge: `~/.claude/scripts/reclaim-merged-worktrees.sh --apply
+--branch <b> --repo <repo>` (`worktrees` skill). It does not wait for the authoring session, which is
+usually gone.
+
 ---
 
 ## 6. The loops

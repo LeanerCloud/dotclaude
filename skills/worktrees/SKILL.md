@@ -61,7 +61,7 @@ Paste verbatim below the header (copy, don't paraphrase):
 - The AGENTS.md §1 post-implementation review is clean.
 - **2 verification passes are done and acted on** (two, whatever the stakes). A pass covers tests, lint/typecheck, the §4 per-change-type verification (UI smoke, API curl, etc.), and a re-read of the diff against the plan. Fix what each pass finds; don't keep re-verifying for a pass that finds nothing. A clean pass on the exact same SHA counts for every gate that sees it (`AGENTS.md` §1, same-hash rule).
 
-**On completion**: rebase onto `base_branch:`, push, then (inside the AGENTS.md tenet 9 exception only when the branch tip is an ancestor of the pushed base, `git merge-base --is-ancestor <branch> origin/<base>`; otherwise ask) `git worktree remove` the worktree, flip `status:` to `merged`, then archive this plan file (`plans/archive/`). If the PR merges out-of-band (a human or another agent's `merge-watch` merges it after this session is gone), any later session reclaims this worktree via the sweep in the `worktrees` skill ("Reclaiming worktrees after the PR merges or closes").
+**On completion**: rebase onto `base_branch:`, push, then (inside the AGENTS.md tenet 9 exception only when the branch tip is an ancestor of the pushed base, `git merge-base --is-ancestor <branch> origin/<base>`; otherwise ask) `git worktree remove` the worktree, flip `status:` to `merged`, then archive this plan file (`plans/archive/`). If the PR merges out-of-band (a human or another agent's `merge-watch` merges it after this session is gone), any later session reclaims this worktree with `reclaim-merged-worktrees.sh` ("Reclaiming merged worktrees, branches and build dirs" below).
 
 **On abandonment**: flip `status:` to `abandoned`, clear `pid:`, archive the plan file, and remove the worktree only after user confirmation (abandoned work is outside the AGENTS.md tenet 9 exception).
 ```
@@ -118,39 +118,21 @@ The gate is the "Merge gate" block in the embedded checklist above (all plan ite
 ## Rebase and cleanup
 
 - **Rebase, don't merge, by default**: `git rebase <base-branch>` in the worktree, then fast-forward the base. Merge commit only if the base protects against force-pushes or the team convention demands it.
-- **Immediately after the merge**: push the base branch (post-push CI watcher per `ci-watch`), then clean up per "On completion" in the embedded checklist and delete the feature branch if no longer needed; build dirs follow step 4 of the sweep below.
+- **Immediately after the merge**: push the base branch (post-push CI watcher per `ci-watch`), then clean up per "On completion" in the embedded checklist and delete the feature branch if no longer needed; build dirs are handled by the reclaim script below.
 - **Abandoned worktree**: see "On abandonment" in the checklist.
 
-## Reclaiming worktrees after the PR merges or closes (run the sweep)
+## Reclaiming merged worktrees, branches and build dirs
 
-The creating session usually isn't the one that sees its PR merge or close (a human merges, or another agent's `merge-watch`, see `git-commit`). So every session treats a worktree whose PR has merged or closed as reclaimable, and sweeps proactively; otherwise merged-branch worktrees pile up and poison crash-recovery enumeration.
+`~/.claude/scripts/reclaim-merged-worktrees.sh [--apply] [--repo PATH] [--branch NAME]` is the implementation; never hand-roll the sweep. Without `--apply` it only reports, one line per item: `reclaimed|reclaimable|blocked|ask|skip|prunable <name> <reason>`.
 
-**When** (cheap, run liberally): at session start and before ending; right after observing any PR merge (yours or a peer's) or closing one as wontfix.
+**When**: report mode at session start and before ending; `--apply --branch <b>` right after each merge, from the primary checkout. The session that performs or first observes the merge (a human merge, a merge driver, a peer's `merge-watch`) owns the reclaim, and any session may reclaim another session's merged worktree because the gates below protect live work.
 
-**The sweep**: enumerate `git worktree list`, resolve each branch's PR state, reclaim only terminal + clean ones:
+**What it checks** (it fails closed: a `gh` error or a full result page aborts before any deletion):
+- **Merged**: the branch tip equals or is an ancestor of the head of a same-repo merged PR into the default branch (fork PRs ignored). A reused name, extra commits or a stacked base gives `ask`. Branches with an open PR as head or base, `main` and the default branch are `skip`; branches with no merged PR are left alone.
+- **Gate** (`blocked` leaves the worktree untouched): not locked; clean tree; no ignored file outside the build allowlist (a path with any component named `node_modules`, `target`, `dist`, `build`, `.terraform`, `__pycache__`, `coverage`, `.next`, `test-results` or `playwright-report`, at any depth; or a top-level `plan.md` symlink), and only when nothing under that prefix is tracked; secret-like names (`.env*`, keys, certs, `*.tfvars`, `*.tfstate*`, `.npmrc`, `secrets.*`, `credentials*`) always block, even inside build dirs (except node_modules, whose packages ship such fixtures); no process with its cwd inside; no `in-progress`/`verifying` plan with a live owner.
+- **Actions** (`--apply`, in order): `git worktree remove` (never `--force`); the plan's `build_dirs:` (each path must be absolute, not a symlink, strictly below `~/.claude/worktrees/`, `$TMPDIR` or `/private/tmp/`, canonical, not a git clone, with no live cwd inside, clear of every worktree and the repo, and listed by no other plan); local branch delete pinned to the verified tip; remote delete only when the remote equals or is an ancestor of a merged head (`ask: remote ahead` otherwise); plan to `status: merged` in `plans/archive/`. A full run also covers local branches that have no worktree.
 
-1. **Classify by PR state**: `gh pr list --head <branch> --state all --json number,state,mergedAt,headRefOid` (or `gh pr view <branch>`). Reclaim `MERGED` without asking (AGENTS.md tenet 9 exception) only when the branch tip equals `headRefOid` or is its ancestor (`git merge-base --is-ancestor <branch> <headRefOid>`); otherwise it is a reused branch name, outside the exception: ask. A `CLOSED` (wontfix/superseded) PR's worktree and branches need per-item user confirmation. Leave `OPEN` PRs and branches with **no** PR (possibly pre-PR work) alone.
-2. **Safety gate before removal** (clean, nothing unpushed):
-   - `git -C <worktree> status --porcelain` is empty, AND
-   - `git -C <worktree> status --porcelain --ignored` lists only build output (the plan's `build_dirs:` plus standard caches: `node_modules`, `target`, `dist`, `__pycache__`; no `.env`, credentials, logs or local data; `git worktree remove` deletes ignored files silently), AND
-   - `git -C <worktree> log --oneline @{u}..` is empty (if the upstream is gone from origin, the commits are on the merged PR / base).
-   - If **any** is non-empty, do NOT remove: this is the `feedback_recover_stranded_fix_work` case (a dead agent's finished-but-uncommitted or unpushed work). Recover first (commit, gate, fresh PR, or cherry-pick), then remove.
-3. **Never reclaim a `locked` worktree** (a running agent owns it) or one whose plan header shows a live PID on this host; coordinate (`multi-agent-comms`).
-4. **Remove**: `git worktree remove <worktree>` (never `--force` without user confirmation; if git balks, report why). For a `MERGED` PR also delete the build dirs in the plan's `build_dirs:` (exact paths, only if no other plan lists them, never a glob by number, never shared dirs such as `build-master`); the tenet 9 exception covers this. Then delete BOTH sides of the orphaned branch and archive the plan:
-   - **Local**: `git branch -D <branch>`.
-   - **Remote**: `git push origin --delete <branch>` (a merged/wontfix head branch is dead; stale remote refs accumulate by the hundreds). Skip if origin already lacks it (GitHub auto-deleted it; check `git ls-remote --heads origin <branch>` or ignore "remote ref does not exist"). NEVER delete the remote of an `OPEN`-PR branch, `main`, or a protected/base branch. Skip it while an open PR has it as base (`gh pr list --base <branch> --state open`).
-   - **Plan file**: flip `status:` to `merged`/`abandoned`, move to `plans/archive/`.
-
-**Never bulk-remove blindly**: enumerate, classify, safety-gate each, remove only confirmed-terminal-and-clean. A worktree that fails the gate is a signal (stranded work), not an obstacle to force past.
-
-## Sweep merged/closed branches that have NO worktree
-
-Branch refs outlive their worktrees, so pair the worktree sweep with a **branch sweep** at session start/end:
-
-1. **Build the merged set from PR state**, not `git branch --merged` (squash-merges change the SHA): `gh pr list --state merged --limit 3000 --json headRefName,headRefOid --jq '.[] | [.headRefName, .headRefOid] | @tsv' | sort -u > merged.txt` (`headRefName<TAB>headRefOid`). Delete a branch only when its tip equals that SHA or is its ancestor (`git merge-base --is-ancestor`); a mismatch is a reused name, so ask. Closed-unmerged branches are outside the tenet 9 exception: list them for the user to confirm.
-2. **Delete sets by intersection, with hard exclusions**: also fetch open-PR head AND base branches (`--state open --json headRefName,baseRefName`; `open` below is their union, so a branch a stacked PR still targets survives) and a protected list (`main`, long-lived bases). `local_del = local ∩ merged − open − protected`; `remote_del = origin ∩ merged − open − protected`. Print the counts and assert the open-PR branches and `main` are absent from both sets before deleting.
-3. **Delete**: `git branch -D` each local; `git push origin --delete` each remote **in batches** (~25 refs per push, a few seconds apart) to stay under GitHub's secondary rate limit (`feedback_pace_merges_secondary_ratelimit`). A per-branch fallback handles refs GitHub already auto-deleted.
-4. **Dirty-worktree safety still applies**: a to-be-deleted branch whose worktree has uncommitted, unpushed or non-build ignored files is outside the exception. Snapshot it (`git diff HEAD > <preserved-path>.patch`) and ask the user first.
+`blocked` is a signal of stranded work (recover first: commit, gate, fresh PR), not an obstacle to force past. `ask` needs the user. CLOSED-unmerged and abandoned work is outside the AGENTS.md tenet 9 exception and is never touched by the script.
 
 ## When to use one
 

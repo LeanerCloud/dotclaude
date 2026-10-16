@@ -23,8 +23,10 @@ into a memory** (§3). 6. **No "done" without proof** (§4). 7. **Simpler beats 
    its PR is MERGED and the branch tip is that PR's head or an ancestor of it (squash merges defeat
    `git branch --merged`), or, with no PR, the tip is an ancestor of the pushed base. Only when the
    worktree has no uncommitted, unpushed or untracked changes, no ignored files besides build output,
-   no lock and no live owner PID. Anything else (CLOSED-unmerged, abandoned, dirty) needs
-   confirmation (`worktrees`).
+   no lock and no live owner PID. Run the reclaim as
+   `~/.claude/scripts/reclaim-merged-worktrees.sh --apply --branch <b>`, by whoever performs or first
+   observes the merge; any session may reclaim another session's merged, gated worktree. Anything else
+   (CLOSED-unmerged, abandoned, dirty) needs confirmation (`worktrees`).
 
 ## Mandatory skill triggers
 
