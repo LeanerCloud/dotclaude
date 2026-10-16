@@ -136,19 +136,12 @@ say so explicitly in the §6 comment; never silently skip and claim done.
 **Reclaim the worktree immediately after the merge.** The post-merge agent (spawned when
 `merge-watch-<pr-#>` exits) owns cleanup and does it first, before §5 verification (which checks the
 merged base, not the worktree; e.g. `terraform plan` runs on the updated base). Run it from the primary
-checkout, never from the worktree being removed. The branch tip must equal the PR's `headRefOid` or be
-its ancestor, else ask (`worktrees`).
-Run the worktree sweep from the `worktrees` skill ("Reclaiming worktrees after the PR merges or closes")
-for this PR's branch: safety-gate it (clean tree, nothing unpushed; recover stranded work per
-`feedback_recover_stranded_fix_work` if not), then `git worktree remove` it, delete the build dirs
-recorded in the plan's `build_dirs:` (exact paths, only if no other plan lists them, never a glob by
-number, never shared dirs such as `build-master`), delete **both** the local branch (`git branch -D`)
-**and the remote branch** (`git push origin --delete <branch>`, unless an open PR still has it as base:
-`gh pr list --base <branch> --state open`; a merged/wontfix head branch is dead and
-stale remote refs accumulate), and archive the plan file (`plans/archive/`). If the PR was closed as
-wontfix instead of merged, the same sweep runs only after per-item user confirmation (outside the
-AGENTS.md tenet 9 exception). Pair it with the periodic no-worktree **branch sweep** in the `worktrees`
-skill ("Sweep merged/closed branches that have NO worktree").
+checkout, never from the worktree being removed:
+`~/.claude/scripts/reclaim-merged-worktrees.sh --apply --branch <branch>`. It gates on the PR head, a clean
+tree and plan liveness, then removes the worktree, build dirs and both branch refs and archives the plan
+(`worktrees`). Report any `blocked` or `ask` line to the user; recover stranded work per
+`feedback_recover_stranded_fix_work`. If the PR was closed as wontfix instead of merged, cleanup needs
+per-item user confirmation (outside the AGENTS.md tenet 9 exception).
 
 **Reap the watchers, then reap yourself.** The merge is the terminal event, so the post-merge agent is
 the natural reaper per the Watcher-teardown invariant: after the worktree reclaim, stop this PR's

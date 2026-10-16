@@ -20,9 +20,9 @@ fi
 mkdir -p "$fixture_repo/scripts" "$fixture_repo/skills/worktrees" \
   "$fixture_repo/skills/pr-orchestration" "$fixture_repo/skills/pr-iterate" \
   "$fixture_repo/skills/testdata"
-printf 'root ~/.claude/worktrees/\n' > "$fixture_repo/AGENTS.md"
-printf 'root ~/.claude/worktrees/\n' > "$fixture_repo/skills/worktrees/SKILL.md"
-printf 'root ~/.claude/worktrees/\n' > "$fixture_repo/skills/pr-orchestration/SKILL.md"
+printf 'root ~/.claude/worktrees/ reclaim-merged-worktrees.sh\n' > "$fixture_repo/AGENTS.md"
+printf 'root ~/.claude/worktrees/ reclaim-merged-worktrees.sh\n' > "$fixture_repo/skills/worktrees/SKILL.md"
+printf 'root ~/.claude/worktrees/ reclaim-merged-worktrees.sh\n' > "$fixture_repo/skills/pr-orchestration/SKILL.md"
 printf 'root ~/.claude/worktrees/\n' > "$fixture_repo/skills/pr-iterate/SKILL.md"
 cp "$validator" "$fixture_repo/scripts/validate-worktree-policy.sh"
 printf 'fixture\n' > "$fixture_repo/skills/testdata/case.md"

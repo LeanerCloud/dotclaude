@@ -18,7 +18,8 @@ if [ "$mode" = staged ]; then
   grep_args+=(--cached)
 fi
 
-pathspecs=(AGENTS.md CLAUDE.md skills scripts ':(exclude)scripts/validate-worktree-policy.sh')
+# The reclaim fixture suite creates throwaway worktrees under /private/tmp on purpose.
+pathspecs=(AGENTS.md CLAUDE.md skills scripts ':(exclude)scripts/validate-worktree-policy.sh' ':(exclude)scripts/tests/reclaim-merged-worktrees.test.sh')
 failures=0
 
 fail() {
@@ -75,6 +76,9 @@ assert_contains AGENTS.md '.claude/worktrees/' 'always-on guidance must name the
 assert_contains skills/worktrees/SKILL.md '.claude/worktrees/' 'worktree creation must use the durable root'
 assert_contains skills/pr-orchestration/SKILL.md '.claude/worktrees/' 'orchestration must use the durable root'
 assert_contains skills/pr-iterate/SKILL.md '.claude/worktrees/' 'PR iteration must use the durable root'
+assert_contains AGENTS.md 'reclaim-merged-worktrees.sh' 'tenet 9 must name the post-merge reclaim script'
+assert_contains skills/worktrees/SKILL.md 'reclaim-merged-worktrees.sh' 'worktrees skill must point at the reclaim script'
+assert_contains skills/pr-orchestration/SKILL.md 'reclaim-merged-worktrees.sh' 'merge driver must run the reclaim script'
 assert_not_contains skills/worktrees/SKILL.md 'worktree add ../<repo>-<slug>' 'worktrees skill still creates sibling worktrees'
 assert_not_contains skills/pr-orchestration/SKILL.md "\$TMPDIR/claude/" 'orchestration still routes worktrees through TMPDIR'
 assert_not_contains skills/pr-iterate/SKILL.md '.worktrees/<repo>/<slug>' 'PR iteration still uses a repo-local worktree root'
