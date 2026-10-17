@@ -15,7 +15,8 @@ const (
 
 // ClaudeWaitKeys moves the cursor from option 1 to option 2 and confirms it. They are only valid
 // after ClaudeWaitAnswerSafe accepted the same screen, and they never reach option 3 (usage credits).
-var ClaudeWaitKeys = []string{"down", "enter"}
+// Each call returns a fresh slice, so a caller cannot change the sequence for the next one.
+func ClaudeWaitKeys() []string { return []string{"down", "enter"} }
 
 // ClaudeWaitAnswerSafe reports whether screen shows Claude's usage-limit prompt with the cursor on
 // option 1, and returns the key sequence that selects "Wait here, then continue automatically".
@@ -26,7 +27,7 @@ func ClaudeWaitAnswerSafe(screen string) (bool, []string) {
 		!strings.Contains(screen, claudeCursorOnFirst) {
 		return false, nil
 	}
-	return true, append([]string(nil), ClaudeWaitKeys...)
+	return true, ClaudeWaitKeys()
 }
 
 // claudeLimitRE matches the limit notice line, anchored after an optional tool-result glyph, so a
