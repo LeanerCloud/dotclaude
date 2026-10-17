@@ -162,3 +162,115 @@ func TestUnverifiedDetectorsNeverConfirm(t *testing.T) {
 		t.Errorf("codex has no screen detector: %+v", r)
 	}
 }
+
+func confirmed(h config.Harness, reset time.Time) Result {
+	return Result{Harness: h, Verified: true, Matched: true, Confirmed: true, Signature: "sig", ResetAt: reset}
+}
+
+func TestStateMachine(t *testing.T) {
+	t.Parallel()
+	s := &Set{}
+	if s.Get(config.Claude).Kind != Unknown {
+		t.Fatal("empty set must be unknown")
+	}
+	// Bootstrap: a live agent working with no match makes an unknown harness ok.
+	s.Observe(Result{Harness: config.Claude}, "working", now)
+	if e := s.Get(config.Claude); e.Kind != OK || !e.VerifiedAt.Equal(now) {
+		t.Fatalf("bootstrap: %+v", e)
+	}
+	// A working agent that shows a match proves nothing.
+	s.Observe(Result{Harness: config.Kimi, Matched: true}, "working", now)
+	if s.Get(config.Kimi).Kind != Unknown {
+		t.Fatal("working with a match must stay unknown")
+	}
+	// An idle agent with no match proves nothing either.
+	s.Observe(Result{Harness: config.Kimi}, "idle", now)
+	if s.Get(config.Kimi).Kind != Unknown {
+		t.Fatal("idle must stay unknown")
+	}
+	reset := now.Add(3 * time.Hour)
+	s.Observe(confirmed(config.Claude, reset), "blocked", now)
+	if e := s.Get(config.Claude); e.Kind != Throttled || !e.Until.Equal(reset) || !e.Since.Equal(now) {
+		t.Fatalf("throttle: %+v", e)
+	}
+	// Persisting throttle keeps Since; later reset is taken.
+	later := now.Add(10 * time.Minute)
+	s.Observe(confirmed(config.Claude, reset), "blocked", later)
+	if e := s.Get(config.Claude); !e.Since.Equal(now) {
+		t.Fatalf("since must persist: %+v", e)
+	}
+	if s.MigrateDue(config.Claude, now.Add(119*time.Minute), 2*time.Hour) || !s.MigrateDue(config.Claude, now.Add(2*time.Hour), 2*time.Hour) {
+		t.Fatal("migrate_after boundary")
+	}
+	if s.MigrateDue(config.Codex, now.Add(48*time.Hour), time.Hour) {
+		t.Fatal("unknown harness never migrates")
+	}
+	// Expiry becomes unknown, not ok.
+	if got := s.ExpireThrottles(reset.Add(-time.Second)); len(got) != 0 {
+		t.Fatalf("early expiry: %v", got)
+	}
+	if got := s.ExpireThrottles(reset); !reflect.DeepEqual(got, []config.Harness{config.Claude}) || s.Get(config.Claude).Kind != Unknown {
+		t.Fatalf("expiry: %v %+v", got, s.Get(config.Claude))
+	}
+	// A working agent clears a throttle early; exhausted does not clear that way.
+	s.Observe(confirmed(config.Claude, reset.Add(time.Hour)), "idle", reset)
+	s.Observe(Result{Harness: config.Claude}, "working", reset.Add(time.Minute))
+	if s.Get(config.Claude).Kind != OK {
+		t.Fatal("working agent must clear a throttle")
+	}
+	s.Put(config.Codex, Entry{Kind: Exhausted})
+	s.Observe(Result{Harness: config.Codex}, "working", now)
+	if s.Get(config.Codex).Kind != Exhausted {
+		t.Fatal("exhausted must not clear on a working observation")
+	}
+}
+
+func TestUnparsedResetFallsBackToWait(t *testing.T) {
+	t.Parallel()
+	s := &Set{}
+	s.Observe(confirmed(config.Claude, time.Time{}), "blocked", now)
+	if e := s.Get(config.Claude); !e.Until.Equal(now.Add(UnparsedWait)) {
+		t.Fatalf("%+v", e)
+	}
+	s2 := &Set{}
+	s2.Observe(confirmed(config.Claude, now.Add(-time.Hour)), "blocked", now)
+	if e := s2.Get(config.Claude); !e.Until.Equal(now.Add(UnparsedWait)) {
+		t.Fatalf("a reset in the past is not usable: %+v", e)
+	}
+}
+
+func TestSaveLoad(t *testing.T) {
+	t.Parallel()
+	p := filepath.Join(t.TempDir(), "limits.json")
+	if s, err := Load(p); err != nil || len(s.Harnesses) != 0 {
+		t.Fatalf("missing file: %v %v", s, err)
+	}
+	s := &Set{}
+	s.Put(config.Claude, Entry{Kind: Throttled, Until: now, Since: now.Add(-time.Hour)})
+	s.Put(config.Kimi, Entry{Kind: OK, VerifiedAt: now})
+	if err := s.Save(p); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(p)
+	if err != nil || !got.Get(config.Claude).Until.Equal(now) || got.Get(config.Kimi).Kind != OK {
+		t.Fatalf("round trip: %+v %v", got, err)
+	}
+	for name, body := range map[string]string{
+		"unknown field":   `{"harnesses":{},"extra":1}`,
+		"bad harness":     `{"harnesses":{"gemini":{"kind":"ok"}}}`,
+		"bad kind":        `{"harnesses":{"claude":{"kind":"fine"}}}`,
+		"throttle no end": `{"harnesses":{"claude":{"kind":"throttled-until"}}}`,
+		"not json":        `nope`,
+	} {
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Load(p); err == nil {
+			t.Errorf("%s: want error", name)
+		}
+	}
+	bad := &Set{Harnesses: map[config.Harness]Entry{config.Claude: {Kind: "fine"}}}
+	if err := bad.Save(p); err == nil {
+		t.Error("save must validate")
+	}
+}
