@@ -36,6 +36,7 @@ const (
 
 const (
 	MaxReportBytes  = 8 * 1024
+	MaxTextBytes    = 4 * 1024 // cap for note.text and escalate.question
 	maxCommandBytes = 64 * 1024
 )
 
@@ -114,6 +115,19 @@ func (c *Command) Validate() error {
 	}
 	if c.Cmd == CmdReport && len(c.Markdown) > MaxReportBytes {
 		return fmt.Errorf("report: markdown is %d bytes, max %d", len(c.Markdown), MaxReportBytes)
+	}
+	if c.Cmd == CmdNote && len(c.Text) > MaxTextBytes {
+		return fmt.Errorf("note: text is %d bytes, max %d", len(c.Text), MaxTextBytes)
+	}
+	if c.Cmd == CmdEscalate {
+		if len(c.Question) > MaxTextBytes {
+			return fmt.Errorf("escalate: question is %d bytes, max %d", len(c.Question), MaxTextBytes)
+		}
+		for i, o := range c.Options {
+			if strings.TrimSpace(o) == "" {
+				return fmt.Errorf("escalate: options[%d] is empty", i)
+			}
+		}
 	}
 	if strings.TrimSpace(c.Reason) == "" {
 		return fmt.Errorf("%s: reason is required", c.Cmd)
