@@ -77,7 +77,8 @@ func redactSlashKeys(s string) string {
 	last := 0
 	for _, m := range b64Run40.FindAllStringIndex(s, -1) {
 		start, end := m[0], m[1]
-		if start > 0 && strings.IndexByte(tokenChars, s[start-1]) >= 0 {
+		// "=" is allowed on the left (KEY=value); quotes and ":" are not token characters anyway.
+		if start > 0 && s[start-1] != '=' && strings.IndexByte(tokenChars, s[start-1]) >= 0 {
 			continue
 		}
 		if end < len(s) && strings.IndexByte(tokenChars, s[end]) >= 0 {
