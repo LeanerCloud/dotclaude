@@ -1,0 +1,9 @@
+⏺ The test fixture contains this line:
+
+  ⎿  You've hit your limit · resets 3pm (Europe/Bucharest)
+
+  and the parser must return the time without the menu.
+
+╭──────────────────────────────────────────────╮
+│ >                                            │
+╰──────────────────────────────────────────────╯

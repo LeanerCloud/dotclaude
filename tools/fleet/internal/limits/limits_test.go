@@ -1,6 +1,10 @@
 package limits
 
 import (
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -8,6 +12,100 @@ import (
 )
 
 var now = time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+
+func fixture(t *testing.T, name string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("testdata", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+func detect(t *testing.T, fx, status, prev string) Result {
+	t.Helper()
+	return Detect(Input{Harness: config.Claude, Status: status, Detection: fixture(t, fx), PrevSignature: prev, Now: now})
+}
+
+func TestClaudeConfirmedNeedsAllConditions(t *testing.T) {
+	t.Parallel()
+	first := detect(t, "claude/limit_prompt.txt", "blocked", "")
+	if !first.Matched || !first.Chrome || first.Confirmed || !first.Verified {
+		t.Fatalf("first sighting must match but not confirm: %+v", first)
+	}
+	// 3pm in Bucharest (UTC+3 until Oct 25) is 12:00 UTC, which is not after now, so tomorrow.
+	if want := now.Add(24 * time.Hour); !first.ResetAt.Equal(want) {
+		t.Fatalf("reset %v, want %v", first.ResetAt, want)
+	}
+	for _, status := range []string{"blocked", "idle", "done"} {
+		if r := detect(t, "claude/limit_prompt.txt", status, first.Signature); !r.Confirmed {
+			t.Errorf("status %s: want confirmed, got %+v", status, r)
+		}
+	}
+}
+
+func TestClaudeNegatives(t *testing.T) {
+	t.Parallel()
+	tests := []struct{ name, fx, status string }{
+		{"approval dialog", "claude/approval_dialog.txt", "blocked"},
+		{"transcript discussing 429s and limits", "claude/discusses_limits.txt", "idle"},
+		{"quoted limit line without the menu", "claude/quoted_limit_no_menu.txt", "idle"},
+		{"working agent showing the limit text", "claude/limit_prompt.txt", "working"},
+		{"unknown status", "claude/limit_prompt.txt", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			// Give it the best case for the previous tick so only the guard under test can refuse.
+			prev := detect(t, tt.fx, "blocked", "").Signature
+			if r := detect(t, tt.fx, tt.status, prev); r.Confirmed || r.Candidate {
+				t.Fatalf("must not confirm: %+v", r)
+			}
+		})
+	}
+}
+
+func TestClaudeSignatureMustRepeat(t *testing.T) {
+	t.Parallel()
+	if r := detect(t, "claude/limit_prompt.txt", "blocked", "claude:something else"); r.Confirmed {
+		t.Fatalf("a different previous match must not confirm: %+v", r)
+	}
+}
+
+func TestMatchOutsideBottomLinesIgnored(t *testing.T) {
+	t.Parallel()
+	text := fixture(t, "claude/limit_prompt.txt") + strings.Repeat("later output\n", BottomLines)
+	r := Detect(Input{Harness: config.Claude, Status: "idle", Detection: text, Now: now})
+	if r.Matched {
+		t.Fatalf("scrolled-off match counted: %+v", r)
+	}
+}
+
+func TestClaudeWaitAnswerSafe(t *testing.T) {
+	t.Parallel()
+	ok, keys := ClaudeWaitAnswerSafe(fixture(t, "claude/limit_prompt.txt"))
+	if !ok || !reflect.DeepEqual(keys, []string{"down", "enter"}) {
+		t.Fatalf("got %v %v", ok, keys)
+	}
+	keys[0] = "mutated"
+	if ClaudeWaitKeys[0] != "down" {
+		t.Fatal("returned keys alias the package variable")
+	}
+	for _, fx := range []string{"limit_prompt_cursor_on_2", "limit_prompt_cursor_on_3", "approval_dialog", "discusses_limits", "quoted_limit_no_menu"} {
+		if ok, keys := ClaudeWaitAnswerSafe(fixture(t, "claude/"+fx+".txt")); ok || keys != nil {
+			t.Errorf("%s: must be unsafe, got %v %v", fx, ok, keys)
+		}
+	}
+	full := fixture(t, "claude/limit_prompt.txt")
+	for _, drop := range []string{claudePrompt, claudeWaitOption, claudeCursorOnFirst} {
+		if ok, _ := ClaudeWaitAnswerSafe(strings.Replace(full, drop, "", 1)); ok {
+			t.Errorf("missing %q must be unsafe", drop)
+		}
+	}
+	if ok, _ := ClaudeWaitAnswerSafe(""); ok {
+		t.Error("empty screen must be unsafe")
+	}
+}
 
 func TestParseReset(t *testing.T) {
 	t.Parallel()

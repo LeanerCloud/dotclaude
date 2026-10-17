@@ -1,0 +1,6 @@
+  ⎿  You've hit your weekly limit · resets Oct 20, 9:30am (UTC)
+
+ What do you want to do?
+
+ ❯ 1. Stop and wait for limit to reset
+   2. Wait here, then continue automatically
