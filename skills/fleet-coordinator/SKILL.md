@@ -96,6 +96,11 @@ the line. Impl slots use the `issue` form for the issue they claimed by comment.
 - **Heavy commands** (`go test`, `cargo build|test`, `npx playwright`, `make test*`, throwaway
   Postgres) run through `fleet heavy -- <cmd>`. New slots also get a PATH shim that does this. Never
   call them by absolute path to get around it.
+- **Throwaway Go cache for loops.** Mutation probes, rebase or scratch verification, and any loop that
+  edits and re-tests the same package run with `GOCACHE=<your scratch dir>/gocache`, released with the
+  scratch dir. Each edit of a large test package otherwise leaves a permanent copy in the shared
+  cache. One-off builds and tests use the shared cache. Never pin a Go toolchain the repo's go.mod
+  does not require: the machine default (`go1.26.9+auto`) keeps one cached copy per package.
 - **Shared locks** use `fleet lock <name> -- <cmd>` (macOS has no flock(1)). The names in use are
   `reclaim-<repo>` for the reclaim script and `push-<repo>` for pushes.
 - **Waiting** (CI, CodeRabbit, a fork-run approval): write what you wait for in Next action and stop.
