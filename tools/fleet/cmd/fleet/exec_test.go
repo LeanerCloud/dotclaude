@@ -1,12 +1,17 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -117,8 +122,8 @@ func TestHeavyWaitsWhenAllSlotsHeldAndTimesOut(t *testing.T) {
 	if got := runHeavy(e, []string{"--", "true"}); got != exitTimeout || !strings.Contains(errb.String(), "timed out") {
 		t.Fatalf("exit %d %q", got, errb.String())
 	}
-	if _, err := os.Stat(filepath.Join(e.stateDir(), "heavy-wait", "cc-impl")); !os.IsNotExist(err) {
-		t.Fatal("heavy-wait marker left after the timeout")
+	if m, _ := filepath.Glob(filepath.Join(e.stateDir(), "heavy-wait", "cc-impl.*")); len(m) != 0 {
+		t.Fatalf("heavy-wait marker left after the timeout: %v", m)
 	}
 }
 
@@ -222,5 +227,231 @@ func TestDispatchKeepsOtherSubcommandsStubbed(t *testing.T) {
 	var errb bytes.Buffer
 	if got := dispatch(env{stderr: &errb}, []string{"tick"}); got != 2 || !strings.Contains(errb.String(), "not implemented") {
 		t.Fatalf("exit %d %q", got, errb.String())
+	}
+}
+
+func TestExitCodeValues(t *testing.T) {
+	t.Parallel()
+	if exitTimeout != 75 || exitNotFound != 127 || exitUsage != 2 || exitFailure != 1 {
+		t.Fatalf("exit codes are a contract: %d %d %d %d", exitTimeout, exitNotFound, exitUsage, exitFailure)
+	}
+}
+
+// startFleet runs the test binary as `fleet <args>` in its own process, with stdout on a pipe.
+func startFleet(t *testing.T, e env, extra []string, args ...string) (*exec.Cmd, *bufio.Reader) {
+	t.Helper()
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := exec.Command(self, args...)
+	c.Env = append(append([]string(nil), e.environ...), "FLEET_TEST_AS_FLEET=1", "HOME="+e.home)
+	c.Env = append(c.Env, extra...)
+	out, err := c.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Process.Kill() })
+	return c, bufio.NewReader(out)
+}
+
+func waitLine(t *testing.T, r *bufio.Reader, want string) {
+	t.Helper()
+	got := make(chan string, 1)
+	go func() {
+		l, _ := r.ReadString('\n')
+		got <- strings.TrimSpace(l)
+	}()
+	select {
+	case l := <-got:
+		if l != want {
+			t.Fatalf("read %q, want %q", l, want)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatalf("timed out waiting for %q", want)
+	}
+}
+
+func exitOf(t *testing.T, c *exec.Cmd) int {
+	t.Helper()
+	done := make(chan error, 1)
+	go func() { done <- c.Wait() }()
+	select {
+	case err := <-done:
+		var ee *exec.ExitError
+		if err == nil {
+			return 0
+		}
+		if !errors.As(err, &ee) {
+			t.Fatal(err)
+		}
+		return ee.ExitCode()
+	case <-time.After(15 * time.Second):
+		t.Fatal("fleet did not exit")
+	}
+	return -1
+}
+
+func TestSignalsReachTheChild(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		sig  syscall.Signal
+		name string
+	}{{syscall.SIGINT, "INT"}, {syscall.SIGTERM, "TERM"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			e, _, _ := testEnv(t, 1)
+			script := `trap 'echo got-` + tc.name + `; exit 9' ` + tc.name + `; echo ready; while :; do sleep 0.05; done`
+			c, out := startFleet(t, e, nil, "heavy", "--", "sh", "-c", script)
+			waitLine(t, out, "ready")
+			if err := c.Process.Signal(tc.sig); err != nil {
+				t.Fatal(err)
+			}
+			waitLine(t, out, "got-"+tc.name)
+			if got := exitOf(t, c); got != 9 {
+				t.Fatalf("exit %d, want the child's 9", got)
+			}
+		})
+	}
+}
+
+func processGone(pid int) bool {
+	for range 200 {
+		if err := syscall.Kill(pid, 0); errors.Is(err, syscall.ESRCH) {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return false
+}
+
+func TestSIGTERMKillsGrandchildrenAndFreesTheSlot(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name  string
+		extra []string
+		args  []string
+	}{
+		{"heavy", nil, []string{"heavy", "--"}},
+		{"held", []string{lock.HeldEnv + "=1"}, []string{"heavy", "--"}},
+		{"lock", nil, []string{"lock", "x", "--"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			e, _, _ := testEnv(t, 1)
+			pidFile := filepath.Join(t.TempDir(), "pid")
+			script := `sleep 30 & echo $! > ` + pidFile + `; echo ready; wait`
+			c, out := startFleet(t, e, tc.extra, append(tc.args, "sh", "-c", script)...)
+			waitLine(t, out, "ready")
+			data, err := os.ReadFile(pidFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := c.Process.Signal(syscall.SIGTERM); err != nil {
+				t.Fatal(err)
+			}
+			if got := exitOf(t, c); got != 128+int(syscall.SIGTERM) {
+				t.Fatalf("exit %d, want 143", got)
+			}
+			if !processGone(pid) {
+				_ = syscall.Kill(pid, syscall.SIGKILL)
+				t.Fatalf("grandchild %d survived fleet", pid)
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+			defer cancel()
+			rel, err := lock.Heavy(filepath.Join(e.stateDir(), "locks"), 1, "").Acquire(ctx)
+			if err != nil {
+				t.Fatalf("slot not free after fleet exit: %v", err)
+			}
+			rel()
+		})
+	}
+}
+
+func TestSIGTERMWhileWaitingExits143AndRemovesMarker(t *testing.T) {
+	t.Parallel()
+	e, _, _ := testEnv(t, 1, "FLEET_SLOT=cc-impl")
+	rel, err := lock.Heavy(filepath.Join(e.stateDir(), "locks"), 1, "").Acquire(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rel()
+	ran := filepath.Join(t.TempDir(), "ran")
+	c, _ := startFleet(t, e, nil, "heavy", "--", "touch", ran)
+	pattern := filepath.Join(e.stateDir(), "heavy-wait", "cc-impl."+strconv.Itoa(c.Process.Pid))
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, err := os.Stat(pattern); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("marker never appeared")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if err := c.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	if got := exitOf(t, c); got != 143 {
+		t.Fatalf("exit %d, want 128+SIGTERM", got)
+	}
+	if _, err := os.Stat(pattern); !os.IsNotExist(err) {
+		t.Fatal("marker left after a cancelled wait")
+	}
+	if _, err := os.Stat(ran); err == nil {
+		t.Fatal("the command ran although the wait was cancelled")
+	}
+}
+
+func TestSignalDuringAcquireNeverStartsTheChild(t *testing.T) {
+	t.Parallel()
+	e, _, errb := testEnv(t, 1)
+	ran := filepath.Join(t.TempDir(), "ran")
+	sigs := make(chan os.Signal, 4)
+	sigs <- syscall.SIGTERM // already pending when the lock is taken
+	sem := e.tune(lock.Heavy(filepath.Join(e.stateDir(), "locks"), 1, ""))
+	_, code, ok := acquire(e, sem, sigs)
+	if ok || code != 143 || !strings.Contains(errb.String(), "terminated") {
+		t.Fatalf("ok=%v code=%d %q", ok, code, errb.String())
+	}
+	if _, err := os.Stat(ran); err == nil {
+		t.Fatal("child ran")
+	}
+	// The slot must have been released again.
+	if rel, err := sem.Acquire(t.Context()); err != nil {
+		t.Fatalf("slot leaked: %v", err)
+	} else {
+		rel()
+	}
+}
+
+func TestHeldAndLockedPathsBuildTheChildTheSameWay(t *testing.T) {
+	t.Parallel()
+	environ := []string{"A=1", lock.HeldEnv + "=1", "B=2"}
+	held := newChild(env{environ: environ}, []string{"true"}, true)
+	locked := newChild(env{environ: []string{"A=1", "B=2"}}, []string{"true"}, true)
+	norm := func(c *exec.Cmd) string {
+		e := append([]string(nil), c.Env...)
+		sort.Strings(e)
+		return strings.Join(e, ",")
+	}
+	if norm(held) != norm(locked) || norm(held) != "A=1,B=2,"+lock.HeldEnv+"=1" {
+		t.Fatalf("env differs: %q vs %q", norm(held), norm(locked))
+	}
+	for name, c := range map[string]*exec.Cmd{"held": held, "locked": locked} {
+		if c.SysProcAttr == nil || !c.SysProcAttr.Setpgid {
+			t.Errorf("%s: child must lead its own process group", name)
+		}
+	}
+	plain := newChild(env{environ: environ}, []string{"true"}, false)
+	if strings.Contains(strings.Join(plain.Env, ","), lock.HeldEnv) {
+		t.Fatal("a non-heavy child must not carry the held marker")
 	}
 }
