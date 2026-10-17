@@ -1,0 +1,13 @@
+⏺ The retry wrapper treats a 429 as retryable. When the provider says
+  "You've hit your limit" the client should back off until the reset time,
+  and a "usage limit" error must not be retried in a tight loop. I updated
+  the rate limit handler and added a test where the server returns 429 Too
+  Many Requests twice before succeeding.
+
+⏺ Update(internal/client/retry.go)
+  ⎿  Updated internal/client/retry.go with 12 additions
+
+╭──────────────────────────────────────────────╮
+│ >                                            │
+╰──────────────────────────────────────────────╯
+  ? for shortcuts
