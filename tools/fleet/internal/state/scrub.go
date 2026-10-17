@@ -81,7 +81,9 @@ func redactSlashKeys(s string) string {
 		if start > 0 && s[start-1] != '=' && strings.IndexByte(tokenChars, s[start-1]) >= 0 {
 			continue
 		}
-		if end < len(s) && strings.IndexByte(tokenChars, s[end]) >= 0 {
+		// A "." ending a sentence (followed by whitespace or the end) is not a continuation.
+		sentenceEnd := end < len(s) && s[end] == '.' && (end+1 == len(s) || strings.IndexByte(" \t\r\n", s[end+1]) >= 0)
+		if end < len(s) && !sentenceEnd && strings.IndexByte(tokenChars, s[end]) >= 0 {
 			continue
 		}
 		if !strings.ContainsAny(s[start:end], "+/") || !looksSecret(s[start:end]) {
