@@ -33,7 +33,10 @@ var scrubRules = []rule{
 var (
 	// tokenRE deliberately excludes "~", so a home-relative path or "~secret" splits at the tilde.
 	tokenRE = regexp.MustCompile(`[A-Za-z0-9+/_=-]{32,}`)
-	hexRE   = regexp.MustCompile(`^[0-9a-fA-F]+$`)
+	// b64Run40 finds 40-character base64 runs (AWS secret access keys); redactSlashKeys checks the
+	// neighbours by hand because RE2 has no lookaround.
+	b64Run40 = regexp.MustCompile(`[A-Za-z0-9+/]{40}`)
+	hexRE    = regexp.MustCompile(`^[0-9a-fA-F]+$`)
 )
 
 // Scrub replaces secrets in s with [REDACTED:<kind>].
@@ -43,9 +46,10 @@ var (
 // or above EntropyThreshold. That keeps branch names, identifiers, UUIDs and paths intact.
 //
 // Known gaps, accepted so commit hashes and paths survive in the journal: pure hex secrets (64-character
-// hex keys, hex digests) are never redacted, and a base64 secret whose "/" or "-" or "_" breaks it into
-// segments shorter than MinEntropyLen escapes the entropy rule (the prefix rules still catch most
-// vendor tokens).
+// hex keys, hex digests) are never redacted, and a base64 or base64url secret that is not exactly 40
+// characters and is split by "/", "-" or "_" into segments shorter than MinEntropyLen escapes the
+// entropy rule (40-character keys containing "+" or "/", such as AWS secret access keys, have their
+// own rule; the prefix rules catch most vendor tokens).
 func Scrub(s string) string {
 	for _, r := range scrubRules {
 		repl := r.repl
@@ -54,6 +58,7 @@ func Scrub(s string) string {
 		}
 		s = r.re.ReplaceAllString(s, repl)
 	}
+	s = redactSlashKeys(s)
 	return tokenRE.ReplaceAllStringFunc(s, func(tok string) string {
 		for _, seg := range strings.FieldsFunc(tok, func(r rune) bool { return r == '/' || r == '-' || r == '_' || r == '.' }) {
 			if len(seg) >= MinEntropyLen && looksSecret(seg) {
@@ -62,6 +67,31 @@ func Scrub(s string) string {
 		}
 		return tok
 	})
+}
+
+// redactSlashKeys redacts standalone 40-character base64 runs containing "+" or "/" that look random.
+// The per-segment entropy rule cannot see them because "/" splits them.
+func redactSlashKeys(s string) string {
+	const tokenChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=_.-"
+	var b strings.Builder
+	last := 0
+	for _, m := range b64Run40.FindAllStringIndex(s, -1) {
+		start, end := m[0], m[1]
+		if start > 0 && strings.IndexByte(tokenChars, s[start-1]) >= 0 {
+			continue
+		}
+		if end < len(s) && strings.IndexByte(tokenChars, s[end]) >= 0 {
+			continue
+		}
+		if !strings.ContainsAny(s[start:end], "+/") || !looksSecret(s[start:end]) {
+			continue
+		}
+		b.WriteString(s[last:start])
+		b.WriteString("[REDACTED:high-entropy]")
+		last = end
+	}
+	b.WriteString(s[last:])
+	return b.String()
 }
 
 func looksSecret(tok string) bool {
