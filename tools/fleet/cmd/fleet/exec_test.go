@@ -187,6 +187,36 @@ func TestNestedHeavyDoesNotDeadlockWithOneSlot(t *testing.T) {
 	}
 }
 
+func TestLockSerializesAndValidates(t *testing.T) {
+	t.Parallel()
+	e, out, errb := testEnv(t, 1)
+	for _, bad := range []string{"Bad", "a.b", "../x", "", "a b", strings.Repeat("a", 65)} {
+		if got := runLock(e, []string{bad, "--", "true"}); got != exitUsage {
+			t.Errorf("name %q: exit %d, want 2", bad, got)
+		}
+	}
+	if !strings.Contains(errb.String(), "invalid lock name") {
+		t.Fatalf("stderr %q", errb.String())
+	}
+	if got := runLock(e, []string{"push-repo", "--", "sh", "-c", "echo in; exit 5"}); got != 5 || out.String() != "in\n" {
+		t.Fatalf("exit %d out %q", got, out.String())
+	}
+	for _, args := range [][]string{nil, {"x"}, {"--", "true"}, {"x", "y", "--", "true"}, {"x", "--"}} {
+		if got := runLock(e, args); got != exitUsage {
+			t.Errorf("%v: exit %d, want 2", args, got)
+		}
+	}
+	rel, err := lock.Named(filepath.Join(e.stateDir(), "locks"), "push-repo").Acquire(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rel()
+	e.timeout = 100 * time.Millisecond
+	if got := runLock(e, []string{"push-repo", "--", "true"}); got != exitTimeout {
+		t.Fatalf("held lock: exit %d, want %d", got, exitTimeout)
+	}
+}
+
 func TestDispatchKeepsOtherSubcommandsStubbed(t *testing.T) {
 	t.Parallel()
 	var errb bytes.Buffer
