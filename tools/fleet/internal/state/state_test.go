@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -226,6 +227,59 @@ func TestHandoffIdle(t *testing.T) {
 	back, err := ParseHandoff(out)
 	if err != nil || !back.Idle() || len(back.Claims) != 0 {
 		t.Fatalf("idle round trip: %v %+v", err, back)
+	}
+}
+
+func TestHandoffCRLFParsesLikeLF(t *testing.T) {
+	t.Parallel()
+	lf, err := ParseHandoff(goodHandoff)
+	if err != nil {
+		t.Fatal(err)
+	}
+	crlf, err := ParseHandoff(strings.ReplaceAll(goodHandoff, "\n", "\r\n"))
+	if err != nil {
+		t.Fatalf("CRLF input rejected: %v", err)
+	}
+	if !reflect.DeepEqual(lf, crlf) {
+		t.Fatalf("CRLF differs from LF:\n%+v\n%+v", crlf, lf)
+	}
+}
+
+// Whatever Format accepts, ParseHandoff must accept and return unchanged.
+func TestHandoffFormatParseRoundTrip(t *testing.T) {
+	t.Parallel()
+	base := func() *Handoff {
+		return &Handoff{Slot: "cc-impl", Updated: time.Date(2026, 10, 17, 1, 2, 3, 0, time.UTC), NextAction: "wait",
+			Claims: []Claim{{ClaimIssue, "o/r", 4}, {ClaimPR, "r", 5}}, Queue: []string{"#6 later"}}
+	}
+	if out, err := base().Format(); err != nil {
+		t.Fatal(err)
+	} else if back, err := ParseHandoff(out); err != nil || !reflect.DeepEqual(back, base()) {
+		t.Fatalf("round trip: %v %+v", err, back)
+	}
+	bad := map[string]func(*Handoff){
+		"queue newline":       func(h *Handoff) { h.Queue = []string{"a\n## Blockers"} },
+		"queue lone CR":       func(h *Handoff) { h.Queue = []string{"a\rb"} },
+		"queue CRLF":          func(h *Handoff) { h.Queue = []string{"a\r\nb"} },
+		"claim repo newline":  func(h *Handoff) { h.Claims = []Claim{{ClaimPR, "r\nx", 3}} },
+		"claim repo CR":       func(h *Handoff) { h.Claims = []Claim{{ClaimIssue, "o/r\r", 3}} },
+		"claim repo bad":      func(h *Handoff) { h.Claims = []Claim{{ClaimIssue, "no-slash", 3}} },
+		"next action lone CR": func(h *Handoff) { h.NextAction = "x\r## Blockers\rnone" },
+		"next action CRLF":    func(h *Handoff) { h.NextAction = "x\r\n## Blockers\r\nnone" },
+		"current item CR":     func(h *Handoff) { h.CurrentItem = "\r## Queue" },
+	}
+	for name, mutate := range bad {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			h := base()
+			mutate(h)
+			if out, err := h.Format(); err == nil {
+				if _, perr := ParseHandoff(out); perr != nil {
+					t.Fatalf("Format emitted a handoff Parse rejects: %v\n%q", perr, out)
+				}
+				t.Fatalf("want Format to reject, got %q", out)
+			}
+		})
 	}
 }
 

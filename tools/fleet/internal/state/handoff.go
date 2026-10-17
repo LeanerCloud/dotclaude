@@ -73,6 +73,11 @@ type Handoff struct {
 // Idle reports whether the slot has no item and no claims, so it may be retired or reassigned.
 func (h *Handoff) Idle() bool { return h.CurrentItem == "" && len(h.Claims) == 0 }
 
+// normalizeNewlines turns CRLF and lone CR into LF, so every line-based rule sees the same lines.
+func normalizeNewlines(s string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\r", "\n")
+}
+
 func noneToEmpty(s string) string {
 	if strings.EqualFold(s, "none") {
 		return ""
@@ -82,7 +87,7 @@ func noneToEmpty(s string) string {
 
 // ParseHandoff requires the title, the Updated line and every heading exactly once, in order.
 func ParseHandoff(text string) (*Handoff, error) {
-	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	lines := strings.Split(normalizeNewlines(text), "\n")
 	i := 0
 	for i < len(lines) && strings.TrimSpace(lines[i]) == "" {
 		i++
@@ -213,8 +218,21 @@ func (h *Handoff) Format() (string, error) {
 	}
 	for name, v := range map[string]string{"Current item": h.CurrentItem, "Worktree": h.Worktree, "Branch": h.Branch,
 		"PR": h.PR, "Head SHA": h.HeadSHA, "Next action": h.NextAction, "Blockers": h.Blockers} {
-		if strings.HasPrefix(v, "## ") || strings.Contains(v, "\n## ") {
+		if n := normalizeNewlines(v); strings.HasPrefix(n, "## ") || strings.Contains(n, "\n## ") {
 			return "", fmt.Errorf("%s contains a line starting with \"## \"", name)
+		}
+	}
+	for _, c := range h.Claims {
+		if strings.ContainsAny(c.Repo, "\n\r") {
+			return "", fmt.Errorf("claim repo %q contains a line break", c.Repo)
+		}
+		if back, err := ParseClaim(c.String()); err != nil || back != c {
+			return "", fmt.Errorf("claim %q does not survive a parse round trip", c.String())
+		}
+	}
+	for _, q := range h.Queue {
+		if strings.ContainsAny(q, "\n\r") {
+			return "", fmt.Errorf("queue item %q contains a line break", q)
 		}
 	}
 	var b strings.Builder
