@@ -12,14 +12,19 @@ import (
 
 var th = DefaultThresholds(config.Thresholds{DiskWarnGB: 30, DiskCriticalGB: 15})
 
-func sampler(freeGB int64, load, mem string) Sampler {
+func sampler(freeGB int64, load, mem string) Sampler { return swapSampler(freeGB, load, mem, swapOK) }
+
+func swapSampler(freeGB int64, load, mem, swap string) Sampler {
 	return Sampler{
 		Statfs: func(_ string, st *syscall.Statfs_t) error {
 			st.Bsize, st.Bavail = 4096, uint64(freeGB<<30/4096)
 			return nil
 		},
-		Run: func(_ context.Context, name string, _ ...string) ([]byte, error) {
-			if name == "sysctl" {
+		Run: func(_ context.Context, name string, args ...string) ([]byte, error) {
+			switch {
+			case name == "sysctl" && len(args) > 1 && args[1] == "vm.swapusage":
+				return []byte(swap), nil
+			case name == "sysctl":
 				return []byte(load), nil
 			}
 			return []byte(mem), nil
@@ -35,6 +40,9 @@ const (
 	memCrit  = "System-wide memory free percentage: 9%\n"
 	loadWarn = "{ 26.5 20.0 20.0 }\n"
 	loadCrit = "{ 40,0 20,0 20,0 }\n"
+	swapOK   = "total = 16384,00M  used = 1024,00M  free = 15360,00M  (encrypted)\n"
+	swapWarn = "total = 16384.00M  used = 12500.00M  free = 3884.00M  (encrypted)\n"
+	swapCrit = "total = 16384,00M  used = 14793,62M  free = 1590,38M  (encrypted)\n"
 )
 
 func TestClassification(t *testing.T) {
@@ -67,6 +75,51 @@ func TestClassification(t *testing.T) {
 				t.Fatalf("got disk=%s load=%s mem=%s overall=%s (%+v)", s.Disk, s.Load, s.Memory, s.Overall, s)
 			}
 		})
+	}
+}
+
+func TestSwapClassification(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name, swap string
+		want       Level
+	}{
+		{"ok", swapOK, OK},
+		{"warn", swapWarn, Warn},
+		{"critical with comma decimals", swapCrit, Critical},
+		{"no swap configured", "total = 0,00M  used = 0,00M  free = 0,00M  (encrypted)\n", OK},
+		{"exactly 75% warns", "total = 100,00M  used = 75,00M  free = 25,00M\n", Warn},
+		{"exactly 90% is critical", "total = 100,00M  used = 90,00M  free = 10,00M\n", Critical},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			s, err := swapSampler(100, loadOK, memOK, tt.swap).Sample(context.Background(), "/data", th)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if s.Swap != tt.want || s.Overall != tt.want || s.Disk != OK || s.Load != OK || s.Memory != OK {
+				t.Fatalf("swap=%s overall=%s (%+v)", s.Swap, s.Overall, s)
+			}
+		})
+	}
+	if _, err := swapSampler(100, loadOK, memOK, "nope").Sample(context.Background(), "/data", th); err == nil || !strings.Contains(err.Error(), "vm.swapusage") {
+		t.Fatalf("garbage swap must error, got %v", err)
+	}
+	if th.SwapWarnPct != 75 || th.SwapCriticalPct != 90 {
+		t.Fatalf("defaults: %+v", th)
+	}
+}
+
+func TestLevelStringOutOfRange(t *testing.T) {
+	t.Parallel()
+	for _, l := range []Level{-1, 3, 99} {
+		if got := l.String(); !strings.Contains(got, "level(") {
+			t.Errorf("Level(%d).String() = %q", int(l), got)
+		}
+	}
+	if OK.String() != "ok" || Warn.String() != "warn" || Critical.String() != "critical" {
+		t.Fatal("named levels changed")
 	}
 }
 
