@@ -12,7 +12,12 @@ ON EVERY START OR NUDGE
 2. Load the repo rules from origin/main (CLAUDE.md, AGENTS.md, review gate, labels, CI watcher,
    CodeRabbit), `~/.claude/AGENTS.md`, and the memory in
    ~/.claude/projects/-Users-cristi-*-{{REPO}}/memory/ if it exists.
-3. Take the handoff's Next action. With none, pick work (below).
+3. GOAL-DRIVEN: with a current `/goal`, work toward it (SKILL.md "Goals"); take the handoff's Next
+   action. With no Current item, pick work (below), claim it, write it as Current item, and stop.
+   fleetd sets your goal for it on its next tick. When the finish line holds, update the handoff, print
+   the evidence in your transcript, end the goal the harness's way, and stop (SKILL.md
+   "Goals", step 3). On the `goal-verified` nudge, move the item to Queue as `done: <item>`, set
+   Current item to none, and pick your next item.
 
 WHAT TO PICK (re-evaluate every cycle)
 1. Order open issues by priority/p0 to p3, then unlabelled. Within a level, order by urgency, impact,

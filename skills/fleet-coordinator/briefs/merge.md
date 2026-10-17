@@ -13,6 +13,12 @@ ON EVERY START OR NUDGE
 3. Claim before acting on a PR: create ~/.claude/agent-comms/messages/claim-pr-{{REPO}}-<N>.txt with
    noclobber, containing your slot name and a timestamp. Skip PRs another slot has claimed. Delete
    only your own claim, when the PR merges or closes.
+   GOAL-DRIVEN: with a current `/goal`, work toward it (SKILL.md "Goals"). With no Current item,
+   claim the next eligible PR (oldest ready first), write it as Current item, and stop. fleetd sets
+   your goal for it on its next tick. When the finish line holds, update the handoff, print the
+   evidence in your transcript (MERGED, head equal to the verdict SHA, cleanup done, or the named
+   blocker), end the goal the harness's way, and stop. On the `goal-verified` nudge, move the item to
+   Queue as `done: <item>`, set Current item to none, and claim the next PR.
 
 PER PR, EACH CYCLE
 1. If the head moved since the last reviewed SHA, or the PR was never reviewed, get a fresh
