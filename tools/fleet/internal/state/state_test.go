@@ -420,6 +420,8 @@ func TestScrub(t *testing.T) {
 	if entropy(hi) < EntropyThreshold || !looksSecret(hi) {
 		t.Fatalf("test token not secret-like, adjust seed: %s %.2f", hi, entropy(hi))
 	}
+	mixed1 := "Zx8Qm2LpV7nRt4YbK9sWd3HfJ6gCa1Ue" + "Xo5Ni0TyP"
+	mixed2 := "q7W3eR9tY5uI1oP8aS4dF6gH2jK0lZxC"
 	jwt := "eyJ" + randomToken(20, 2) + ".eyJ" + randomToken(20, 3) + "." + randomToken(30, 4)
 	pem := "-----BEGIN RSA PRIVATE KEY-----\n" + randomToken(60, 5) + "\n-----END RSA PRIVATE KEY-----"
 	tests := []struct {
@@ -438,7 +440,24 @@ func TestScrub(t *testing.T) {
 		{"pem", "before\n" + pem + "\nafter", "before\n[REDACTED:pem]\nafter"},
 		{"pem unterminated", "x\n-----BEGIN PRIVATE KEY-----\n" + randomToken(60, 5), "x\n[REDACTED:pem]"},
 		{"entropy", "secret " + hi + " end", "secret [REDACTED:high-entropy] end"},
+		{"pgp block", "x\n-----BEGIN PGP PRIVATE KEY BLOCK-----\n" + randomToken(60, 5) + "\n-----END PGP PRIVATE KEY BLOCK-----\ny", "x\n[REDACTED:pem]\ny"},
+		{"pgp unterminated", "-----BEGIN PGP PRIVATE KEY BLOCK-----\n" + randomToken(60, 5), "[REDACTED:pem]"},
+		{"auth header short", "Authorization: Bearer abc123", "Authorization: Bearer [REDACTED:bearer]"},
+		{"bearer opaque", "curl -H 'Bearer " + randomToken(24, 5) + "'", "curl -H 'Bearer [REDACTED:bearer]'"},
+		{"bearer lowercase", "bearer " + randomToken(24, 5), "bearer [REDACTED:bearer]"},
+		{"tilde before", "~" + hi, "~[REDACTED:high-entropy]"},
+		{"tilde after", hi + "~/x", "[REDACTED:high-entropy]~/x"},
+		{"tilde gh", "~ghp_" + body, "~[REDACTED:github-token]"},
+		{"mixed-case secret", "k=" + mixed1, "[REDACTED:high-entropy]"},
+		{"secret in path", "/tmp/" + mixed2 + "/x", "[REDACTED:high-entropy]"},
+		{"secret after dash", "key-" + mixed1, "[REDACTED:high-entropy]"},
 		// False-positive guards.
+		{"bearer prose", "Bearer tokens are short", "Bearer tokens are short"},
+		{"long branch", "feat/Fix-Issue-1234-handle-nil-pointer-in-Handoff-parser", "feat/Fix-Issue-1234-handle-nil-pointer-in-Handoff-parser"},
+		{"long mixed path", "/Users/x/Dropbox/devel/Cloud2Go1/AbcWorktree9/internal/stateFoo", "/Users/x/Dropbox/devel/Cloud2Go1/AbcWorktree9/internal/stateFoo"},
+		{"uuid mixed", "8984eBB8-12b6-4E5e-896D-7a72Fb9765c1", "8984eBB8-12b6-4E5e-896D-7a72Fb9765c1"},
+		{"mixed-case hex", "ABCDEF0123456789abcdef0123456789ABCDEF01", "ABCDEF0123456789abcdef0123456789ABCDEF01"},
+		{"mixed-case hex 64", "9F8e7D6c5B4a39F8e7D6c5B4a39F8e7D6c5B4a39F8e7D6c5B4a39F8e7D6c5B4a", "9F8e7D6c5B4a39F8e7D6c5B4a39F8e7D6c5B4a39F8e7D6c5B4a39F8e7D6c5B4a"},
 		{"git sha1", "head 0123456789abcdef0123456789abcdef01234567", "head 0123456789abcdef0123456789abcdef01234567"},
 		{"sha256", "sha256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "sha256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
 		{"uuid", "session 8984ebb8-12b6-4e5e-896d-7a72fb9765c1", "session 8984ebb8-12b6-4e5e-896d-7a72fb9765c1"},
