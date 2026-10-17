@@ -91,3 +91,6 @@ RTK.md
 
 # Disk-cleanup skill reports (local, never committed)
 /reports/
+
+# Fleet runtime state (see skills/fleet-coordinator)
+/fleet/
