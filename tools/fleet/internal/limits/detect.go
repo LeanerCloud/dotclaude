@@ -1,5 +1,5 @@
-// Package limits detects harness usage throttles from pane snapshots, and tracks per-harness
-// availability in limits.json.
+// Package limits detects harness usage throttles from pane snapshots and Codex rollout files, and
+// tracks per-harness availability in limits.json.
 package limits
 
 import (

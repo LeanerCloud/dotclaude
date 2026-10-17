@@ -163,6 +163,67 @@ func TestUnverifiedDetectorsNeverConfirm(t *testing.T) {
 	}
 }
 
+func TestCodexRateLimits(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "2026", "10", "17")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	put := func(name, fx string, mod time.Time) {
+		p := filepath.Join(sub, name)
+		if err := os.WriteFile(p, []byte(fixture(t, "codex/"+fx)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(p, mod, mod); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put("rollout-old.jsonl", "rollout_limited.jsonl", now.Add(-2*time.Hour))
+	put("rollout-new.jsonl", "rollout_ok.jsonl", now.Add(-time.Hour))
+	got, err := ReadCodexRateLimits(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Primary == nil || got.Primary.UsedPercent != 55 || got.Secondary != nil || got.Primary.WindowMinutes != 300 {
+		t.Fatalf("must use the newest file's last event: %+v %+v", got, got.Primary)
+	}
+	if e := got.Entry(now); e.Kind != OK {
+		t.Fatalf("55%% used is ok, got %+v", e)
+	}
+	put("rollout-limited.jsonl", "rollout_limited.jsonl", now)
+	got, err = ReadCodexRateLimits(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := got.Entry(now)
+	if e.Kind != Throttled || !e.Until.Equal(time.Unix(1792500000, 0)) || !got.HasCredits || got.Balance != "42" {
+		t.Fatalf("secondary at 100%% must throttle until its reset: %+v %+v", e, got)
+	}
+	put("rollout-nocredit.jsonl", "rollout_no_credits.jsonl", now.Add(time.Minute))
+	got, err = ReadCodexRateLimits(dir)
+	if err != nil || got.Primary != nil || got.Secondary != nil || got.Entry(now).Kind != Exhausted {
+		t.Fatalf("null windows with zero credits: %+v %v", got, err)
+	}
+}
+
+func TestCodexSkipsFilesWithoutEventAndFailsLoud(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if _, err := ReadCodexRateLimits(dir); err != ErrNoRateLimits {
+		t.Fatalf("empty dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "a.jsonl"), []byte("{\"type\":\"session_meta\"}\nnot json mentioning \"rate_limits\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadCodexRateLimits(dir); err != ErrNoRateLimits {
+		t.Fatalf("no event: %v", err)
+	}
+	if _, err := ReadCodexRateLimits(filepath.Join(dir, "missing")); err == nil {
+		t.Fatal("missing dir must error")
+	}
+}
+
 func confirmed(h config.Harness, reset time.Time) Result {
 	return Result{Harness: h, Verified: true, Matched: true, Confirmed: true, Signature: "sig", ResetAt: reset}
 }
