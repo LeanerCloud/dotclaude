@@ -2,6 +2,7 @@ package state
 
 import (
 	"encoding/json"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -307,5 +308,64 @@ func TestCommandValidation(t *testing.T) {
 	in := `{"cmd":"report","markdown":"` + strings.Repeat("a", MaxReportBytes) + `",` + ev + `}`
 	if _, err := ParseCommand([]byte(in)); err != nil {
 		t.Fatalf("8 KB report must pass: %v", err)
+	}
+}
+
+// randomToken returns a deterministic pseudo-random alphanumeric token so no secret-looking
+// literal lives in the source.
+func randomToken(n int, seed int64) string {
+	const alpha = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	r := rand.New(rand.NewSource(seed))
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = alpha[r.Intn(len(alpha))]
+	}
+	return string(b)
+}
+
+func TestScrub(t *testing.T) {
+	t.Parallel()
+	body := randomToken(36, 1)
+	hi := randomToken(40, 7)
+	if entropy(hi) < EntropyThreshold || !looksSecret(hi) {
+		t.Fatalf("test token not secret-like, adjust seed: %s %.2f", hi, entropy(hi))
+	}
+	jwt := "eyJ" + randomToken(20, 2) + ".eyJ" + randomToken(20, 3) + "." + randomToken(30, 4)
+	pem := "-----BEGIN RSA PRIVATE KEY-----\n" + randomToken(60, 5) + "\n-----END RSA PRIVATE KEY-----"
+	tests := []struct {
+		name, in, want string
+	}{
+		{"ghp", "token ghp_" + body + " end", "token [REDACTED:github-token] end"},
+		{"gho", "gho_" + body, "[REDACTED:github-token]"},
+		{"ghu", "ghu_" + body, "[REDACTED:github-token]"},
+		{"ghs", "ghs_" + body, "[REDACTED:github-token]"},
+		{"ghr", "ghr_" + body, "[REDACTED:github-token]"},
+		{"fine-grained", "github_pat_" + randomToken(22, 8) + "_" + randomToken(40, 9), "[REDACTED:github-token]"},
+		{"sk", "key=sk-" + body, "key=[REDACTED:sk-key]"},
+		{"sk-ant", "sk-ant-api03-" + body, "[REDACTED:sk-key]"},
+		{"akia", "id AKIA" + strings.ToUpper(randomToken(16, 6)[:16]) + ".", "id [REDACTED:aws-key-id]."},
+		{"jwt", "Authorization: Bearer " + jwt, "Authorization: Bearer [REDACTED:jwt]"},
+		{"pem", "before\n" + pem + "\nafter", "before\n[REDACTED:pem]\nafter"},
+		{"pem unterminated", "x\n-----BEGIN PRIVATE KEY-----\n" + randomToken(60, 5), "x\n[REDACTED:pem]"},
+		{"entropy", "secret " + hi + " end", "secret [REDACTED:high-entropy] end"},
+		// False-positive guards.
+		{"git sha1", "head 0123456789abcdef0123456789abcdef01234567", "head 0123456789abcdef0123456789abcdef01234567"},
+		{"sha256", "sha256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "sha256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+		{"uuid", "session 8984ebb8-12b6-4e5e-896d-7a72fb9765c1", "session 8984ebb8-12b6-4e5e-896d-7a72fb9765c1"},
+		{"uuid upper", "8984EBB8-12B6-4E5E-896D-7A72FB9765C1", "8984EBB8-12B6-4E5E-896D-7A72FB9765C1"},
+		{"short sk word", "sk-learn is a library", "sk-learn is a library"},
+		{"go identifier", "TestHandoffParseRejectsMissingHeadingsInOrder2", "TestHandoffParseRejectsMissingHeadingsInOrder2"},
+		{"path", "~/.claude/worktrees/dotclaude-fleet-core/tools/fleet/internal/state", "~/.claude/worktrees/dotclaude-fleet-core/tools/fleet/internal/state"},
+		{"slot name", "cloud-commitments-platform-pr-merge-2", "cloud-commitments-platform-pr-merge-2"},
+		{"plain prose", "the quick brown fox jumps over the lazy dog", "the quick brown fox jumps over the lazy dog"},
+		{"empty", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := Scrub(tt.in); got != tt.want {
+				t.Fatalf("\n in:  %q\n got: %q\nwant: %q", tt.in, got, tt.want)
+			}
+		})
 	}
 }
