@@ -10,7 +10,23 @@ import (
 var subcommands = []string{"tick", "cleanup", "heavy", "lock", "scratch", "scrub", "sandbox"}
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stderr))
+	e, err := processEnv()
+	if err != nil {
+		msg(os.Stderr, "fleet: %v\n", err)
+		os.Exit(exitFailure)
+	}
+	os.Exit(dispatch(e, os.Args[1:]))
+}
+
+// dispatch runs the implemented subcommands and falls back to run for the rest.
+func dispatch(e env, args []string) int {
+	if len(args) > 0 {
+		switch args[0] {
+		case "heavy":
+			return runHeavy(e, args[1:])
+		}
+	}
+	return run(args, e.stderr)
 }
 
 func run(args []string, stderr io.Writer) int {
