@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -18,6 +17,12 @@ import (
 // maxRolloutFiles bounds how many recent rollout files are searched for a rate_limits event; a
 // session that has not produced a token_count yet has none.
 const maxRolloutFiles = 5
+
+// rolloutTailBytes is how much of a rollout's end is read; the newest rate_limits event is near it.
+const rolloutTailBytes = 64 << 10
+
+// CodexMaxAge is how old a rate_limits reading may be and still describe the present.
+const CodexMaxAge = 30 * time.Minute
 
 // ErrNoRateLimits means no recent rollout file contained a rate_limits event.
 var ErrNoRateLimits = errors.New("no rate_limits event in the newest codex rollout files")
@@ -86,27 +91,26 @@ func ReadCodexRateLimits(sessionsDir string) (*CodexLimits, error) {
 	return nil, ErrNoRateLimits
 }
 
+// newestRollouts returns up to n rollout files, newest first, from the newest day directory only.
+// Codex lays sessions out as YYYY/MM/DD/rollout-*.jsonl, so descending name order is newest first
+// and a tick lists a handful of directories instead of walking the whole history. A directory with
+// no rollouts (an empty day) falls through to the previous one.
 func newestRollouts(dir string, n int) ([]string, error) {
+	files, err := newestDirFiles(dir)
+	if err != nil {
+		return nil, fmt.Errorf("scan codex sessions: %w", err)
+	}
 	type entry struct {
 		path string
 		mod  time.Time
 	}
-	var all []entry
-	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+	all := make([]entry, 0, len(files))
+	for _, p := range files {
+		fi, err := os.Stat(p)
 		if err != nil {
-			return err
+			return nil, fmt.Errorf("scan codex sessions: %w", err)
 		}
-		if d.Type().IsRegular() && strings.HasSuffix(p, ".jsonl") {
-			fi, err := d.Info()
-			if err != nil {
-				return err
-			}
-			all = append(all, entry{p, fi.ModTime()})
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("scan codex sessions: %w", err)
+		all = append(all, entry{p, fi.ModTime()})
 	}
 	sort.Slice(all, func(i, j int) bool {
 		if !all[i].mod.Equal(all[j].mod) {
@@ -121,14 +125,58 @@ func newestRollouts(dir string, n int) ([]string, error) {
 	return out, nil
 }
 
+// newestDirFiles returns the .jsonl files directly in dir plus those of its newest non-empty
+// subtree.
+func newestDirFiles(dir string) ([]string, error) {
+	ents, err := os.ReadDir(dir) // sorted by name
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	for _, e := range ents {
+		if e.Type().IsRegular() && strings.HasSuffix(e.Name(), ".jsonl") {
+			files = append(files, filepath.Join(dir, e.Name()))
+		}
+	}
+	for i := len(ents) - 1; i >= 0; i-- {
+		if !ents[i].IsDir() {
+			continue
+		}
+		sub, err := newestDirFiles(filepath.Join(dir, ents[i].Name()))
+		if err != nil {
+			return nil, err
+		}
+		if len(sub) > 0 {
+			return append(files, sub...), nil
+		}
+	}
+	return files, nil
+}
+
 func lastRateLimits(path string) (*CodexLimits, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open rollout: %w", err)
 	}
 	defer func() { _ = f.Close() }() // read-only
-	var last *CodexLimits
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("stat rollout: %w", err)
+	}
 	r := bufio.NewReader(f)
+	if fi.Size() > rolloutTailBytes {
+		if _, err := f.Seek(fi.Size()-rolloutTailBytes, io.SeekStart); err != nil {
+			return nil, fmt.Errorf("seek rollout %s: %w", path, err)
+		}
+		r.Reset(f)
+		if _, err := r.ReadBytes('\n'); err != nil { // drop the line the cut landed in
+			if errors.Is(err, io.EOF) {
+				return nil, nil
+			}
+			return nil, fmt.Errorf("read rollout %s: %w", path, err)
+		}
+	}
+	var last *CodexLimits
 	for {
 		line, err := r.ReadBytes('\n')
 		if bytes.Contains(line, []byte(`"rate_limits"`)) {
@@ -151,13 +199,18 @@ func lastRateLimits(path string) (*CodexLimits, error) {
 	}
 }
 
-// Entry converts the limits into an availability entry. A window at 100% throttles the harness until
-// the latest such reset. With no windows and no credits (the subscription is not metering and there
-// is nothing to spend) the harness is exhausted. Anything else is ok as of now.
+// Entry converts the limits into an availability entry. A reading older than CodexMaxAge (or with
+// no timestamp) says nothing about now, so it is unknown. Otherwise a window at 100% throttles the
+// harness until the latest such reset still ahead of now; a window whose reset has passed no longer
+// counts. With no windows and no credits (the subscription is not metering and there is nothing to
+// spend) the harness is exhausted. Anything else is ok as of now.
 func (c *CodexLimits) Entry(now time.Time) Entry {
+	if c.ObservedAt.IsZero() || now.Sub(c.ObservedAt) > CodexMaxAge {
+		return Entry{Kind: Unknown, Reason: "codex rate_limits reading is stale"}
+	}
 	var until time.Time
 	for _, w := range []*CodexWindow{c.Primary, c.Secondary} {
-		if w != nil && w.UsedPercent >= 100 && w.ResetsAt.After(until) {
+		if w != nil && w.UsedPercent >= 100 && w.ResetsAt.After(now) && w.ResetsAt.After(until) {
 			until = w.ResetsAt
 		}
 	}

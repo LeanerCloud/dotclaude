@@ -1,6 +1,7 @@
 package limits
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -88,8 +89,13 @@ func TestClaudeWaitAnswerSafe(t *testing.T) {
 		t.Fatalf("got %v %v", ok, keys)
 	}
 	keys[0] = "mutated"
-	if ClaudeWaitKeys[0] != "down" {
-		t.Fatal("returned keys alias the package variable")
+	if k := ClaudeWaitKeys(); k[0] != "down" {
+		t.Fatal("returned keys alias shared state")
+	}
+	first := ClaudeWaitKeys()
+	first[0] = "mutated"
+	if ClaudeWaitKeys()[0] != "down" {
+		t.Fatal("ClaudeWaitKeys must return a fresh slice")
 	}
 	for _, fx := range []string{"limit_prompt_cursor_on_2", "limit_prompt_cursor_on_3", "approval_dialog", "discusses_limits", "quoted_limit_no_menu"} {
 		if ok, keys := ClaudeWaitAnswerSafe(fixture(t, "claude/"+fx+".txt")); ok || keys != nil {
@@ -188,7 +194,7 @@ func TestCodexRateLimits(t *testing.T) {
 	if got.Primary == nil || got.Primary.UsedPercent != 55 || got.Secondary != nil || got.Primary.WindowMinutes != 300 {
 		t.Fatalf("must use the newest file's last event: %+v %+v", got, got.Primary)
 	}
-	if e := got.Entry(now); e.Kind != OK {
+	if e := got.Entry(got.ObservedAt.Add(time.Minute)); e.Kind != OK {
 		t.Fatalf("55%% used is ok, got %+v", e)
 	}
 	put("rollout-limited.jsonl", "rollout_limited.jsonl", now)
@@ -196,14 +202,81 @@ func TestCodexRateLimits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := got.Entry(now)
+	e := got.Entry(got.ObservedAt.Add(time.Minute))
 	if e.Kind != Throttled || !e.Until.Equal(time.Unix(1792500000, 0)) || !got.HasCredits || got.Balance != "42" {
 		t.Fatalf("secondary at 100%% must throttle until its reset: %+v %+v", e, got)
 	}
 	put("rollout-nocredit.jsonl", "rollout_no_credits.jsonl", now.Add(time.Minute))
 	got, err = ReadCodexRateLimits(dir)
-	if err != nil || got.Primary != nil || got.Secondary != nil || got.Entry(now).Kind != Exhausted {
+	if err != nil || got.Primary != nil || got.Secondary != nil || got.Entry(got.ObservedAt.Add(time.Minute)).Kind != Exhausted {
 		t.Fatalf("null windows with zero credits: %+v %v", got, err)
+	}
+}
+
+func codexEvent(ts time.Time, used float64, resets int64) string {
+	return fmt.Sprintf(`{"timestamp":%q,"payload":{"rate_limits":{"primary":{"used_percent":%v,"window_minutes":300,"resets_at":%d},`+
+		`"credits":{"has_credits":true,"unlimited":false,"balance":"5"}}}}`+"\n", ts.Format(time.RFC3339), used, resets)
+}
+
+func TestCodexEntryIgnoresStaleReadingsAndPastResets(t *testing.T) {
+	t.Parallel()
+	obs := now.Add(-time.Minute)
+	full := &CodexLimits{Primary: &CodexWindow{UsedPercent: 100, ResetsAt: now.Add(time.Hour)}, ObservedAt: obs}
+	if e := full.Entry(now); e.Kind != Throttled {
+		t.Fatalf("fresh full window: %+v", e)
+	}
+	if e := full.Entry(obs.Add(CodexMaxAge + time.Second)); e.Kind != Unknown {
+		t.Fatalf("a reading older than CodexMaxAge must be unknown, got %+v", e)
+	}
+	ok := &CodexLimits{Primary: &CodexWindow{UsedPercent: 10}, ObservedAt: obs}
+	if e := ok.Entry(obs.Add(CodexMaxAge + time.Second)); e.Kind != Unknown {
+		t.Fatalf("a stale ok reading must be unknown, got %+v", e)
+	}
+	noCredits := &CodexLimits{ObservedAt: obs}
+	if e := noCredits.Entry(obs.Add(CodexMaxAge + time.Second)); e.Kind != Unknown {
+		t.Fatalf("a stale exhausted reading must be unknown, got %+v", e)
+	}
+	if e := (&CodexLimits{Primary: &CodexWindow{UsedPercent: 10}}).Entry(now); e.Kind != Unknown {
+		t.Fatalf("a reading without a timestamp must be unknown, got %+v", e)
+	}
+	past := &CodexLimits{Primary: &CodexWindow{UsedPercent: 100, ResetsAt: now.Add(-time.Minute)}, ObservedAt: obs, HasCredits: true}
+	if e := past.Entry(now); e.Kind != OK {
+		t.Fatalf("a reset already in the past must not throttle, got %+v", e)
+	}
+}
+
+func TestCodexReadsOnlyNewestDayAndTail(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	write := func(day, name, body string) {
+		d := filepath.Join(dir, "2026", "10", day)
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(d, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("15", "rollout-old.jsonl", codexEvent(now, 5, 1792500000))
+	if err := os.MkdirAll(filepath.Join(dir, "2026", "10", "17"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ReadCodexRateLimits(dir) // 17 is empty, so 15 is read
+	if err != nil || got.Primary.UsedPercent != 5 {
+		t.Fatalf("empty newest day must fall back to the previous one: %+v %v", got, err)
+	}
+	write("16", "rollout-day.jsonl", "{\"type\":\"session_meta\"}\n")
+	if _, err := ReadCodexRateLimits(dir); err != ErrNoRateLimits {
+		t.Fatalf("a non-empty newest day must be the only one read: %v", err)
+	}
+	write("16", "rollout-tail.jsonl", codexEvent(now, 7, 1792500000)+strings.Repeat("{\"pad\":\""+strings.Repeat("x", 900)+"\"}\n", 100))
+	if _, err := ReadCodexRateLimits(dir); err != ErrNoRateLimits {
+		t.Fatalf("an event beyond the last 64 KB must not be read: %v", err)
+	}
+	write("16", "rollout-tail.jsonl", strings.Repeat("{\"pad\":\""+strings.Repeat("x", 900)+"\"}\n", 100)+codexEvent(now, 9, 1792500000))
+	got, err = ReadCodexRateLimits(dir)
+	if err != nil || got.Primary.UsedPercent != 9 {
+		t.Fatalf("an event inside the tail must be read: %+v %v", got, err)
 	}
 }
 
