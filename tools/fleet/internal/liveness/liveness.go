@@ -6,12 +6,17 @@ package liveness
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/LeanerCloud/dotclaude/tools/fleet/internal/herdr"
+	"github.com/LeanerCloud/dotclaude/tools/fleet/internal/state"
 )
 
 // MaxPerHour caps nudges plus continues per slot per rolling hour.
@@ -210,4 +215,29 @@ func ready(now time.Time, in Input, sm *SlotMemory, res *Result) (Decision, bool
 	sm.Acted, sm.ActedSeq = true, a.StateChangeSeq
 	sm.Sent = append(sm.Sent, now)
 	return d, true
+}
+
+// Load reads the stored memory; a missing file is a first run.
+func Load(path string) (Memory, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return Memory{}, nil
+	}
+	if err != nil {
+		return Memory{}, fmt.Errorf("read liveness memory: %w", err)
+	}
+	var m Memory
+	if err := json.Unmarshal(data, &m); err != nil {
+		return Memory{}, fmt.Errorf("%s: decode: %w", path, err)
+	}
+	return m, nil
+}
+
+// Save writes the memory atomically.
+func (m Memory) Save(path string) error {
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return err
+	}
+	return state.WriteFileAtomic(path, append(data, '\n'), 0o600)
 }

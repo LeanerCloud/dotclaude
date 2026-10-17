@@ -1,6 +1,7 @@
 package liveness
 
 import (
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -341,5 +342,21 @@ func TestStallSignature(t *testing.T) {
 	a, b := StallSignature("⎿  API Error\n"), StallSignature("⎿  API Error\n")
 	if a == "" || a != b || a == StallSignature("⎿  API Error: other\n") {
 		t.Fatalf("signature must be stable and tail-specific: %q %q", a, b)
+	}
+}
+
+func TestMemoryRoundTrip(t *testing.T) {
+	t.Parallel()
+	p := filepath.Join(t.TempDir(), "liveness.json")
+	if m, err := Load(p); err != nil || !m.LastTick.IsZero() {
+		t.Fatalf("missing file: %+v %v", m, err)
+	}
+	_, mem := run(t, Memory{}, t0, idle(10))
+	if err := mem.Save(p); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(p)
+	if err != nil || !got.LastTick.Equal(t0) || !got.Slots["cc-impl"].Acted {
+		t.Fatalf("round trip: %+v %v", got, err)
 	}
 }
