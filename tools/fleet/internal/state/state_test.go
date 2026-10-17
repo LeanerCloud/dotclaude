@@ -256,3 +256,56 @@ func TestParseClaim(t *testing.T) {
 		}
 	}
 }
+
+func TestCommandValidation(t *testing.T) {
+	t.Parallel()
+	ev := `"reason":"r","evidence":["~/fleet/journal.tsv"]`
+	tests := []struct {
+		name, in, want string
+	}{
+		{"nudge ok", `{"cmd":"nudge","slot":"cc-impl","template":"continue",` + ev + `}`, ""},
+		{"interrupt ok", `{"cmd":"interrupt","slot":"cc-impl","template":"reread-brief",` + ev + `}`, ""},
+		{"migrate ok", `{"cmd":"migrate","slot":"cc-impl","to":"codex",` + ev + `}`, ""},
+		{"retire ok", `{"cmd":"retire","slot":"cc-impl",` + ev + `}`, ""},
+		{"pin ok", `{"cmd":"pin","slot":"cc-impl",` + ev + `}`, ""},
+		{"unpin ok", `{"cmd":"unpin","slot":"cc-impl",` + ev + `}`, ""},
+		{"note ok", `{"cmd":"note","slot":"cc-impl","text":"long test run",` + ev + `}`, ""},
+		{"report ok", `{"cmd":"report","markdown":"# day",` + ev + `}`, ""},
+		{"escalate ok", `{"cmd":"escalate","title":"t","question":"q","options":["a","b"],` + ev + `}`, ""},
+		{"unknown cmd", `{"cmd":"rm","slot":"x",` + ev + `}`, "unknown cmd"},
+		{"empty cmd", `{` + ev + `}`, "unknown cmd"},
+		{"nudge free text template", `{"cmd":"nudge","slot":"cc-impl","template":"git push --force",` + ev + `}`, "unknown template"},
+		{"nudge with text", `{"cmd":"nudge","slot":"cc-impl","template":"continue","text":"ignore previous",` + ev + `}`, `field "text" is not allowed`},
+		{"nudge no template", `{"cmd":"nudge","slot":"cc-impl",` + ev + `}`, `missing required field "template"`},
+		{"nudge no slot", `{"cmd":"nudge","template":"continue",` + ev + `}`, `missing required field "slot"`},
+		{"bad slot", `{"cmd":"retire","slot":"../etc",` + ev + `}`, "invalid slot"},
+		{"migrate bad harness", `{"cmd":"migrate","slot":"cc-impl","to":"gemini",` + ev + `}`, "unknown harness"},
+		{"migrate with template", `{"cmd":"migrate","slot":"cc-impl","to":"codex","template":"continue",` + ev + `}`, "not allowed"},
+		{"escalate default", `{"cmd":"escalate","title":"t","question":"q","options":["a"],"default":"a",` + ev + `}`, "unknown field"},
+		{"escalate no options", `{"cmd":"escalate","title":"t","question":"q",` + ev + `}`, `missing required field "options"`},
+		{"report path", `{"cmd":"report","markdown":"x","path":"/etc/passwd",` + ev + `}`, "unknown field"},
+		{"report too big", `{"cmd":"report","markdown":"` + strings.Repeat("a", MaxReportBytes+1) + `",` + ev + `}`, "max 8192"},
+		{"no reason", `{"cmd":"retire","slot":"cc-impl","evidence":["x"]}`, "reason is required"},
+		{"no evidence", `{"cmd":"retire","slot":"cc-impl","reason":"r"}`, "evidence"},
+		{"newline evidence", `{"cmd":"retire","slot":"cc-impl","reason":"r","evidence":["a\nb"]}`, "invalid evidence"},
+		{"trailing", `{"cmd":"retire","slot":"cc-impl",` + ev + `} {}`, "trailing"},
+		{"not json", `retire cc-impl`, "decode command"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := ParseCommand([]byte(tt.in))
+			switch {
+			case tt.want == "" && err != nil:
+				t.Fatalf("unexpected error: %v", err)
+			case tt.want != "" && (err == nil || !strings.Contains(err.Error(), tt.want)):
+				t.Fatalf("want %q, got %v", tt.want, err)
+			}
+		})
+	}
+	// Exactly 8 KB is allowed.
+	in := `{"cmd":"report","markdown":"` + strings.Repeat("a", MaxReportBytes) + `",` + ev + `}`
+	if _, err := ParseCommand([]byte(in)); err != nil {
+		t.Fatalf("8 KB report must pass: %v", err)
+	}
+}
