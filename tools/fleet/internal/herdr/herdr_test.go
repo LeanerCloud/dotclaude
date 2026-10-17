@@ -71,6 +71,45 @@ func TestEmptyAgentsIsValid(t *testing.T) {
 	}
 }
 
+func TestRunnerErrorWithEnvelope(t *testing.T) {
+	t.Parallel()
+	env := `{"error":{"code":"agent_not_found","message":"nope"},"id":"cli:agent:read"}`
+	_, err := client(fake(env, errors.New("exit status 1"))).ReadAgent(context.Background(), "x", "detection", 5)
+	var api *APIError
+	if !errors.As(err, &api) || api.Code != "agent_not_found" {
+		t.Fatalf("want APIError, got %v", err)
+	}
+	_, err = client(fake("", errors.New("exit status 1"))).ListAgents(context.Background())
+	if err == nil || errors.As(err, &api) {
+		t.Fatalf("want plain runner error, got %v", err)
+	}
+}
+
+func TestReadAgent(t *testing.T) {
+	t.Parallel()
+	var got []string
+	r := func(_ context.Context, name string, args ...string) ([]byte, error) {
+		got = append([]string{name}, args...)
+		return []byte("line1\nline2\n"), nil
+	}
+	text, err := client(r).ReadAgent(context.Background(), "a", "detection", 7)
+	if err != nil || text != "line1\nline2\n" {
+		t.Fatalf("got %q %v", text, err)
+	}
+	if strings.Join(got, " ") != "herdr agent read a --source detection --lines 7" {
+		t.Fatalf("args: %v", got)
+	}
+	// A screen that merely mentions an error is text, not an envelope.
+	text, err = client(fake(`{"error": "just screen text"}`, nil)).ReadAgent(context.Background(), "a", "", 0)
+	if err != nil || text == "" {
+		t.Fatalf("screen text misread as error: %q %v", text, err)
+	}
+	_, err = client(fake(`{"error":{"code":"agent_not_found","message":"m"},"id":"cli:agent:read"}`, nil)).ReadAgent(context.Background(), "a", "", 0)
+	if err == nil {
+		t.Fatal("error envelope on stdout must fail")
+	}
+}
+
 func TestTimeout(t *testing.T) {
 	t.Parallel()
 	r := func(ctx context.Context, _ string, _ ...string) ([]byte, error) {
