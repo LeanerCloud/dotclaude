@@ -49,6 +49,10 @@ func TestLedgerValidation(t *testing.T) {
 		{"empty status", func(l *Ledger) { l.Slots[0].Status = "" }, "unknown status"},
 		{"harness in name", func(l *Ledger) { l.Slots[0].Name = "Cc Impl" }, "invalid name"},
 		{"dup", func(l *Ledger) { l.Slots = append(l.Slots, l.Slots[0]) }, "duplicate"},
+		{"bad role", func(l *Ledger) { l.Slots[0].Role = "boss" }, "unknown role"},
+		{"empty role", func(l *Ledger) { l.Slots[0].Role = "" }, "unknown role"},
+		{"bad harness", func(l *Ledger) { l.Slots[0].Harness = "gemini" }, "unknown harness"},
+		{"empty harness", func(l *Ledger) { l.Slots[0].Harness = "" }, "unknown harness"},
 		{"no repo", func(l *Ledger) { l.Slots[0].Repo = "" }, "repo is required"},
 	}
 	for _, tt := range tests {
