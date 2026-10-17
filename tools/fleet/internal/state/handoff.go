@@ -106,7 +106,7 @@ func ParseHandoff(text string) (*Handoff, error) {
 	}
 	ts, err := time.Parse(time.RFC3339, strings.TrimSpace(strings.TrimPrefix(lines[i], "Updated: ")))
 	if err != nil {
-		return nil, fmt.Errorf("Updated line: %w", err)
+		return nil, fmt.Errorf("updated line: %w", err)
 	}
 	h.Updated = ts.UTC()
 	i++
@@ -154,12 +154,12 @@ func ParseHandoff(text string) (*Handoff, error) {
 	h.NextAction = body("Next action")
 	h.Blockers = noneToEmpty(body("Blockers"))
 	if h.NextAction == "" {
-		return nil, errors.New("Next action must not be empty")
+		return nil, errors.New("next action must not be empty")
 	}
 	for _, l := range bullets(sections["Claims held"]) {
 		c, err := ParseClaim(l)
 		if err != nil {
-			return nil, fmt.Errorf("Claims held: %w", err)
+			return nil, fmt.Errorf("claims held: %w", err)
 		}
 		h.Claims = append(h.Claims, c)
 	}
@@ -214,7 +214,7 @@ func (h *Handoff) Format() (string, error) {
 		return "", fmt.Errorf("invalid slot name %q", h.Slot)
 	}
 	if strings.TrimSpace(h.NextAction) == "" {
-		return "", errors.New("Next action must not be empty")
+		return "", errors.New("next action must not be empty")
 	}
 	for name, v := range map[string]string{"Current item": h.CurrentItem, "Worktree": h.Worktree, "Branch": h.Branch,
 		"PR": h.PR, "Head SHA": h.HeadSHA, "Next action": h.NextAction, "Blockers": h.Blockers} {
