@@ -85,22 +85,39 @@ func runHeavy(e env, args []string) int {
 		msg(e.stderr, "usage: fleet heavy -- <cmd...>\n")
 		return exitUsage
 	}
-	if e.get(lock.HeldEnv) != "" {
-		return runWithSignals(e, nil, cmd, true)
+	lint := filepath.Base(cmd[0]) == "golangci-lint"
+	held := e.get(lock.HeldEnv) != ""
+	var sems []lock.Semaphore
+	marker := ""
+	if !held || lint {
+		slot, err := lock.SlotName(e.get(lock.SlotEnv))
+		if err != nil {
+			msg(e.stderr, "fleet heavy: %v\n", err)
+			return exitFailure
+		}
+		marker = filepath.Join(e.stateDir(), "heavy-wait", slot)
 	}
-	cfg, err := config.Load(config.DefaultPath(e.home), e.home)
-	if err != nil {
-		msg(e.stderr, "fleet heavy: %v\n", err)
-		return exitFailure
+	if !held {
+		cfg, err := config.Load(config.DefaultPath(e.home), e.home)
+		if err != nil {
+			msg(e.stderr, "fleet heavy: %v\n", err)
+			return exitFailure
+		}
+		sems = append(sems, e.tune(lock.Heavy(filepath.Join(e.stateDir(), "locks"), cfg.Thresholds.HeavySlots, marker)))
 	}
-	slot, err := lock.SlotName(e.get(lock.SlotEnv))
-	if err != nil {
-		msg(e.stderr, "fleet heavy: %v\n", err)
-		return exitFailure
+	if lint {
+		sem := lock.Named(filepath.Join(e.stateDir(), "locks"), "golangci-lint")
+		sem.Marker = marker
+		sems = append(sems, e.tune(sem))
+		child := make([]string, 0, len(e.environ)+1)
+		for _, kv := range e.environ {
+			if !strings.HasPrefix(kv, "GOGC=") {
+				child = append(child, kv)
+			}
+		}
+		e.environ = append(child, "GOGC=50")
 	}
-	marker := filepath.Join(e.stateDir(), "heavy-wait", slot)
-	sem := e.tune(lock.Heavy(filepath.Join(e.stateDir(), "locks"), cfg.Thresholds.HeavySlots, marker))
-	return runLocked(e, sem, cmd, true)
+	return runWithSignals(e, sems, cmd, true)
 }
 
 // runLock implements `fleet lock <name> -- <cmd...>`: an exclusive named lock around the command.
@@ -119,18 +136,16 @@ func runLock(e env, args []string) int {
 }
 
 func runLocked(e env, sem lock.Semaphore, cmd []string, heavy bool) int {
-	return runWithSignals(e, &sem, cmd, heavy)
+	return runWithSignals(e, []lock.Semaphore{sem}, cmd, heavy)
 }
 
-// runWithSignals registers for termination signals before anything can block or start, so none is
-// lost between taking the lock and starting the child. sem nil means no lock is taken (the child
-// already holds a heavy slot through FLEET_HEAVY_HELD); the child is built and run the same way.
-func runWithSignals(e env, sem *lock.Semaphore, argv []string, heavy bool) int {
+// Register before acquiring either lock so termination cannot be lost between waits.
+func runWithSignals(e env, sems []lock.Semaphore, argv []string, heavy bool) int {
 	sigs := make(chan os.Signal, 4)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	defer signal.Stop(sigs)
-	if sem != nil {
-		release, code, ok := acquire(e, *sem, sigs)
+	for _, sem := range sems {
+		release, code, ok := acquire(e, sem, sigs)
 		if !ok {
 			return code
 		}
