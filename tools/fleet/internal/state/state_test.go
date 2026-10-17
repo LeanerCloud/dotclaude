@@ -461,6 +461,10 @@ func TestScrub(t *testing.T) {
 		{"mixed-case secret", "k=" + mixed1, "[REDACTED:high-entropy]"},
 		{"secret in path", "/tmp/" + mixed2 + "/x", "[REDACTED:high-entropy]"},
 		{"secret after dash", "key-" + mixed1, "[REDACTED:high-entropy]"},
+		{"aws secret", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", "[REDACTED:high-entropy]"},
+		{"aws secret random", "cfnPUA0TSUpxH/mjjNULAJM0NEl+MXGSxKQ0YZJn", "[REDACTED:high-entropy]"},
+		{"aws secret assignment", "aws_secret_access_key = cfnPUA0TSUpxH/mjjNULAJM0NEl+MXGSxKQ0YZJn", "aws_secret_access_key = [REDACTED:high-entropy]"},
+		{"aws secret assignment 2", "aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\n", "aws_secret_access_key = [REDACTED:high-entropy]\n"},
 		// False-positive guards.
 		{"bearer prose", "Bearer tokens are short", "Bearer tokens are short"},
 		{"long branch", "feat/Fix-Issue-1234-handle-nil-pointer-in-Handoff-parser", "feat/Fix-Issue-1234-handle-nil-pointer-in-Handoff-parser"},
