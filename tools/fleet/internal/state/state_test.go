@@ -133,3 +133,126 @@ func TestAtomicWriteLeavesNoTemp(t *testing.T) {
 		t.Fatal("want error for missing dir")
 	}
 }
+
+const goodHandoff = `# cc-impl handoff
+Updated: 2026-10-17T10:00:00Z
+## Current item
+LeanerCloud/cloud-commitments-platform#42, fix thing
+## Worktree
+/home/x/wt
+## Branch
+fix/thing
+## PR
+LeanerCloud/cloud-commitments-platform#43
+## Head SHA
+0123456789abcdef0123456789abcdef01234567
+## Claims held
+- issue LeanerCloud/cloud-commitments-platform#42
+- claim-pr-cloud-commitments-platform-43.txt
+## Next action
+wait for CI
+## Blockers
+none
+## Queue
+- #44 after this
+`
+
+func TestHandoffParse(t *testing.T) {
+	t.Parallel()
+	h, err := ParseHandoff(goodHandoff)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.Slot != "cc-impl" || h.PR == "" || h.Blockers != "" || len(h.Queue) != 1 || h.Idle() {
+		t.Fatalf("bad parse: %+v", h)
+	}
+	want := []Claim{{ClaimIssue, "LeanerCloud/cloud-commitments-platform", 42}, {ClaimPR, "cloud-commitments-platform", 43}}
+	if len(h.Claims) != 2 || h.Claims[0] != want[0] || h.Claims[1] != want[1] {
+		t.Fatalf("claims: %+v", h.Claims)
+	}
+	out, err := h.Format()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != goodHandoff {
+		t.Fatalf("format round trip differs:\n%s", out)
+	}
+}
+
+func TestHandoffIdle(t *testing.T) {
+	t.Parallel()
+	h := &Handoff{Slot: "cc-impl", Updated: time.Now(), NextAction: "await work"}
+	out, err := h.Format()
+	if err != nil {
+		t.Fatal(err)
+	}
+	back, err := ParseHandoff(out)
+	if err != nil || !back.Idle() || len(back.Claims) != 0 {
+		t.Fatalf("idle round trip: %v %+v", err, back)
+	}
+}
+
+func TestHandoffRejects(t *testing.T) {
+	t.Parallel()
+	rep := func(old, new string) string { return strings.Replace(goodHandoff, old, new, 1) }
+	tests := []struct{ name, in, want string }{
+		{"empty", "", "empty"},
+		{"bad title", rep("# cc-impl handoff", "# handoff"), "want title"},
+		{"no updated", rep("Updated: 2026-10-17T10:00:00Z\n", ""), "Updated"},
+		{"bad updated", rep("2026-10-17T10:00:00Z", "yesterday"), "Updated line"},
+		{"missing Blockers", rep("## Blockers\nnone\n", ""), `missing heading "Blockers"`},
+		{"missing Claims", rep("## Claims held\n", "## Claims\n"), `missing heading "Claims held"`},
+		{"duplicate", rep("## Branch", "## PR\nx\n## Branch"), "duplicate heading"},
+		{"unknown heading", goodHandoff + "## Extra\nx\n", `unknown heading "Extra"`},
+		{"out of order", rep("## Branch\nfix/thing\n## PR\nLeanerCloud/cloud-commitments-platform#43\n", "## PR\nLeanerCloud/cloud-commitments-platform#43\n## Branch\nfix/thing\n"), "out of order"},
+		{"bad claim", rep("- issue LeanerCloud/cloud-commitments-platform#42", "- issue 42"), "unrecognised claim"},
+		{"claim file bad n", rep("claim-pr-cloud-commitments-platform-43.txt", "claim-pr-cloud-commitments-platform-x.txt"), "unrecognised claim"},
+		{"empty next action", rep("wait for CI", ""), "Next action must not be empty"},
+		{"text before heading", rep("Updated: 2026-10-17T10:00:00Z\n", "Updated: 2026-10-17T10:00:00Z\nstray\n"), "before the first heading"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := ParseHandoff(tt.in)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("want %q, got %v", tt.want, err)
+			}
+		})
+	}
+}
+
+func TestHandoffFormatRejectsHeadingInjection(t *testing.T) {
+	t.Parallel()
+	h := &Handoff{Slot: "a", NextAction: "x\n## Blockers\nnone"}
+	if _, err := h.Format(); err == nil {
+		t.Fatal("want error")
+	}
+	if _, err := (&Handoff{Slot: "Bad Slot", NextAction: "x"}).Format(); err == nil {
+		t.Fatal("want invalid slot error")
+	}
+}
+
+func TestParseClaim(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		in   string
+		want Claim
+		ok   bool
+	}{
+		{"issue a/b#1", Claim{ClaimIssue, "a/b", 1}, true},
+		{"claim-pr-cli-7.txt", Claim{ClaimPR, "cli", 7}, true},
+		{"claim-pr-cloud-commitments-go-12.txt", Claim{ClaimPR, "cloud-commitments-go", 12}, true},
+		{"issue a/b", Claim{}, false},
+		{"claim-pr-cli.txt", Claim{}, false},
+		{"pr a/b#1", Claim{}, false},
+	}
+	for _, tt := range tests {
+		got, err := ParseClaim(tt.in)
+		if (err == nil) != tt.ok || got != tt.want {
+			t.Errorf("%q: got %+v err=%v", tt.in, got, err)
+		}
+		if tt.ok && got.String() != tt.in {
+			t.Errorf("%q: String() = %q", tt.in, got.String())
+		}
+	}
+}
