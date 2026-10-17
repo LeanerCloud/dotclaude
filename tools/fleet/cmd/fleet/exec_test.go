@@ -455,3 +455,73 @@ func TestHeldAndLockedPathsBuildTheChildTheSameWay(t *testing.T) {
 		t.Fatal("a non-heavy child must not carry the held marker")
 	}
 }
+
+func TestSIGTERMIgnoringGrandchildDoesNotSurviveExit(t *testing.T) {
+	t.Parallel()
+	e, _, _ := testEnv(t, 1)
+	pidFile := filepath.Join(t.TempDir(), "pid")
+	// The subshell ignores TERM and outlives sh; only the final group SIGKILL can remove it.
+	script := `(trap "" TERM; sleep 30) & echo $! > ` + pidFile + `; exit 0`
+	startFleet(t, e, nil, "heavy", "--", "sh", "-c", script)
+	var pid int
+	deadline := time.Now().Add(10 * time.Second)
+	for pid == 0 && time.Now().Before(deadline) {
+		if data, err := os.ReadFile(pidFile); err == nil {
+			pid, _ = strconv.Atoi(strings.TrimSpace(string(data)))
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if pid == 0 {
+		t.Fatal("no grandchild pid")
+	}
+	if !processGone(pid) {
+		_ = syscall.Kill(pid, syscall.SIGKILL)
+		t.Fatalf("SIGTERM-ignoring grandchild %d survived fleet", pid)
+	}
+}
+
+const ptyHelper = `import os, pty, sys
+
+def feed(fd):
+    try:
+        os.write(fd, b"hello\n")
+        return os.read(fd, 1024)
+    except OSError:
+        return b""
+
+status = pty.spawn(["bash", "-c", sys.argv[1] + " heavy -- true; echo after; read x"], feed)
+sys.exit(os.waitstatus_to_exitcode(status))
+`
+
+// TestNoTerminalGroupChangeOnPty runs `bash -c 'fleet heavy -- true; echo after; read x'` on a real
+// pty: fleet must not leave the terminal's foreground group on a dead child, which would stop the
+// following read with SIGTTIN.
+func TestNoTerminalGroupChangeOnPty(t *testing.T) {
+	t.Parallel()
+	py, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 not found: the pty regression test needs it")
+	}
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, _, _ := testEnv(t, 1)
+	hp := filepath.Join(t.TempDir(), "pty_helper.py")
+	if err := os.WriteFile(hp, []byte(ptyHelper), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c := exec.Command(py, "-I", hp, self)
+	c.Env = append(append([]string(nil), e.environ...), "FLEET_TEST_AS_FLEET=1", "HOME="+e.home)
+	done := make(chan error, 1)
+	go func() { done <- c.Run() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("bash on a pty did not finish cleanly (read stopped by SIGTTIN?): %v", err)
+		}
+	case <-time.After(20 * time.Second):
+		_ = c.Process.Kill()
+		t.Fatal("pty session hung")
+	}
+}

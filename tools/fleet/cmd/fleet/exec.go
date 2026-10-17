@@ -219,17 +219,17 @@ func childEnv(environ []string, heavy bool) []string {
 // newChild builds the child for both the locked and the FLEET_HEAVY_HELD path, so any later
 // sandboxing applies to both.
 //
-// The child leads its own process group, so signals and the final cleanup reach grandchildren too.
-// On a terminal, a background group that reads the tty is stopped by SIGTTIN, so when stdin is a
-// tty the child's group is made the foreground group instead (Foreground, Ctty); the terminal then
-// delivers ^C straight to it, and fleet still forwards signals that arrive by kill.
+// Without a terminal on stdin (the agent case: harness shell tools run without a tty) the child
+// leads its own process group, so signals and the final cleanup reach grandchildren too. With a
+// terminal it stays in the caller's group, as any shell command does: ^C already reaches the whole
+// job, and fleet never touches the terminal's foreground group (a group left in the background
+// would be stopped by SIGTTIN on its next read, and restoring it is not fleet's business).
 func newChild(e env, argv []string, heavy bool) *exec.Cmd {
 	c := exec.Command(argv[0], argv[1:]...)
 	c.Stdin, c.Stdout, c.Stderr = e.stdin, e.stdout, e.stderr
 	c.Env = childEnv(e.environ, heavy)
-	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	if f, ok := e.stdin.(*os.File); ok && isTTY(f) {
-		c.SysProcAttr.Foreground, c.SysProcAttr.Ctty = true, int(f.Fd())
+	if f, ok := e.stdin.(*os.File); !ok || !isTTY(f) {
+		c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	}
 	c.WaitDelay = pipeDrainGrace
 	return c
@@ -251,6 +251,7 @@ func runChild(e env, argv []string, heavy bool, sigs <-chan os.Signal) int {
 		msg(e.stderr, "fleet: %v\n", err)
 		return exitNotFound
 	}
+	grouped := c.SysProcAttr != nil && c.SysProcAttr.Setpgid
 	pgid := c.Process.Pid // Setpgid made the child its group's leader
 	done, forwarded := make(chan struct{}), make(chan struct{})
 	go func() {
@@ -258,8 +259,12 @@ func runChild(e env, argv []string, heavy bool, sigs <-chan os.Signal) int {
 		for {
 			select {
 			case sig := <-sigs:
-				if s, ok := sig.(syscall.Signal); ok {
+				s, ok := sig.(syscall.Signal)
+				switch {
+				case ok && grouped:
 					_ = syscall.Kill(-pgid, s) // the group may already be gone
+				case ok:
+					_ = c.Process.Signal(s)
 				}
 			case <-done:
 				return
@@ -269,7 +274,9 @@ func runChild(e env, argv []string, heavy bool, sigs <-chan os.Signal) int {
 	err := c.Wait()
 	close(done)
 	<-forwarded
-	_ = syscall.Kill(-pgid, syscall.SIGKILL) // ESRCH when nothing is left, which is the normal case
+	if grouped {
+		_ = syscall.Kill(-pgid, syscall.SIGKILL) // ESRCH when nothing is left, which is the normal case
+	}
 	return exitCode(e, c, err)
 }
 
