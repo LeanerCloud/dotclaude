@@ -135,6 +135,42 @@ func TestAtomicWriteLeavesNoTemp(t *testing.T) {
 	}
 }
 
+// Both fsyncs must run, the file's before the rename and the directory's after it.
+func TestAtomicWriteFsyncOrder(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "f")
+	if err := os.WriteFile(p, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	origFile, origDir := syncFile, syncDir
+	t.Cleanup(func() { syncFile, syncDir = origFile, origDir })
+	var events []string
+	content := func() string { b, _ := os.ReadFile(p); return string(b) }
+	syncFile = func(f *os.File) error {
+		events = append(events, "file:"+content())
+		return origFile(f)
+	}
+	syncDir = func(d *os.File) error {
+		events = append(events, "dir:"+content())
+		return origDir(d)
+	}
+	if err := WriteFileAtomic(p, []byte("new"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(events, ","); got != "file:old,dir:new" {
+		t.Fatalf("want file fsync before rename and dir fsync after, got %s", got)
+	}
+	syncFile = func(*os.File) error { return os.ErrInvalid }
+	if err := WriteFileAtomic(p, []byte("x"), 0o600); err == nil || content() != "new" {
+		t.Fatalf("file fsync failure must abort before rename: %v %q", err, content())
+	}
+	syncFile = origFile
+	syncDir = func(*os.File) error { return os.ErrInvalid }
+	if err := WriteFileAtomic(p, []byte("y"), 0o600); err == nil {
+		t.Fatal("dir fsync failure must surface")
+	}
+}
+
 const goodHandoff = `# cc-impl handoff
 Updated: 2026-10-17T10:00:00Z
 ## Current item
