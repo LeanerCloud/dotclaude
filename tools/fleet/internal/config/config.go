@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -140,6 +141,9 @@ func Load(path, home string) (*Config, error) {
 // Parse decodes and validates data without touching the filesystem.
 func Parse(data []byte) (*Config, error) {
 	cfg := defaults()
+	if err := checkKeys(data, reflect.TypeOf(cfg), "config"); err != nil {
+		return nil, fmt.Errorf("decode: %w", err)
+	}
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&cfg); err != nil {
@@ -278,5 +282,66 @@ func sortedRoles[V any](m map[Role]V) []Role {
 		out = append(out, r)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+// checkKeys rejects object keys that are not exactly a json tag of the target struct. encoding/json
+// matches keys case-insensitively, so "Repos" would otherwise be accepted. Syntax errors are left to
+// the real decoder.
+func checkKeys(raw []byte, t reflect.Type, path string) error {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	switch t.Kind() {
+	case reflect.Slice:
+		var items []json.RawMessage
+		if json.Unmarshal(raw, &items) != nil {
+			return nil
+		}
+		for i, it := range items {
+			if err := checkKeys(it, t.Elem(), fmt.Sprintf("%s[%d]", path, i)); err != nil {
+				return err
+			}
+		}
+	case reflect.Map:
+		var m map[string]json.RawMessage
+		if json.Unmarshal(raw, &m) != nil {
+			return nil
+		}
+		for _, k := range sortedKeys(m) {
+			if err := checkKeys(m[k], t.Elem(), path+"."+k); err != nil {
+				return err
+			}
+		}
+	case reflect.Struct:
+		var m map[string]json.RawMessage
+		if json.Unmarshal(raw, &m) != nil {
+			return nil
+		}
+		fields := map[string]reflect.Type{}
+		for i := 0; i < t.NumField(); i++ {
+			if name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ","); name != "" && name != "-" {
+				fields[name] = t.Field(i).Type
+			}
+		}
+		for _, k := range sortedKeys(m) {
+			ft, ok := fields[k]
+			if !ok {
+				return fmt.Errorf("%s: unknown field %q (keys are case-sensitive)", path, k)
+			}
+			if err := checkKeys(m[k], ft, path+"."+k); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func sortedKeys(m map[string]json.RawMessage) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
 	return out
 }

@@ -52,6 +52,10 @@ func TestParseErrors(t *testing.T) {
 	}{
 		{"unknown top key", rep(`"repos"`, `"bogus":1,"repos"`), "unknown field"},
 		{"unknown nested key", rep(`"owner":"o"`, `"owner":"o","extra":1`), "unknown field"},
+		{"case-variant top key", rep(`"repos"`, `"Repos"`), `unknown field "Repos"`},
+		{"case-variant nested key", rep(`"owner":"o"`, `"Owner":"o"`), `unknown field "Owner"`},
+		{"case-variant role policy key", rep(`"min_tier":"low"`, `"Min_Tier":"low"`), `unknown field "Min_Tier"`},
+		{"case-variant threshold key", withThr(`{"Hang_Minutes":5}`), `unknown field "Hang_Minutes"`},
 		{"unknown harness", rep(`"opencode"`, `"gemini"`), `unknown harness "gemini"`},
 		{"merge non-claude", rep(`"merge": {"prefer":["claude"]`, `"merge": {"prefer":["claude","codex"]`), "claude only"},
 		{"bad tier", rep(`"min_tier":"low"`, `"min_tier":"ultra"`), `unknown tier "ultra"`},
