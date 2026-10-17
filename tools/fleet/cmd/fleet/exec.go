@@ -102,6 +102,21 @@ func runHeavy(e env, args []string) int {
 	return runLocked(e, sem, cmd, true)
 }
 
+// runLock implements `fleet lock <name> -- <cmd...>`: an exclusive named lock around the command.
+func runLock(e env, args []string) int {
+	before, cmd, ok := splitDash(args)
+	if !ok || len(before) != 1 {
+		msg(e.stderr, "usage: fleet lock <name> -- <cmd...>\n")
+		return exitUsage
+	}
+	if err := lock.ValidName(before[0]); err != nil {
+		msg(e.stderr, "fleet lock: %v\n", err)
+		return exitUsage
+	}
+	sem := e.tune(lock.Named(filepath.Join(e.stateDir(), "locks"), before[0]))
+	return runLocked(e, sem, cmd, false)
+}
+
 func runLocked(e env, sem lock.Semaphore, cmd []string, heavy bool) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

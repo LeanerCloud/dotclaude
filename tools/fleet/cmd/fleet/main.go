@@ -24,6 +24,8 @@ func dispatch(e env, args []string) int {
 		switch args[0] {
 		case "heavy":
 			return runHeavy(e, args[1:])
+		case "lock":
+			return runLock(e, args[1:])
 		}
 	}
 	return run(args, e.stderr)
