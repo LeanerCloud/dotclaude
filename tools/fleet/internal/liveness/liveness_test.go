@@ -262,6 +262,15 @@ func TestThreeDayGapEntersRecovery(t *testing.T) {
 	}
 }
 
+func TestBackwardClockJumpEntersRecovery(t *testing.T) {
+	t.Parallel()
+	_, mem := run(t, Memory{}, t0, idle(1))
+	res, mem := run(t, mem, t0.Add(-time.Minute), idle(1))
+	if !res.Recovery || !res.ExpireThrottles || !mem.Recovering || len(res.Decisions) != 0 {
+		t.Fatalf("now before LastTick must enter recovery: %+v", res)
+	}
+}
+
 func TestRecoveryWaitsForStableAgentList(t *testing.T) {
 	t.Parallel()
 	a := Input{Agent: agent("a-impl", "idle", 1), WorkLeft: true}
