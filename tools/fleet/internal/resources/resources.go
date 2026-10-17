@@ -23,23 +23,43 @@ const (
 	Critical
 )
 
-func (l Level) String() string { return [...]string{"ok", "warn", "critical"}[l] }
+func (l Level) String() string {
+	switch l {
+	case OK:
+		return "ok"
+	case Warn:
+		return "warn"
+	case Critical:
+		return "critical"
+	}
+	return fmt.Sprintf("level(%d)", int(l))
+}
 
-// Thresholds classify a sample. Only the disk figures are configurable (fleet.json); the load and
-// memory figures are fixed defaults, since the plan sets no config keys for them.
+// Default swap thresholds, as a percentage of total swap in use. Swap files live on the data
+// volume, so heavy swapping also eats the disk the fleet needs.
+const (
+	DefaultSwapWarnPct     = 75
+	DefaultSwapCriticalPct = 90
+)
+
+// Thresholds classify a sample. Only the disk figures are configurable (fleet.json); the load,
+// memory and swap figures are fixed defaults, since the plan sets no config keys for them.
 type Thresholds struct {
 	DiskWarnGB, DiskCriticalGB int
 	// Load is the 1-minute load average divided by the core count.
 	LoadWarnPerCore, LoadCriticalPerCore float64
 	// MemFreePct is memory_pressure's system-wide free percentage; lower is worse.
 	MemFreeWarnPct, MemFreeCriticalPct int
+	// SwapUsedPct is the share of total swap in use; higher is worse.
+	SwapWarnPct, SwapCriticalPct int
 }
 
 // DefaultThresholds takes the disk limits from config. The fleet normally runs at 1.2 to 1.8 load
 // per core, so warn starts at 2.5 and critical at 4.
 func DefaultThresholds(c config.Thresholds) Thresholds {
 	return Thresholds{DiskWarnGB: c.DiskWarnGB, DiskCriticalGB: c.DiskCriticalGB,
-		LoadWarnPerCore: 2.5, LoadCriticalPerCore: 4, MemFreeWarnPct: 20, MemFreeCriticalPct: 10}
+		LoadWarnPerCore: 2.5, LoadCriticalPerCore: 4, MemFreeWarnPct: 20, MemFreeCriticalPct: 10,
+		SwapWarnPct: DefaultSwapWarnPct, SwapCriticalPct: DefaultSwapCriticalPct}
 }
 
 // Snapshot is one sample and its classification.
@@ -48,8 +68,10 @@ type Snapshot struct {
 	Load1       float64
 	Cores       int
 	MemFreePct  int
+	SwapUsedPct float64
 	Disk, Load  Level
 	Memory      Level
+	Swap        Level
 	Overall     Level
 	LoadPerCore float64
 }
@@ -67,7 +89,7 @@ func NewSampler() Sampler {
 }
 
 // Sample reads disk free space on the volume holding dataDir, the load average (`sysctl -n
-// vm.loadavg`) and memory pressure. Memory comes from `memory_pressure -Q`, whose single "free
+// vm.loadavg`) and memory pressure and swap usage (`sysctl -n vm.swapusage`). Memory comes from `memory_pressure -Q`, whose single "free
 // percentage" is the kernel's own figure; vm_stat's free pages ignore compressed and purgeable
 // memory and read as critical on a healthy Mac. Any failed or unparsable read is an error, never a
 // default level.
@@ -93,6 +115,13 @@ func (s Sampler) Sample(ctx context.Context, dataDir string, th Thresholds) (Sna
 	if snap.MemFreePct, err = ParseMemoryFree(string(out)); err != nil {
 		return snap, err
 	}
+	out, err = s.Run(ctx, "sysctl", "-n", "vm.swapusage")
+	if err != nil {
+		return snap, fmt.Errorf("swap usage: %w", err)
+	}
+	if snap.SwapUsedPct, err = ParseSwapUsedPct(string(out)); err != nil {
+		return snap, err
+	}
 	return snap.classify(th)
 }
 
@@ -104,7 +133,8 @@ func (s Snapshot) classify(th Thresholds) (Snapshot, error) {
 	s.Disk = below(s.DiskFreeGB, float64(th.DiskWarnGB), float64(th.DiskCriticalGB))
 	s.Load = above(s.LoadPerCore, th.LoadWarnPerCore, th.LoadCriticalPerCore)
 	s.Memory = below(float64(s.MemFreePct), float64(th.MemFreeWarnPct), float64(th.MemFreeCriticalPct))
-	s.Overall = max(s.Disk, s.Load, s.Memory)
+	s.Swap = above(s.SwapUsedPct, float64(th.SwapWarnPct), float64(th.SwapCriticalPct))
+	s.Overall = max(s.Disk, s.Load, s.Memory, s.Swap)
 	return s, nil
 }
 
@@ -131,7 +161,30 @@ func above(v, warn, critical float64) Level {
 var (
 	loadRE = regexp.MustCompile(`^\{?\s*(\d+(?:[.,]\d+)?)\s`)
 	memRE  = regexp.MustCompile(`free percentage:\s*(\d{1,3})%`)
+	swapRE = regexp.MustCompile(`total = (\d+(?:[.,]\d+)?)M\s+used = (\d+(?:[.,]\d+)?)M`)
 )
+
+// ParseSwapUsedPct returns the percentage of swap in use from `sysctl -n vm.swapusage`
+// ("total = 16384,00M  used = 14793,62M  free = 1590,38M  (encrypted)"). The decimal separator
+// follows the locale. No swap configured (total 0) is 0% used.
+func ParseSwapUsedPct(out string) (float64, error) {
+	m := swapRE.FindStringSubmatch(out)
+	if m == nil {
+		return 0, fmt.Errorf("unparsable vm.swapusage %q", strings.TrimSpace(out))
+	}
+	total, err := strconv.ParseFloat(strings.Replace(m[1], ",", ".", 1), 64)
+	if err != nil {
+		return 0, err
+	}
+	used, err := strconv.ParseFloat(strings.Replace(m[2], ",", ".", 1), 64)
+	if err != nil {
+		return 0, err
+	}
+	if total == 0 {
+		return 0, nil
+	}
+	return used / total * 100, nil
+}
 
 // ParseLoadAvg returns the 1-minute average from `sysctl -n vm.loadavg` ("{ 1.23 4.56 7.89 }").
 // The decimal separator follows the locale, so a comma is accepted.
