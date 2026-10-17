@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -139,4 +140,26 @@ func (c *Client) ListAgents(ctx context.Context) ([]Agent, error) {
 		return nil, errors.New("agent list result has no agents field")
 	}
 	return *res.Agents, nil
+}
+
+// ReadAgent returns terminal text. source is one of visible, recent, recent-unwrapped, detection.
+// On success herdr prints raw text, not an envelope; on failure it prints an error envelope, which
+// is returned as *APIError.
+func (c *Client) ReadAgent(ctx context.Context, name, source string, lines int) (string, error) {
+	args := []string{"agent", "read", name}
+	if source != "" {
+		args = append(args, "--source", source)
+	}
+	if lines > 0 {
+		args = append(args, "--lines", strconv.Itoa(lines))
+	}
+	out, err := c.call(ctx, args...)
+	if err != nil {
+		return "", err
+	}
+	var env envelope
+	if t := bytes.TrimSpace(out); bytes.HasPrefix(t, []byte(`{"error"`)) && json.Unmarshal(t, &env) == nil && env.Error != nil {
+		return "", &APIError{Code: env.Error.Code, Message: env.Error.Message}
+	}
+	return string(out), nil
 }
