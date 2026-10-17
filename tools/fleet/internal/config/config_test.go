@@ -100,3 +100,21 @@ func TestLoadCheckout(t *testing.T) {
 		t.Fatal("missing file must fail")
 	}
 }
+
+func TestExampleParses(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile("../../fleet.example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Repos) != 7 {
+		t.Fatalf("want 7 repos, got %d", len(c.Repos))
+	}
+	if strings.Contains(string(data), "/Users/") {
+		t.Fatal("example contains an absolute home path")
+	}
+}
