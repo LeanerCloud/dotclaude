@@ -24,7 +24,7 @@ You are one of four roles. Read the section for yours, plus "Rules for every rol
 
 | Role | Harness (preference order) | Brief |
 |---|---|---|
-| coordinator | high tier only, because it approves permission requests: opencode only when `fleet.json` gives it a high-tier model, else Claude, then Kimi at max effort | this file, "Coordinator" |
+| coordinator | Claude Sonnet 5.5 at low effort (owner choice, 2026-10-17), then Kimi. It approves permission requests within the hard floor, which fleetd enforces whatever it answers | this file, "Coordinator" |
 | impl | Kimi, then Codex (each only once Task 8 proved its push cycle), then Claude | `briefs/impl.md` |
 | merge | Claude only (gates need the high tier) | `briefs/merge.md` |
 | reviewer | headless, a vendor other than the PR author's | `briefs/reviewer.md` |
