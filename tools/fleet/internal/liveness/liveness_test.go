@@ -327,6 +327,11 @@ func TestStallSignature(t *testing.T) {
 		{"codex stream disconnected", "■ stream disconnected before completion\n", true},
 		{"error scrolled above the tail", "⎿  API Error\n" + strings.Repeat("line\n", 8), false},
 		{"prose mentioning an error", "I fixed the API Error handling in the client\n", false},
+		{"prose network error handling", "Network error handling is now retried\n", false},
+		{"prose connection errors", "Connection errors are logged as warnings\n", false},
+		{"prose econnreset", "Done. Added a test for ECONNRESET handling\n", false},
+		{"dash bullet prose", "- socket hang up regression fixed\n", false},
+		{"plural errors after glyph", "⎿  Connection errors are logged\n", false},
 		{"clean", "⏺ Done\n❯ \n", false},
 		{"empty", "", false},
 	}

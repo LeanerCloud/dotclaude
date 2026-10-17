@@ -7,11 +7,13 @@ import (
 	"strings"
 )
 
-// errorLine ports resume_tick.py ERROR_LINE. The Claude glyph prefix (⏺ ⎿) became any short run of
-// symbols, with an optional "error:" label, so Codex, Kimi and opencode renderings match too. The
-// message alternatives are unchanged, plus Codex's "stream disconnected" line.
-var errorLine = regexp.MustCompile(`(?i)^\s*[^\pL\pN\s]{0,3}\s*(?:error:\s*)?(?:API Error|Connection error|Request timed out|Network error|fetch failed|` +
-	`socket hang up|.*\bECONNRESET\b|.*\boverloaded_error\b|Stream idle timeout|stream disconnected)`)
+// errorLine ports resume_tick.py ERROR_LINE, which requires a leading output glyph. Besides the
+// Claude glyphs (⏺ ⎿) it accepts the bullets Codex, Kimi and opencode print (● ■), or an explicit
+// "error:" label at line start for renderings without a glyph. Plain prose that merely mentions an
+// error ("Network error handling is now retried", "- socket hang up regression fixed") has neither,
+// so it never matches. The message alternatives are unchanged, plus Codex's "stream disconnected".
+var errorLine = regexp.MustCompile(`(?i)^\s*(?:[⏺⎿●■]\s+|error:\s*)(?:API Error|Connection error|Request timed out|Network error|fetch failed|` +
+	`socket hang up|.*\bECONNRESET\b|.*\boverloaded_error\b|Stream idle timeout|stream disconnected)\b`)
 
 // chrome ports resume_tick.py CHROME: input boxes, status bars and blank lines that are not output.
 var chrome = regexp.MustCompile(`^\s*(─|❯|⏵⏵|※|✻|\? for shortcuts|$)`)
