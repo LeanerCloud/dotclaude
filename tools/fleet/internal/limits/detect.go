@@ -54,6 +54,7 @@ type detector struct {
 }
 
 var detectors = map[config.Harness]detector{
+	config.Claude:   {verified: true, find: claudeFind, chrome: claudeChrome},
 	config.Kimi:     {find: patternFinder(kimiPatterns)},
 	config.OpenCode: {find: patternFinder(opencodePatterns)},
 }
