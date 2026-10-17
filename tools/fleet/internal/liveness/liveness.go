@@ -116,7 +116,8 @@ func Evaluate(cfg Config, now time.Time, inputs []Input, mem Memory) (Result, Me
 		Slots: make(map[string]SlotMemory, len(inputs))}
 	key := listKey(inputs)
 
-	gap := !mem.LastTick.IsZero() && now.Sub(mem.LastTick) > 2*cfg.Interval
+	// A clock that went backwards is as untrustworthy as a long sleep: ages computed from it are wrong.
+	gap := !mem.LastTick.IsZero() && (now.Before(mem.LastTick) || now.Sub(mem.LastTick) > 2*cfg.Interval)
 	switch {
 	case gap:
 		next.Recovering, next.Stable, next.ListKey = true, 1, key
