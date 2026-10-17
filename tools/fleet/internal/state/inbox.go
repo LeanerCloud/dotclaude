@@ -84,14 +84,6 @@ func templateValid(t Template) bool {
 	return false
 }
 
-func harnessValid(h config.Harness) bool {
-	switch h {
-	case config.Claude, config.Codex, config.Kimi, config.OpenCode:
-		return true
-	}
-	return false
-}
-
 // Validate checks the command shape only. Preconditions (slot state, caps) belong to fleetd.
 func (c *Command) Validate() error {
 	required, ok := fieldSpec[c.Cmd]
@@ -117,7 +109,7 @@ func (c *Command) Validate() error {
 	if c.Template != "" && !templateValid(c.Template) {
 		return fmt.Errorf("%s: unknown template %q", c.Cmd, c.Template)
 	}
-	if c.To != "" && !harnessValid(c.To) {
+	if c.To != "" && !c.To.Valid() {
 		return fmt.Errorf("%s: unknown harness %q", c.Cmd, c.To)
 	}
 	if c.Cmd == CmdReport && len(c.Markdown) > MaxReportBytes {

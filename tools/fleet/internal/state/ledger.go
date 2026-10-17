@@ -75,6 +75,12 @@ func (l *Ledger) Validate() error {
 		if !s.Status.Valid() {
 			return fmt.Errorf("slots[%s]: unknown status %q", s.Name, s.Status)
 		}
+		if !s.Role.Valid() {
+			return fmt.Errorf("slots[%s]: unknown role %q", s.Name, s.Role)
+		}
+		if !s.Harness.Valid() {
+			return fmt.Errorf("slots[%s]: unknown harness %q", s.Name, s.Harness)
+		}
 		if s.Repo == "" {
 			return fmt.Errorf("slots[%s]: repo is required", s.Name)
 		}
