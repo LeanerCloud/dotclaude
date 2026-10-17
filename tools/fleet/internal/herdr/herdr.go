@@ -23,6 +23,8 @@ func ExecRunner(ctx context.Context, name string, args ...string) ([]byte, error
 	var out, errBuf bytes.Buffer
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdout, cmd.Stderr = &out, &errBuf
+	// Without WaitDelay a grandchild that inherited stdout keeps Wait blocked past the deadline.
+	cmd.WaitDelay = time.Second
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("%s %s: %w", name, strings.Join(args, " "), ctx.Err())
@@ -38,9 +40,12 @@ type Client struct {
 	Run     Runner
 }
 
-// New returns a client for the herdr binary with a per-call timeout.
-func New(binary string, timeout time.Duration) *Client {
-	return &Client{Binary: binary, Timeout: timeout, Run: ExecRunner}
+// New returns a client for the herdr binary with a per-call timeout, which must be positive.
+func New(binary string, timeout time.Duration) (*Client, error) {
+	if timeout <= 0 {
+		return nil, fmt.Errorf("herdr timeout must be positive, got %s", timeout)
+	}
+	return &Client{Binary: binary, Timeout: timeout, Run: ExecRunner}, nil
 }
 
 type AgentSession struct {
@@ -143,8 +148,8 @@ func (c *Client) ListAgents(ctx context.Context) ([]Agent, error) {
 }
 
 // ReadAgent returns terminal text. source is one of visible, recent, recent-unwrapped, detection.
-// On success herdr prints raw text, not an envelope; on failure it prints an error envelope, which
-// is returned as *APIError.
+// Success (exit 0) is raw text, returned as is even if it looks like JSON. Failure is decided by the
+// exit status alone; call() turns an error envelope on stdout into *APIError.
 func (c *Client) ReadAgent(ctx context.Context, name, source string, lines int) (string, error) {
 	args := []string{"agent", "read", name}
 	if source != "" {
@@ -156,10 +161,6 @@ func (c *Client) ReadAgent(ctx context.Context, name, source string, lines int) 
 	out, err := c.call(ctx, args...)
 	if err != nil {
 		return "", err
-	}
-	var env envelope
-	if t := bytes.TrimSpace(out); bytes.HasPrefix(t, []byte(`{"error"`)) && json.Unmarshal(t, &env) == nil && env.Error != nil {
-		return "", &APIError{Code: env.Error.Code, Message: env.Error.Message}
 	}
 	return string(out), nil
 }

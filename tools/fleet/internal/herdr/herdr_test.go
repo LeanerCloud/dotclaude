@@ -104,9 +104,23 @@ func TestReadAgent(t *testing.T) {
 	if err != nil || text == "" {
 		t.Fatalf("screen text misread as error: %q %v", text, err)
 	}
-	_, err = client(fake(`{"error":{"code":"agent_not_found","message":"m"},"id":"cli:agent:read"}`, nil)).ReadAgent(context.Background(), "a", "", 0)
-	if err == nil {
-		t.Fatal("error envelope on stdout must fail")
+	// Exit 0 means text, even when the screen holds a JSON error envelope.
+	screen := `{"error":{"code":"x"},"note":"screen json"}`
+	text, err = client(fake(screen, nil)).ReadAgent(context.Background(), "a", "", 0)
+	if err != nil || text != screen {
+		t.Fatalf("screen json on exit 0 must be text: %q %v", text, err)
+	}
+}
+
+func TestNewRejectsNonPositiveTimeout(t *testing.T) {
+	t.Parallel()
+	for _, d := range []time.Duration{0, -time.Second} {
+		if _, err := New("herdr", d); err == nil {
+			t.Fatalf("timeout %v accepted", d)
+		}
+	}
+	if c, err := New("herdr", time.Second); err != nil || c.Run == nil {
+		t.Fatalf("valid timeout rejected: %v", err)
 	}
 }
 
@@ -128,5 +142,20 @@ func TestExecRunnerTimeout(t *testing.T) {
 	defer cancel()
 	if _, err := ExecRunner(ctx, "sleep", "5"); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("want deadline exceeded, got %v", err)
+	}
+}
+
+// A grandchild holding stdout open must not keep the runner blocked past the deadline.
+func TestExecRunnerGrandchildHoldingStdout(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := ExecRunner(ctx, "sh", "-c", "sleep 4 & wait")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("want deadline exceeded, got %v", err)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Fatalf("runner blocked %v past the deadline", d)
 	}
 }
