@@ -154,7 +154,8 @@ func Parse(data []byte) (*Config, error) {
 	return &cfg, nil
 }
 
-func (h Harness) valid() bool {
+// Valid reports whether h is a known harness.
+func (h Harness) Valid() bool {
 	for _, v := range harnesses {
 		if h == v {
 			return true
@@ -163,7 +164,8 @@ func (h Harness) valid() bool {
 	return false
 }
 
-func (r Role) valid() bool {
+// Valid reports whether r is a known role.
+func (r Role) Valid() bool {
 	for _, v := range roles {
 		if r == v {
 			return true
@@ -196,7 +198,7 @@ func (c *Config) Validate() error {
 		}
 		seen[r.Name] = true
 		for _, role := range sortedRoles(r.Slots) {
-			if !role.valid() {
+			if !role.Valid() {
 				return fmt.Errorf("repos[%s].slots: unknown role %q", r.Name, role)
 			}
 			if r.Slots[role] < 0 {
@@ -205,7 +207,7 @@ func (c *Config) Validate() error {
 		}
 	}
 	for _, role := range sortedRoles(c.Roles) {
-		if !role.valid() {
+		if !role.Valid() {
 			return fmt.Errorf("roles: unknown role %q", role)
 		}
 		p := c.Roles[role]
@@ -214,7 +216,7 @@ func (c *Config) Validate() error {
 		}
 		dup := map[Harness]bool{}
 		for _, h := range p.Prefer {
-			if !h.valid() {
+			if !h.Valid() {
 				return fmt.Errorf("roles.%s.prefer: unknown harness %q", role, h)
 			}
 			if dup[h] {
