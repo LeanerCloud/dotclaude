@@ -3,6 +3,7 @@ package herdr
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +14,31 @@ func fake(out string, err error) Runner {
 }
 
 func client(r Runner) *Client { return &Client{Binary: "herdr", Timeout: time.Second, Run: r} }
+
+func TestListAgentsFixture(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile("testdata/agent_list.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	agents, err := client(fake(string(data), nil)).ListAgents(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(agents) != 6 {
+		t.Fatalf("want 6 agents, got %d", len(agents))
+	}
+	a := agents[1]
+	want := Agent{Name: "claude-cc-631", PaneID: "w1:p49", TabID: "w1:t49", WorkspaceID: "w1", Agent: "claude",
+		AgentStatus: "blocked", StateChangeSeq: 1904, Revision: 3, InteractiveReady: true}
+	a.Cwd, a.AgentSession = "", AgentSession{}
+	if a != want {
+		t.Fatalf("got %+v want %+v", a, want)
+	}
+	if agents[1].AgentSession.Value == "" || agents[1].AgentSession.Kind != "id" || !strings.HasPrefix(agents[1].Cwd, "~/") {
+		t.Fatalf("session/cwd not decoded: %+v", agents[1])
+	}
+}
 
 func TestEnvelopeErrors(t *testing.T) {
 	t.Parallel()
