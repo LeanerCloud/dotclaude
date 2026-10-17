@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unsafe"
 
 	"github.com/LeanerCloud/dotclaude/tools/fleet/internal/config"
 	"github.com/LeanerCloud/dotclaude/tools/fleet/internal/lock"
@@ -85,7 +86,7 @@ func runHeavy(e env, args []string) int {
 		return exitUsage
 	}
 	if e.get(lock.HeldEnv) != "" {
-		return runChild(e, cmd, false)
+		return runWithSignals(e, nil, cmd, true)
 	}
 	cfg, err := config.Load(config.DefaultPath(e.home), e.home)
 	if err != nil {
@@ -118,45 +119,148 @@ func runLock(e env, args []string) int {
 }
 
 func runLocked(e env, sem lock.Semaphore, cmd []string, heavy bool) int {
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-	release, err := sem.Acquire(ctx)
-	if errors.Is(err, lock.ErrTimeout) {
-		msg(e.stderr, "fleet: %v\n", err)
-		return exitTimeout
-	}
-	if err != nil {
-		msg(e.stderr, "fleet: %v\n", err)
-		return exitFailure
-	}
-	defer release()
-	stop() // from here signals go to the child, not to the wait
-	return runChild(e, cmd, heavy)
+	return runWithSignals(e, &sem, cmd, heavy)
 }
 
-// runChild runs cmd with the parent's stdio and returns its exit code. Termination signals are
-// forwarded so the child is not orphaned holding a lock the parent already dropped. A heavy child
-// gets FLEET_HEAVY_HELD so nested `fleet heavy` calls run without taking another slot.
-func runChild(e env, argv []string, heavy bool) int {
-	c := exec.Command(argv[0], argv[1:]...)
-	c.Stdin, c.Stdout, c.Stderr = e.stdin, e.stdout, e.stderr
-	c.Env = e.environ
-	if heavy {
-		c.Env = append(append([]string(nil), e.environ...), lock.HeldEnv+"=1")
-	}
+// runWithSignals registers for termination signals before anything can block or start, so none is
+// lost between taking the lock and starting the child. sem nil means no lock is taken (the child
+// already holds a heavy slot through FLEET_HEAVY_HELD); the child is built and run the same way.
+func runWithSignals(e env, sem *lock.Semaphore, argv []string, heavy bool) int {
 	sigs := make(chan os.Signal, 4)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	defer signal.Stop(sigs)
+	if sem != nil {
+		release, code, ok := acquire(e, *sem, sigs)
+		if !ok {
+			return code
+		}
+		defer release()
+	}
+	return runChild(e, argv, heavy, sigs)
+}
+
+// acquire waits for the semaphore. A signal during the wait cancels it, removes the marker (Acquire
+// does) and exits 128+signal; a signal that lands just as the lock is taken is honoured too, before
+// any child starts. A signal the watcher did not consume stays in sigs for runChild to forward.
+func acquire(e env, sem lock.Semaphore, sigs <-chan os.Signal) (release func(), code int, ok bool) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	caught := make(chan os.Signal, 1)
+	stopWatch, watchDone := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(watchDone)
+		select {
+		case sig := <-sigs:
+			caught <- sig
+			cancel()
+		case <-stopWatch:
+		}
+	}()
+	release, err := sem.Acquire(ctx)
+	close(stopWatch)
+	<-watchDone
+	sig := pending(caught, sigs)
+	if sig != nil {
+		if release != nil {
+			release()
+		}
+		msg(e.stderr, "fleet: %v while waiting for a lock\n", sig)
+		return nil, signalExit(sig), false
+	}
+	if errors.Is(err, lock.ErrTimeout) {
+		msg(e.stderr, "fleet: %v\n", err)
+		return nil, exitTimeout, false
+	}
+	if err != nil {
+		msg(e.stderr, "fleet: %v\n", err)
+		return nil, exitFailure, false
+	}
+	return release, 0, true
+}
+
+// pending returns the signal the watcher caught, else one still queued in sigs (the watcher may have
+// stopped first), else nil. A signal arriving after this check is forwarded to the child instead.
+func pending(caught <-chan os.Signal, sigs <-chan os.Signal) os.Signal {
+	select {
+	case sig := <-caught:
+		return sig
+	case sig := <-sigs:
+		return sig
+	default:
+		return nil
+	}
+}
+
+func signalExit(sig os.Signal) int {
+	if s, ok := sig.(syscall.Signal); ok {
+		return 128 + int(s)
+	}
+	return exitFailure
+}
+
+// pipeDrainGrace bounds how long Wait lingers on output pipes a stray grandchild still holds open.
+const pipeDrainGrace = 2 * time.Second
+
+// childEnv is the child's environment. A heavy child (one that holds a slot, taken now or inherited)
+// gets exactly one FLEET_HEAVY_HELD=1 so nested `fleet heavy` calls run without taking another slot.
+func childEnv(environ []string, heavy bool) []string {
+	out := make([]string, 0, len(environ)+1)
+	for _, kv := range environ {
+		if !strings.HasPrefix(kv, lock.HeldEnv+"=") {
+			out = append(out, kv)
+		}
+	}
+	if heavy {
+		out = append(out, lock.HeldEnv+"=1")
+	}
+	return out
+}
+
+// newChild builds the child for both the locked and the FLEET_HEAVY_HELD path, so any later
+// sandboxing applies to both.
+//
+// The child leads its own process group, so signals and the final cleanup reach grandchildren too.
+// On a terminal, a background group that reads the tty is stopped by SIGTTIN, so when stdin is a
+// tty the child's group is made the foreground group instead (Foreground, Ctty); the terminal then
+// delivers ^C straight to it, and fleet still forwards signals that arrive by kill.
+func newChild(e env, argv []string, heavy bool) *exec.Cmd {
+	c := exec.Command(argv[0], argv[1:]...)
+	c.Stdin, c.Stdout, c.Stderr = e.stdin, e.stdout, e.stderr
+	c.Env = childEnv(e.environ, heavy)
+	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if f, ok := e.stdin.(*os.File); ok && isTTY(f) {
+		c.SysProcAttr.Foreground, c.SysProcAttr.Ctty = true, int(f.Fd())
+	}
+	c.WaitDelay = pipeDrainGrace
+	return c
+}
+
+// isTTY reports whether f is a terminal, by asking for its foreground process group.
+func isTTY(f *os.File) bool {
+	var pgrp int32
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), syscall.TIOCGPGRP, uintptr(unsafe.Pointer(&pgrp)))
+	return errno == 0
+}
+
+// runChild runs cmd with the parent's stdio and returns its exit code. Termination signals from sigs
+// are forwarded to the child's whole process group so nothing is orphaned holding a lock the
+// parent is about to drop, and whatever the child left running in that group is killed when it exits.
+func runChild(e env, argv []string, heavy bool, sigs <-chan os.Signal) int {
+	c := newChild(e, argv, heavy)
 	if err := c.Start(); err != nil {
 		msg(e.stderr, "fleet: %v\n", err)
 		return exitNotFound
 	}
-	done := make(chan struct{})
+	pgid := c.Process.Pid // Setpgid made the child its group's leader
+	done, forwarded := make(chan struct{}), make(chan struct{})
 	go func() {
+		defer close(forwarded)
 		for {
 			select {
-			case s := <-sigs:
-				_ = c.Process.Signal(s) // the child may already be gone
+			case sig := <-sigs:
+				if s, ok := sig.(syscall.Signal); ok {
+					_ = syscall.Kill(-pgid, s) // the group may already be gone
+				}
 			case <-done:
 				return
 			}
@@ -164,10 +268,19 @@ func runChild(e env, argv []string, heavy bool) int {
 	}()
 	err := c.Wait()
 	close(done)
-	return exitCode(e, err)
+	<-forwarded
+	_ = syscall.Kill(-pgid, syscall.SIGKILL) // ESRCH when nothing is left, which is the normal case
+	return exitCode(e, c, err)
 }
 
-func exitCode(e env, err error) int {
+func exitCode(e env, c *exec.Cmd, err error) int {
+	if errors.Is(err, exec.ErrWaitDelay) && c.ProcessState != nil {
+		// the child itself finished; only a stray holder of its pipes outlived it
+		if ws, ok := c.ProcessState.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+			return 128 + int(ws.Signal())
+		}
+		return c.ProcessState.ExitCode()
+	}
 	if err == nil {
 		return 0
 	}
