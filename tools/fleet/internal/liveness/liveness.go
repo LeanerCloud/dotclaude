@@ -51,7 +51,8 @@ type Input struct {
 	WorkLeft bool
 	// RepoActivity is the newest commit, push or PR comment by the slot; zero if unknown.
 	RepoActivity time.Time
-	// HeavyWait: the slot's heavy-wait marker file exists, so it is queued on a build slot.
+	// HeavyWait: the slot has a live heavy-wait marker (lock.HeavyWaiting: pid alive, younger than the
+	// heavy wait timeout), so it is queued on a build slot.
 	HeavyWait bool
 	// StallSignature is StallSignature(recent-unwrapped text), "" when no stall line shows. Only read
 	// for idle or done agents.

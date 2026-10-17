@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -76,14 +77,14 @@ func TestMarkerWhileWaitingOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+	if _, err := os.Stat(MarkerFile(marker, os.Getpid())); !os.IsNotExist(err) {
 		t.Fatal("an uncontended acquire must not leave a marker")
 	}
 	done := make(chan error, 1)
 	go func() {
 		r, err := fast(Heavy(dir, 1, marker)).Acquire(context.Background())
 		if err == nil {
-			if _, serr := os.Stat(marker); !os.IsNotExist(serr) {
+			if _, serr := os.Stat(MarkerFile(marker, os.Getpid())); !os.IsNotExist(serr) {
 				err = errors.New("marker still present after acquiring")
 			}
 			r()
@@ -92,7 +93,7 @@ func TestMarkerWhileWaitingOnly(t *testing.T) {
 	}()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		if _, err := os.Stat(marker); err == nil {
+		if _, err := os.Stat(MarkerFile(marker, os.Getpid())); err == nil {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -125,8 +126,99 @@ func TestTimeoutRemovesMarker(t *testing.T) {
 	if time.Since(start) < 70*time.Millisecond {
 		t.Fatal("returned before the timeout")
 	}
-	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+	if _, err := os.Stat(MarkerFile(marker, os.Getpid())); !os.IsNotExist(err) {
 		t.Fatal("marker left behind after timeout")
+	}
+}
+
+func deadPid(t *testing.T) int {
+	t.Helper()
+	c := exec.Command("true")
+	if err := c.Run(); err != nil {
+		t.Fatal(err)
+	}
+	return c.Process.Pid
+}
+
+func putMarker(t *testing.T, base string, pid int, age time.Duration) string {
+	t.Helper()
+	p := MarkerFile(base, pid)
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mod := time.Now().Add(-age)
+	if err := os.Chtimes(p, mod, mod); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestHeavyWaitingIgnoresStaleMarkers(t *testing.T) {
+	t.Parallel()
+	base := filepath.Join(t.TempDir(), "heavy-wait", "cc-impl")
+	const maxAge = time.Hour
+	if HeavyWaiting(base, time.Now(), maxAge) {
+		t.Fatal("no marker, not waiting")
+	}
+	putMarker(t, base, deadPid(t), 0)
+	if HeavyWaiting(base, time.Now(), maxAge) {
+		t.Fatal("a marker whose pid is dead must be ignored")
+	}
+	putMarker(t, base, os.Getppid(), 2*maxAge)
+	if HeavyWaiting(base, time.Now(), maxAge) {
+		t.Fatal("a marker older than the wait timeout must be ignored")
+	}
+	putMarker(t, base, os.Getpid(), time.Minute)
+	if !HeavyWaiting(base, time.Now(), maxAge) {
+		t.Fatal("a live, young marker must count")
+	}
+	other := filepath.Join(filepath.Dir(base), "cc-impl2")
+	if HeavyWaiting(other, time.Now(), maxAge) {
+		t.Fatal("another slot's markers must not count")
+	}
+}
+
+func TestAcquireReapsStaleMarkersAndKeepsOthers(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	base := filepath.Join(dir, "heavy-wait", "unknown")
+	dead := putMarker(t, base, deadPid(t), 0)
+	peer := putMarker(t, base, os.Getppid(), 0)
+	hold, err := fast(Heavy(dir, 1, "")).Acquire(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer hold()
+	w := fast(Heavy(dir, 1, base))
+	w.Timeout = 80 * time.Millisecond
+	if _, err := w.Acquire(context.Background()); !errors.Is(err, ErrTimeout) {
+		t.Fatalf("want ErrTimeout, got %v", err)
+	}
+	if _, err := os.Stat(dead); !os.IsNotExist(err) {
+		t.Fatal("the dead marker must be reaped")
+	}
+	if _, err := os.Stat(peer); err != nil {
+		t.Fatalf("a live peer's marker must survive another waiter: %v", err)
+	}
+}
+
+func TestOldMarkerReapedByAge(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	base := filepath.Join(dir, "heavy-wait", "s")
+	old := putMarker(t, base, os.Getppid(), 2*time.Hour)
+	w := fast(Heavy(dir, 1, base))
+	w.Timeout = time.Minute
+	rel, err := w.Acquire(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel()
+	if _, err := os.Stat(old); !os.IsNotExist(err) {
+		t.Fatal("a marker older than the timeout must be reaped")
 	}
 }
 
