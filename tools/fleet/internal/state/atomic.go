@@ -6,6 +6,12 @@ import (
 	"path/filepath"
 )
 
+// syncFile and syncDir are the durability points; tests replace them to assert order.
+var (
+	syncFile = func(f *os.File) error { return f.Sync() }
+	syncDir  = func(d *os.File) error { return d.Sync() }
+)
+
 // writeTmp writes data to a fresh temp file in path's directory and fsyncs it. The caller renames it.
 // A crash before the rename leaves path untouched.
 func writeTmp(path string, data []byte, perm os.FileMode) (string, error) {
@@ -25,7 +31,7 @@ func writeTmp(path string, data []byte, perm os.FileMode) (string, error) {
 	if _, err := f.Write(data); err != nil {
 		return fail("write", err)
 	}
-	if err := f.Sync(); err != nil {
+	if err := syncFile(f); err != nil {
 		return fail("fsync", err)
 	}
 	if err := f.Close(); err != nil {
@@ -49,8 +55,8 @@ func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
 	if err != nil {
 		return fmt.Errorf("open dir: %w", err)
 	}
-	defer d.Close()
-	if err := d.Sync(); err != nil {
+	defer func() { _ = d.Close() }() // read-only handle; the fsync result is what matters
+	if err := syncDir(d); err != nil {
 		return fmt.Errorf("fsync dir: %w", err)
 	}
 	return nil
