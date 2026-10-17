@@ -186,6 +186,129 @@ func TestLongStaticTestRunWithHeavyWaitMarker(t *testing.T) {
 	}
 }
 
+func TestBlockedReportedOncePerEpoch(t *testing.T) {
+	t.Parallel()
+	in := Input{Agent: agent("cc-impl", "blocked", 3)}
+	res, mem := run(t, Memory{}, t0, in)
+	if !reflect.DeepEqual(kinds(res), []Kind{Blocked}) {
+		t.Fatalf("got %v", kinds(res))
+	}
+	if res, mem = run(t, mem, t0.Add(5*time.Minute), in); len(res.Decisions) != 0 {
+		t.Fatalf("blocked repeated: %v", res.Decisions)
+	}
+	in.Agent.StateChangeSeq = 4
+	if res, _ = run(t, mem, t0.Add(10*time.Minute), in); len(res.Decisions) != 1 {
+		t.Fatalf("a new blocked epoch must report: %v", res.Decisions)
+	}
+}
+
+func TestFocusedPaneIsNeverActedOn(t *testing.T) {
+	t.Parallel()
+	for _, status := range []string{"idle", "blocked", "working"} {
+		in := Input{Agent: agent("cc-impl", status, 1), WorkLeft: true, StallSignature: "x"}
+		in.Agent.Focused = true
+		_, mem := run(t, Memory{}, t0, in)
+		got, _, mem := hold(t, mem, t0, 180, in)
+		if len(got) != 0 {
+			t.Fatalf("%s: focused pane got %v", status, got)
+		}
+		// Once the owner leaves, the normal rules apply on the next tick.
+		in.Agent.Focused = false
+		if res, _ := run(t, mem, t0.Add(185*time.Minute), in); len(res.Decisions) != 1 {
+			t.Fatalf("%s: unfocused pane must be handled: %v", status, res.Decisions)
+		}
+	}
+}
+
+func TestThreeDayGapEntersRecovery(t *testing.T) {
+	t.Parallel()
+	hung := Input{Agent: agent("a-impl", "working", 1)}
+	hung.Agent.PaneID = "w1:p2"
+	nudged := Input{Agent: agent("b-impl", "idle", 2), WorkLeft: true}
+	nudged.Agent.PaneID = "w1:p3"
+	// Before the machine sleeps: a hang report on a-impl and three nudges on b-impl.
+	_, mem := run(t, Memory{}, t0, hung, nudged)
+	for i := 1; i <= 3; i++ {
+		n := nudged
+		n.Agent.StateChangeSeq += int64(i)
+		_, mem = run(t, mem, t0.Add(time.Duration(i)*time.Minute), hung, n)
+	}
+	_, _, mem = hold(t, mem, t0.Add(3*time.Minute), 45, hung, nudged)
+	if !mem.Slots["a-impl"].HangReported || len(mem.Slots["b-impl"].Sent) != 3 {
+		t.Fatalf("setup failed: %+v", mem.Slots)
+	}
+
+	wake := mem.LastTick.Add(72 * time.Hour)
+	res, rec := run(t, mem, wake, hung, nudged)
+	if !res.Recovery || !res.ExpireThrottles || len(res.Decisions) != 0 {
+		t.Fatalf("gap tick: %+v", res)
+	}
+	if s := rec.Slots["a-impl"]; s.HangReported || !s.Progress.Equal(wake) {
+		t.Fatalf("hang timer not reset: %+v", s)
+	}
+	if len(rec.Slots["b-impl"].Sent) != 0 {
+		t.Fatalf("nudge timer not reset: %+v", rec.Slots["b-impl"])
+	}
+	// A repeat of the same list ends recovery. The idle agent got a new epoch while the machine was
+	// off, so it is nudged again; the working one is not hung, because its timer restarted at wake.
+	nudged.Agent.StateChangeSeq = 99
+	res, _ = run(t, rec, wake.Add(5*time.Minute), hung, nudged)
+	if res.Recovery || res.ExpireThrottles {
+		t.Fatalf("two identical reads must end recovery: %+v", res)
+	}
+	if !reflect.DeepEqual(kinds(res), []Kind{Nudge}) {
+		t.Fatalf("want one nudge, got %v", res.Decisions)
+	}
+}
+
+func TestRecoveryWaitsForStableAgentList(t *testing.T) {
+	t.Parallel()
+	a := Input{Agent: agent("a-impl", "idle", 1), WorkLeft: true}
+	b := Input{Agent: agent("b-impl", "idle", 1), WorkLeft: true}
+	b.Agent.PaneID = "w1:p2"
+	_, mem := run(t, Memory{}, t0, a)
+	wake := t0.Add(24 * time.Hour)
+	// The gap tick sees one agent, the next sees a restore adding another, the third repeats it.
+	res, mem := run(t, mem, wake, a)
+	if !res.Recovery {
+		t.Fatal("gap must enter recovery")
+	}
+	res, mem = run(t, mem, wake.Add(5*time.Minute), a, b)
+	if !res.Recovery || len(res.Decisions) != 0 {
+		t.Fatalf("a changing list keeps recovery on: %+v", res)
+	}
+	res, mem = run(t, mem, wake.Add(10*time.Minute), a, b) // a already got its nudge in this epoch
+	if res.Recovery || len(res.Decisions) != 1 || res.Decisions[0].Slot != "b-impl" {
+		t.Fatalf("a repeated list ends recovery and acts: %+v", res)
+	}
+	if mem.Recovering {
+		t.Fatal("memory still recovering")
+	}
+}
+
+func TestNoGapOnFirstRunOrWithinTwoIntervals(t *testing.T) {
+	t.Parallel()
+	res, mem := run(t, Memory{}, t0, idle(1))
+	if res.Recovery {
+		t.Fatal("first run is not recovery")
+	}
+	if res, _ = run(t, mem, t0.Add(10*time.Minute), idle(2)); res.Recovery {
+		t.Fatal("exactly 2x the interval is not a gap")
+	}
+	if res, _ = run(t, mem, t0.Add(10*time.Minute+time.Second), idle(2)); !res.Recovery {
+		t.Fatal("over 2x the interval is a gap")
+	}
+}
+
+func TestVanishedSlotsAreForgotten(t *testing.T) {
+	t.Parallel()
+	_, mem := run(t, Memory{}, t0, idle(1))
+	_, mem = run(t, mem, t0.Add(time.Minute))
+	if len(mem.Slots) != 0 {
+		t.Fatalf("stale memory kept: %v", mem.Slots)
+	}
+}
+
 func TestStallSignature(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
