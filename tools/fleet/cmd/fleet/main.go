@@ -15,15 +15,18 @@ func main() {
 
 func run(args []string, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintf(stderr, "usage: fleet <%v>\n", subcommands)
+		msg(stderr, "usage: fleet <%v>\n", subcommands)
 		return 2
 	}
 	for _, s := range subcommands {
 		if args[0] == s {
-			fmt.Fprintf(stderr, "fleet %s: not implemented\n", s)
+			msg(stderr, "fleet %s: not implemented\n", s)
 			return 2
 		}
 	}
-	fmt.Fprintf(stderr, "fleet: unknown subcommand %q\n", args[0])
+	msg(stderr, "fleet: unknown subcommand %q\n", args[0])
 	return 2
 }
+
+// msg writes a diagnostic; a failed write to stderr has nowhere left to be reported.
+func msg(w io.Writer, format string, args ...any) { _, _ = fmt.Fprintf(w, format, args...) }

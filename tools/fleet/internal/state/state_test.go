@@ -294,7 +294,7 @@ func TestHandoffRejects(t *testing.T) {
 		{"empty", "", "empty"},
 		{"bad title", rep("# cc-impl handoff", "# handoff"), "want title"},
 		{"no updated", rep("Updated: 2026-10-17T10:00:00Z\n", ""), "Updated"},
-		{"bad updated", rep("2026-10-17T10:00:00Z", "yesterday"), "Updated line"},
+		{"bad updated", rep("2026-10-17T10:00:00Z", "yesterday"), "updated line"},
 		{"missing Blockers", rep("## Blockers\nnone\n", ""), `missing heading "Blockers"`},
 		{"missing Claims", rep("## Claims held\n", "## Claims\n"), `missing heading "Claims held"`},
 		{"duplicate", rep("## Branch", "## PR\nx\n## Branch"), "duplicate heading"},
@@ -302,7 +302,7 @@ func TestHandoffRejects(t *testing.T) {
 		{"out of order", rep("## Branch\nfix/thing\n## PR\nLeanerCloud/cloud-commitments-platform#43\n", "## PR\nLeanerCloud/cloud-commitments-platform#43\n## Branch\nfix/thing\n"), "out of order"},
 		{"bad claim", rep("- issue LeanerCloud/cloud-commitments-platform#42", "- issue 42"), "unrecognised claim"},
 		{"claim file bad n", rep("claim-pr-cloud-commitments-platform-43.txt", "claim-pr-cloud-commitments-platform-x.txt"), "unrecognised claim"},
-		{"empty next action", rep("wait for CI", ""), "Next action must not be empty"},
+		{"empty next action", rep("wait for CI", ""), "next action must not be empty"},
 		{"text before heading", rep("Updated: 2026-10-17T10:00:00Z\n", "Updated: 2026-10-17T10:00:00Z\nstray\n"), "before the first heading"},
 	}
 	for _, tt := range tests {
