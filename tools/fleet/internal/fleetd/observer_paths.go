@@ -92,7 +92,16 @@ func readObserverInput(path, home string) (snapshot InputSnapshot, info os.FileI
 		return snapshot, nil, err
 	}
 	defer func() { err = errors.Join(err, root.Close()) }()
-	f, err := root.OpenFile(filepath.Base(abs), os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0)
+	// Root resolves relative symlinks even with O_NOFOLLOW.
+	name := filepath.Base(abs)
+	before, err := root.Lstat(name)
+	if err != nil {
+		return snapshot, nil, err
+	}
+	if !before.Mode().IsRegular() {
+		return snapshot, nil, fmt.Errorf("observer input must be a regular file without symlinks")
+	}
+	f, err := root.OpenFile(name, os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return snapshot, nil, err
 	}
@@ -100,6 +109,13 @@ func readObserverInput(path, home string) (snapshot InputSnapshot, info os.FileI
 	info, err = f.Stat()
 	if err != nil {
 		return snapshot, nil, err
+	}
+	after, err := root.Lstat(name)
+	if err != nil {
+		return snapshot, nil, err
+	}
+	if !after.Mode().IsRegular() || !os.SameFile(before, info) || !os.SameFile(info, after) {
+		return snapshot, nil, fmt.Errorf("observer input changed while opening")
 	}
 	if !info.Mode().IsRegular() || info.Size() > maxObserverInputBytes {
 		return snapshot, nil, fmt.Errorf("observer input must be a regular file of at most %d bytes", maxObserverInputBytes)
@@ -111,7 +127,7 @@ func readObserverInput(path, home string) (snapshot InputSnapshot, info os.FileI
 	if len(data) > maxObserverInputBytes {
 		return snapshot, nil, fmt.Errorf("observer input exceeds %d bytes", maxObserverInputBytes)
 	}
-	return InputSnapshot{path: filepath.Join(parent, filepath.Base(abs)), data: string(data)}, info, nil
+	return InputSnapshot{path: filepath.Join(parent, name), data: string(data)}, info, nil
 }
 
 func observerOutputPath(path, home string) (string, error) {
