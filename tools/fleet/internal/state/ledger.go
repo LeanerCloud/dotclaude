@@ -95,17 +95,25 @@ func ReadLedger(path string) (*Ledger, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read ledger: %w", err)
 	}
+	return parseLedger(data, "ledger "+path)
+}
+
+func ParseLedger(data []byte) (*Ledger, error) {
+	return parseLedger(data, "ledger")
+}
+
+func parseLedger(data []byte, label string) (*Ledger, error) {
 	var l Ledger
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&l); err != nil {
-		return nil, fmt.Errorf("decode ledger %s: %w", path, err)
+		return nil, fmt.Errorf("decode %s: %w", label, err)
 	}
 	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		return nil, fmt.Errorf("decode ledger %s: trailing data", path)
+		return nil, fmt.Errorf("decode %s: trailing data", label)
 	}
 	if err := l.Validate(); err != nil {
-		return nil, fmt.Errorf("ledger %s: %w", path, err)
+		return nil, fmt.Errorf("%s: %w", label, err)
 	}
 	return &l, nil
 }
