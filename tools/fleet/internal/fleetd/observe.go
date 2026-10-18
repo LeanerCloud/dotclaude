@@ -27,7 +27,7 @@ type Observer struct {
 }
 
 type Inventory struct {
-	Name, Harness, Status, Cwd string
+	Name, Harness, Status, Cwd, Identity, PaneID string
 }
 
 type SlotEvidence struct {
@@ -82,7 +82,7 @@ func (o Observer) Collect(ctx context.Context, configPath string, cfg config.Con
 	}
 	byName := map[string]herdr.Agent{}
 	for _, a := range agents {
-		ob.Inventory = append(ob.Inventory, Inventory{state.Scrub(a.Name), state.Scrub(a.Agent), state.Scrub(a.AgentStatus), state.Scrub(a.Cwd)})
+		ob.Inventory = append(ob.Inventory, Inventory{state.Scrub(a.Name), state.Scrub(a.Agent), state.Scrub(a.AgentStatus), state.Scrub(a.Cwd), agentIdentity(a), state.Scrub(a.PaneID)})
 		if !config.Harness(a.Agent).Valid() {
 			ob.Notes = append(ob.Notes, state.Scrub(a.Name+": unknown harness; inventory only"))
 		}
@@ -114,9 +114,7 @@ func (o Observer) Collect(ctx context.Context, configPath string, cfg config.Con
 			ob.Notes = append(ob.Notes, state.Scrub(slot.Name+": missing, inactive or mismatched identity; inventory only"))
 			continue
 		}
-		identity, _ := json.Marshal([]string{a.Name, a.PaneID, a.TabID, a.WorkspaceID, a.Agent, a.Cwd, a.AgentSession.Kind, a.AgentSession.Source, a.AgentSession.Value})
-		sum := sha256.Sum256(identity)
-		e := SlotEvidence{Name: state.Scrub(slot.Name), Identity: hex.EncodeToString(sum[:]), Harness: string(slot.Harness), Status: state.Scrub(a.AgentStatus), Seq: a.StateChangeSeq, Revision: a.Revision, Focused: a.Focused, InteractiveReady: a.InteractiveReady}
+		e := SlotEvidence{Name: state.Scrub(slot.Name), Identity: agentIdentity(a), Harness: string(slot.Harness), Status: state.Scrub(a.AgentStatus), Seq: a.StateChangeSeq, Revision: a.Revision, Focused: a.Focused, InteractiveReady: a.InteractiveReady}
 		for _, read := range []struct {
 			source string
 			dest   *string
@@ -139,6 +137,12 @@ func (o Observer) Collect(ctx context.Context, configPath string, cfg config.Con
 		ob.Slots = append(ob.Slots, e)
 	}
 	return ob
+}
+
+func agentIdentity(a herdr.Agent) string {
+	identity, _ := json.Marshal([]string{a.Name, a.PaneID, a.TabID, a.WorkspaceID, a.Agent, a.Cwd, a.AgentSession.Agent, a.AgentSession.Kind, a.AgentSession.Source, a.AgentSession.Value})
+	sum := sha256.Sum256(identity)
+	return hex.EncodeToString(sum[:])
 }
 
 func canonical(path, home string) (string, error) {
