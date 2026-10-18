@@ -16,7 +16,7 @@ import (
 
 func TestObserverPaths(t *testing.T) {
 	t.Parallel()
-	for _, mode := range []string{"fresh", "existing", "hardlink", "config-link", "ledger-link", "alias", "fifo", "oversize", "invalid-config", "invalid-ledger", "unknown-ledger", "trailing-ledger", "output-link", "input", "ancestor", "checkout", "checkout-ancestor", "handoff", "handoff-case", "live-config", "live-state", "live-STATE", "live-inbox", "live-events", "live-handoff", "live-ancestor", "missing-parent", "output-file", "symlink-parent"} {
+	for _, mode := range []string{"fresh", "existing", "hardlink", "config-link", "ledger-link", "config-relative-link", "ledger-relative-link", "alias", "fifo", "oversize", "invalid-config", "invalid-ledger", "unknown-ledger", "trailing-ledger", "output-link", "input", "ancestor", "checkout", "checkout-ancestor", "handoff", "handoff-case", "live-config", "live-state", "live-STATE", "live-inbox", "live-events", "live-handoff", "live-ancestor", "missing-parent", "output-file", "symlink-parent"} {
 		t.Run(mode, func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
@@ -71,6 +71,12 @@ func TestObserverPaths(t *testing.T) {
 			case "ledger-link":
 				link(lp, filepath.Join(dir, "link"), false)
 				lp = filepath.Join(dir, "link")
+			case "config-relative-link":
+				link("fleet.json", filepath.Join(inputs, "config-link"), false)
+				cp = filepath.Join(inputs, "config-link")
+			case "ledger-relative-link":
+				link("slots.json", filepath.Join(inputs, "ledger-link"), false)
+				lp = filepath.Join(inputs, "ledger-link")
 			case "alias":
 				link(cp, filepath.Join(dir, "alias"), true)
 				lp = filepath.Join(dir, "alias")
