@@ -35,6 +35,7 @@ portability contract and the per-tool discovery paths.
 | [`review-staged-diff`](skills/review-staged-diff/) | reviewing a staged changeset before it lands |
 | [`review-and-implement`](skills/review-and-implement/) | hardening a plan, then building it |
 | [`worktrees`](skills/worktrees/) | starting any non-trivial change |
+| [`disk-cleanup`](skills/disk-cleanup/) | low disk, "free space", sweeping ~/ for stale worktrees, build dirs and caches |
 | [`subagent-strategy`](skills/subagent-strategy/) | deciding how to delegate, or which tier |
 | [`multi-agent-comms`](skills/multi-agent-comms/) | several agents share one project |
 | [`pr-orchestration`](skills/pr-orchestration/) | orchestrating several PRs/agents at once |
