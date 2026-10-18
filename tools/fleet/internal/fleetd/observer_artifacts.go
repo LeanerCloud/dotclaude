@@ -17,6 +17,7 @@ const (
 	observerMemory         = "memory.json"
 	observerJournal        = "journal.jsonl"
 	maxObserverMarkerBytes = 16 << 10
+	maxObserverMemoryBytes = 4 << 20
 )
 
 type observerBinding struct {
@@ -111,45 +112,61 @@ func observerFileInfo(f *os.File) (os.FileInfo, error) {
 	return info, nil
 }
 
-func readObserverArtifact(root *os.Root, name string) (data []byte, err error) {
+func openObserverArtifact(root *os.Root, name string, flags int) (file *os.File, info os.FileInfo, err error) {
 	before, err := root.Lstat(name)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if !before.Mode().IsRegular() {
-		return nil, fmt.Errorf("observer artifact must be a regular file without links")
+		return nil, nil, fmt.Errorf("observer artifact must be a regular file without links")
 	}
-	f, err := root.OpenFile(name, os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0)
+	f, err := root.OpenFile(name, flags|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, f.Close())
+		}
+	}()
+	info, err = observerFileInfo(f)
+	if err != nil {
+		return nil, nil, err
+	}
+	after, err := root.Lstat(name)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !after.Mode().IsRegular() || !os.SameFile(before, info) || !os.SameFile(info, after) {
+		return nil, nil, fmt.Errorf("observer artifact changed while opening")
+	}
+	return f, info, nil
+}
+
+func readObserverArtifact(root *os.Root, name string) (data []byte, err error) {
+	f, info, err := openObserverArtifact(root, name, os.O_RDONLY)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { err = errors.Join(err, f.Close()) }()
-	info, err := observerFileInfo(f)
-	if err != nil {
-		return nil, err
-	}
-	after, err := root.Lstat(name)
-	if err != nil {
-		return nil, err
-	}
-	if !after.Mode().IsRegular() || !os.SameFile(before, info) || !os.SameFile(info, after) {
-		return nil, fmt.Errorf("observer artifact changed while opening")
-	}
 	if name == observerLock && info.Size() != 0 {
 		return nil, fmt.Errorf("observer lock must be empty")
 	}
-	if name != observerMarker {
+	bound := maxObserverMarkerBytes
+	if name == observerMemory {
+		bound = maxObserverMemoryBytes
+	} else if name != observerMarker {
 		return nil, nil
 	}
-	if info.Size() > maxObserverMarkerBytes {
-		return nil, fmt.Errorf("observer marker exceeds %d bytes", maxObserverMarkerBytes)
+	if info.Size() > int64(bound) {
+		return nil, fmt.Errorf("observer artifact exceeds %d bytes", bound)
 	}
-	data, err = io.ReadAll(io.LimitReader(f, maxObserverMarkerBytes+1))
+	data, err = io.ReadAll(io.LimitReader(f, int64(bound)+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(data) > maxObserverMarkerBytes {
-		return nil, fmt.Errorf("observer marker exceeds %d bytes", maxObserverMarkerBytes)
+	if len(data) > bound {
+		return nil, fmt.Errorf("observer artifact exceeds %d bytes", bound)
 	}
 	return data, nil
 }
