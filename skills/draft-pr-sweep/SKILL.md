@@ -10,7 +10,8 @@ Default owners: `vibedarling`, `LeanerCloud`, `cristim`. Override from the reque
 ## Scope
 
 All open draft PRs authored by the user in the given owners:
-`gh search prs --owner <owner> --state open --draft --author @me` per owner. Record the list in the
+`gh search prs --owner <owner> --state open --draft --author @me --limit 1000` per owner; if an
+owner returns 1000, the inventory is truncated, so split with `--repo`. Record the list in the
 plan file: PR number, head SHA, base, stack parent, local checkout path (`~/.claude/projects.md`,
 `local-paths.md`). Skip PRs the user did not author and report them. Report any owner whose search
 errored (private repos or orgs the `gh` account cannot reach) instead of treating it as empty.
@@ -22,6 +23,9 @@ One PR at a time, finished before the next. Order: stack parents before children
 
 1. **Challenge.** Check the PR against the current base (`AGENTS.md` §1). Already fixed, superseded
    or built on a wrong assumption: comment and propose closing or rephrasing; never close unprompted.
+   If the PR stays open, write its task-and-proof plan in the plan file and get it through two
+   adversarial passes by the same reviewer (`review-and-implement`) before any worktree or code
+   change; re-plan if reality diverges.
 2. **Sync.** Worktree under `~/.claude/worktrees/` (`worktrees`). Rebase on the current base, never
    merge. After a parent changes, rebase each child onto it (`git rebase --onto`) and re-run steps
    3 to 6 for the child. A parent that was merged or closed: `gh pr edit --base <new-base>`, then
