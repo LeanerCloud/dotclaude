@@ -21,6 +21,9 @@ import (
 // TestMain lets the test binary act as the fleet binary, so nested `fleet heavy` calls are real
 // processes.
 func TestMain(m *testing.M) {
+	if tickFixtureCommand() {
+		return
+	}
 	if os.Getenv("FLEET_TEST_AS_FLEET") == "1" {
 		e, err := processEnv()
 		if err != nil {
@@ -225,7 +228,7 @@ func TestLockSerializesAndValidates(t *testing.T) {
 func TestDispatchKeepsOtherSubcommandsStubbed(t *testing.T) {
 	t.Parallel()
 	var errb bytes.Buffer
-	if got := dispatch(env{stderr: &errb}, []string{"tick"}); got != 2 || !strings.Contains(errb.String(), "not implemented") {
+	if got := dispatch(env{stderr: &errb}, []string{"cleanup"}); got != 2 || !strings.Contains(errb.String(), "not implemented") {
 		t.Fatalf("exit %d %q", got, errb.String())
 	}
 }
