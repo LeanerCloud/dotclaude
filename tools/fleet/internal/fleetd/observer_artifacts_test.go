@@ -23,7 +23,7 @@ func observerArtifactFixture(t *testing.T) (string, ObserverPaths, []byte) {
 		t.Fatal(err)
 	}
 	paths := ObserverPaths{Config: InputSnapshot{path: filepath.Join(inputs, "config.json"), data: "original config"}, Ledger: InputSnapshot{path: filepath.Join(inputs, "slots.json"), data: "original ledger"}, Output: dir}
-	marker, err := json.Marshal(map[string]any{"version": 1, "config_path": paths.Config.Path(), "config_hash": fmt.Sprintf("%x", sha256.Sum256([]byte("original config"))), "ledger_path": paths.Ledger.Path(), "ledger_hash": fmt.Sprintf("%x", sha256.Sum256([]byte("original ledger")))})
+	marker, err := json.Marshal(map[string]any{"version": 1, "config_path_hash": fmt.Sprintf("%x", sha256.Sum256([]byte(paths.Config.Path()))), "config_hash": fmt.Sprintf("%x", sha256.Sum256([]byte("original config"))), "ledger_path_hash": fmt.Sprintf("%x", sha256.Sum256([]byte(paths.Ledger.Path()))), "ledger_hash": fmt.Sprintf("%x", sha256.Sum256([]byte("original ledger")))})
 	if err != nil {
 		t.Fatal(err)
 	}
