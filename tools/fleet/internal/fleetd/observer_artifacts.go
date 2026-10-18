@@ -2,6 +2,7 @@ package fleetd
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,15 +20,21 @@ const (
 )
 
 type observerBinding struct {
-	Version    int    `json:"version"`
-	ConfigPath string `json:"config_path"`
-	ConfigHash string `json:"config_hash"`
-	LedgerPath string `json:"ledger_path"`
-	LedgerHash string `json:"ledger_hash"`
+	Version        int    `json:"version"`
+	ConfigPathHash string `json:"config_path_hash"`
+	ConfigHash     string `json:"config_hash"`
+	LedgerPathHash string `json:"ledger_path_hash"`
+	LedgerHash     string `json:"ledger_hash"`
 }
 
 func expectedObserverBinding(paths ObserverPaths) observerBinding {
-	return observerBinding{1, paths.Config.Path(), fmt.Sprintf("%x", paths.Config.Hash()), paths.Ledger.Path(), fmt.Sprintf("%x", paths.Ledger.Hash())}
+	return observerBinding{
+		Version:        1,
+		ConfigPathHash: fmt.Sprintf("%x", sha256.Sum256([]byte(paths.Config.Path()))),
+		ConfigHash:     fmt.Sprintf("%x", paths.Config.Hash()),
+		LedgerPathHash: fmt.Sprintf("%x", sha256.Sum256([]byte(paths.Ledger.Path()))),
+		LedgerHash:     fmt.Sprintf("%x", paths.Ledger.Hash()),
+	}
 }
 
 func inspectObserverOutput(root *os.Root, paths ObserverPaths) (initialized bool, err error) {
