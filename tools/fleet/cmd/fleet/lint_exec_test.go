@@ -201,7 +201,7 @@ func TestLintInteroperatesWithMacOSLockf(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer in.Close()
+		defer func() { _ = in.Close() }()
 		out, err := holder.StdoutPipe()
 		if err != nil {
 			t.Fatal(err)
