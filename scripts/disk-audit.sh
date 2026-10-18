@@ -22,9 +22,29 @@ PRUNE_ARGS=(
   -o -path "$HOME/.local/share/Steam" -o -path "$HOME/.claude/projects"
 )
 
+# Scanned repos are untrusted: their config must not run fsmonitor or hooks.
+export GIT_CONFIG_NOSYSTEM=1
+GIT=(git -c core.fsmonitor=false -c core.hooksPath=/dev/null)
+
+# Pass NUL-delimited paths through, dropping any with control characters
+# (newline/tab would forge TSV records); rejects are logged, never reported.
+REJECTS="$REPORT_DIR/rejected-paths.log"
+: >"$REJECTS"
+safe_paths() {
+  local p
+  while IFS= read -r -d '' p; do
+    if [[ $p == *[[:cntrl:]]* ]]; then
+      printf '%q\n' "$p" >>"$REJECTS"
+    else
+      printf '%s\0' "$p"
+    fi
+  done
+}
+
 echo "== top-level sizes (KiB) =="
 printf 'size_kib\tpath\n' >"$TOP"
 find "$HOME" -mindepth 1 -maxdepth 1 -print0 \
+  | safe_paths \
   | xargs -0 -r du -sxk 2>/dev/null \
   | sort -rn >>"$TOP.tmp"
 awk -F'\t' '{print $1"\t"$2}' "$TOP.tmp" >>"$TOP"
@@ -32,15 +52,16 @@ rm -f "$TOP.tmp"
 
 echo "== git repos and worktrees =="
 printf 'path\tkind\tbranch\tdirty_files\tunpushed_commits\tremotes\tlast_commit\tsize_kib\n' >"$REPOS"
-find "$HOME" -xdev \( "${PRUNE_ARGS[@]}" \) -prune -o -name .git -print -prune 2>/dev/null \
-  | while IFS= read -r g; do
+find "$HOME" -xdev \( "${PRUNE_ARGS[@]}" \) -prune -o -name .git -print0 -prune 2>/dev/null \
+  | safe_paths \
+  | while IFS= read -r -d '' g; do
       r="$(dirname "$g")"
       if [ -d "$g" ]; then kind=main; else kind=worktree; fi
-      branch="$(git -C "$r" symbolic-ref --short -q HEAD 2>/dev/null || echo DETACHED)"
-      dirty="$(timeout 120 git -C "$r" status --porcelain 2>/dev/null | wc -l)"
-      unpushed="$(git -C "$r" rev-list --count HEAD --not --remotes 2>/dev/null || echo '?')"
-      remotes="$(git -C "$r" remote 2>/dev/null | paste -sd, -)"
-      last="$(git -C "$r" log -1 --format=%cs 2>/dev/null || echo '?')"
+      branch="$("${GIT[@]}" -C "$r" symbolic-ref --short -q HEAD 2>/dev/null || echo DETACHED)"
+      dirty="$(timeout 120 "${GIT[@]}" -C "$r" status --porcelain 2>/dev/null | wc -l)"
+      unpushed="$("${GIT[@]}" -C "$r" rev-list --count HEAD --not --remotes 2>/dev/null || echo '?')"
+      remotes="$("${GIT[@]}" -C "$r" remote 2>/dev/null | paste -sd, -)"
+      last="$("${GIT[@]}" -C "$r" log -1 --format=%cs 2>/dev/null || echo '?')"
       size="$(timeout 300 du -sxk "$r" 2>/dev/null | cut -f1)"
       printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$r" "$kind" "$branch" "$dirty" "$unpushed" "$remotes" "$last" "${size:-?}" >>"$REPOS"
     done
@@ -49,8 +70,9 @@ echo "== rebuildable candidates =="
 printf 'size_kib\tpath\n' >"$CANDS"
 find "$HOME" -xdev \( "${PRUNE_ARGS[@]}" \) -prune -o -type d \
   \( -name 'build*' -o -name target -o -name .venv -o -name venv -o -name __pycache__ \
-     -o -name .gradle -o -name .next -o -name dist -o -name .ccache \) -print -prune 2>/dev/null \
-  | xargs -d '\n' -r du -sxk 2>/dev/null \
+     -o -name .gradle -o -name .next -o -name dist -o -name .ccache \) -print0 -prune 2>/dev/null \
+  | safe_paths \
+  | xargs -0 -r du -sxk 2>/dev/null \
   | sort -rn | head -200 >>"$CANDS"
 
 {

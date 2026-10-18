@@ -27,7 +27,7 @@ Update them as you go, not at the end; a crashed run must be resumable from them
 
 ## Steps
 
-1. **Audit** (read-only): `bash ~/.claude/scripts/disk-audit.sh`. Run it in the background; it can take minutes. It writes `INVENTORY.md` and TSVs of top-level sizes, every repo/worktree (dirty files, unpushed commits, remotes, size) and rebuildable candidates.
+1. **Audit** (read-only): `bash ~/.claude/scripts/disk-audit.sh`. Run it in the background; it can take minutes. It writes `INVENTORY.md` and TSVs of top-level sizes, every repo/worktree (dirty files, unpushed commits, remotes, size) and rebuildable candidates. Scanned repos are untrusted: the script runs git with fsmonitor and hooks disabled, and drops paths containing control characters into `rejected-paths.log`; list those in `NEEDS-HUMAN.md`. Do the same when running git in any repo you did not create (a repo's own config can execute commands).
 2. **Classify** each item:
    - **MERGED** (safe): PR MERGED and the tip is the PR head or an ancestor, clean tree, no lock or live owner. Do not reimplement this; run `scripts/reclaim-merged-worktrees.sh --repo <path>` (report first, then `--apply`).
    - **REBUILDABLE** (safe): build output, caches, `node_modules`, venvs, anything regenerable from source or a lockfile. Prefer native pruners (`docker`/`podman system prune`, `cargo`/`npm`/`go` cache clean, `journalctl --vacuum-size`, `coredumpctl`) over `rm`.
