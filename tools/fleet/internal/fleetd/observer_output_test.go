@@ -2,13 +2,86 @@ package fleetd
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 )
+
+func TestObserverMarkerHidesInputPathsAndBindsTheirExactNames(t *testing.T) {
+	t.Parallel()
+	_, paths := observerOutputFixture(t)
+	token := "gh" + "p_" + strings.Repeat("a", 24)
+	paths.Config.path = filepath.Join(filepath.Dir(paths.Config.Path()), token+"-config.json")
+	paths.Ledger.path = filepath.Join(filepath.Dir(paths.Ledger.Path()), token+"-ledger.json")
+	out, err := openObserverOutput(t.Context(), paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	marker, err := out.root.ReadFile(observerMarker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := out.close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range []string{token, paths.Config.Path(), paths.Ledger.Path()} {
+		if strings.Contains(string(marker), raw) {
+			t.Fatal("marker persisted raw input path text")
+		}
+	}
+	var binding map[string]any
+	if err := json.Unmarshal(marker, &binding); err != nil {
+		t.Fatal(err)
+	}
+	for key, path := range map[string]string{"config_path_hash": paths.Config.Path(), "ledger_path_hash": paths.Ledger.Path()} {
+		if binding[key] != fmt.Sprintf("%x", sha256.Sum256([]byte(path))) {
+			t.Fatalf("%s does not bind the canonical path", key)
+		}
+	}
+	out, err = openObserverOutput(t.Context(), paths)
+	if err != nil {
+		t.Fatal("same inputs refused", err)
+	}
+	if err := out.close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, input := range []string{"config", "ledger"} {
+		changed := paths
+		if input == "config" {
+			changed.Config.path += "-renamed"
+		} else {
+			changed.Ledger.path += "-renamed"
+		}
+		if out, err := openObserverOutput(t.Context(), changed); err == nil {
+			_ = out.close()
+			t.Fatalf("changed %s path with identical content accepted", input)
+		}
+	}
+	legacy := map[string]any{"version": 1, "config_path": paths.Config.Path(), "config_hash": fmt.Sprintf("%x", paths.Config.Hash()), "ledger_path": paths.Ledger.Path(), "ledger_hash": fmt.Sprintf("%x", paths.Ledger.Hash())}
+	old, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	markerPath := filepath.Join(paths.Output, observerMarker)
+	if err := os.WriteFile(markerPath, old, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := openObserverOutput(t.Context(), paths); err == nil {
+		_ = out.close()
+		t.Fatal("legacy raw-path marker accepted")
+	}
+	after, err := os.ReadFile(markerPath)
+	if err != nil || string(after) != string(old) {
+		t.Fatal("legacy marker changed on refusal", err)
+	}
+}
 
 func observerOutputFixture(t *testing.T) (string, ObserverPaths) {
 	t.Helper()
