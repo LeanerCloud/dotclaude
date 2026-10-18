@@ -105,7 +105,7 @@ func (s *Set) MigrateDue(h config.Harness, now time.Time, migrateAfter time.Dura
 	return e.Kind == Throttled && !e.Since.IsZero() && now.Sub(e.Since) >= migrateAfter
 }
 
-func (s *Set) validate() error {
+func (s *Set) Validate() error {
 	for h, e := range s.Harnesses {
 		if !h.Valid() {
 			return fmt.Errorf("unknown harness %q", h)
@@ -136,7 +136,7 @@ func Load(path string) (*Set, error) {
 	if err := dec.Decode(&s); err != nil {
 		return nil, fmt.Errorf("%s: decode: %w", path, err)
 	}
-	if err := s.validate(); err != nil {
+	if err := s.Validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return &s, nil
@@ -144,7 +144,7 @@ func Load(path string) (*Set, error) {
 
 // Save writes limits.json atomically.
 func (s *Set) Save(path string) error {
-	if err := s.validate(); err != nil {
+	if err := s.Validate(); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(s, "", "  ")
