@@ -30,6 +30,42 @@ func observerArtifactFixture(t *testing.T) (string, ObserverPaths, []byte) {
 	return dir, paths, marker
 }
 
+func TestObserverArtifactReadsBoundedMemoryBytes(t *testing.T) {
+	t.Parallel()
+	valid := `{"Liveness":{},"Signatures":{},"Limits":{}}`
+	for _, size := range []int{len(valid), maxObserverMemoryBytes, maxObserverMemoryBytes + 1} {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			t.Parallel()
+			dir, _, _ := observerArtifactFixture(t)
+			root, err := os.OpenRoot(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				if err := root.Close(); err != nil {
+					t.Error(err)
+				}
+			}()
+			data := valid + strings.Repeat(" ", size-len(valid))
+			if err := root.WriteFile(observerMemory, []byte(data), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			got, err := readObserverArtifact(root, observerMemory)
+			if size <= maxObserverMemoryBytes {
+				if err != nil || string(got) != data {
+					t.Fatal("bounded memory bytes not preserved", len(got), err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), "bytes") {
+				t.Fatal("memory size limit bypassed", err)
+			}
+			after, err := root.ReadFile(observerMemory)
+			if err != nil || string(after) != data {
+				t.Fatal("artifact reader changed memory", err)
+			}
+		})
+	}
+}
+
 func TestObserverArtifactValidationIsReadOnly(t *testing.T) {
 	t.Parallel()
 	for _, mode := range []string{"initialized", "full", "empty", "lock-only", "marker-only", "memory-only", "missing-marker", "missing-lock", "config-path", "ledger-path", "config-hash", "ledger-hash", "unknown", "too-many", "root-mode", "file-mode", "symlink", "inside-link", "hardlink", "alias", "fifo", "directory", "lock-data", "unknown-key", "trailing", "malformed", "missing-key", "version", "oversize", "closed-root"} {
