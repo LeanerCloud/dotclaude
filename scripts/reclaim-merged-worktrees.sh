@@ -26,6 +26,7 @@ ONLY_BRANCH=
 PLANS_GLOB="${RECLAIM_PLANS_GLOB:-$HOME/.claude/projects/*/plans/*.md}"
 PR_MERGED_LIMIT=3000
 PR_OPEN_LIMIT=1000
+DECLARED_FILE=.reclaim-build-outputs
 IGNORE_ALLOW=" node_modules target dist build .terraform __pycache__ coverage .next test-results playwright-report "
 
 usage() {
@@ -421,6 +422,66 @@ secret_name() {
   return 1
 }
 
+# decl_valid <line>: an exact repo-relative file path, no glob characters, no dot components.
+decl_valid() {
+  local IFS=/ c
+  case "$1" in
+    *'*'* | *'?'* | *'['* | *']'* | *$'\\'* | *$'\r'* | /* | ./* | */ | *//*) return 1 ;;
+  esac
+  set -f
+  for c in $1; do
+    case "$c" in
+      . | .. | .git) set +f; return 1 ;;
+    esac
+  done
+  set +f
+  return 0
+}
+
+# load_declared_outputs: read DECLARED_FILE from origin's default branch (never the worktree, since
+# it authorizes deletion). Any failure leaves $TMP/declared empty, which can only block more.
+load_declared_outputs() {
+  local ref="refs/remotes/origin/$DEFAULT_BRANCH" meta mode sha n=0 line
+  : > "$TMP/declared"
+  if ! G fetch -q origin "+refs/heads/$DEFAULT_BRANCH:$ref" 2>"$TMP/decl.err"; then
+    echo "warning: cannot fetch origin/$DEFAULT_BRANCH, ignoring declared outputs: $(head -c 200 "$TMP/decl.err")" >&2
+    return
+  fi
+  meta="$(G ls-tree "$ref" -- "$DECLARED_FILE" 2>"$TMP/decl.err")" || {
+    echo "warning: cannot read $DECLARED_FILE, ignoring declared outputs" >&2
+    return
+  }
+  [ -n "$meta" ] || return
+  mode="${meta%% *}"
+  sha="${meta#* blob }"
+  sha="${sha%%$'\t'*}"
+  case "$mode" in
+    100644 | 100755) ;;
+    *)
+      echo "warning: $DECLARED_FILE is not a regular file, ignoring declared outputs" >&2
+      return
+      ;;
+  esac
+  G cat-file blob "$sha" > "$TMP/decl.raw" 2>"$TMP/decl.err" || {
+    echo "warning: cannot read $DECLARED_FILE, ignoring declared outputs" >&2
+    return
+  }
+  while IFS= read -r line || [ -n "$line" ]; do
+    n=$((n + 1))
+    case "$line" in '' | '#'*) continue ;; esac
+    if decl_valid "$line"; then
+      printf '%s\n' "$line" >> "$TMP/declared"
+    else
+      echo "warning: $DECLARED_FILE line $n is not an exact file path, skipped" >&2
+    fi
+  done < "$TMP/decl.raw"
+}
+
+# is_declared <dir> <entry>: a plain file named exactly in the declarations.
+is_declared() {
+  [ ! -d "$1/$2" ] && [ ! -L "$1/$2" ] && grep -Fxq -- "$2" "$TMP/declared"
+}
+
 # secret_file_under <path>: prints the first secret-named file below path. Git reports an ignored dir as one entry, so look inside for secret
 # names (node_modules is skipped: packages ship fixtures with such names).
 secret_file_under() {
@@ -455,6 +516,8 @@ gate() {
       :
     elif [ "$entry" = plan.md ]; then
       plan_symlink_ok "$dir" && continue
+    elif is_declared "$dir" "$entry"; then
+      continue
     elif is_build_path "$dir" "$entry"; then
       hit="$(secret_file_under "$dir/$entry")"
       [ -n "$hit" ] || continue
@@ -684,6 +747,7 @@ process_local_branch() { # branch
 setup_repo
 list_plans
 load_pr_data
+load_declared_outputs
 
 G worktree list --porcelain | awk -v RS= -v FS='\n' '
   { path = ""; br = "-"; fl = ""
