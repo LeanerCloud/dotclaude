@@ -108,6 +108,7 @@ Restore between probes and probe one thing at a time (two deletions that cancel 
 
 - Pyramid: many fast unit tests, fewer integration, few end-to-end (critical user journeys only).
 - Test behaviour through public APIs, not implementation. Tests are fast, isolated, deterministic, readable.
+- Use discriminating inputs: a test whose input a wrong implementation also passes (e.g. a value valid in either operand slot) is not a guard. Use spellings the real toolchain accepts, measured before writing the test, and confirm with a mutation probe that the test fails.
 - Unit: pure logic, algorithms, transformations, edge cases. Integration: DB queries, HTTP handlers, external clients, queue consumers.
 - Prefer real implementations (in-memory DB, temp files, `httptest`); mock only at true boundaries (external APIs, email, payments).
 - Every bug fix starts with a failing test that captures the bug.

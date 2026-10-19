@@ -7,7 +7,7 @@ description: Worktree isolation per change - creation preconditions, plan persis
 
 # Worktree Isolation Per Change
 
-Multi-commit or long-running work, and any work in a checkout another session may be using, happens in a dedicated git worktree branched off the current branch; never commit in-progress work on the branch you started from. This file is the full protocol (AGENTS.md §1b carries the headline).
+Multi-commit or long-running work, and any work in a checkout another session may be using, happens in a dedicated git worktree branched off the freshly fetched `origin/<base-branch>`; never commit in-progress work on the branch you started from. This file is the full protocol (AGENTS.md §1b carries the headline).
 
 ## Preconditions and creation
 
@@ -36,7 +36,7 @@ Multi-commit or long-running work, and any work in a checkout another session ma
 
   Any fetch/API/query failure, missing or unreadable issue/claim data, or incomplete pagination stops creation/publication: partial output and empty failed queries prove no absence. Successful empty comment/PR lists are legitimate for an unclaimed issue. These checks reduce races; they are not atomic locks. A directly authorized task without a tracked issue needs no invented issue; existing coordination rules still apply. Branch from `origin/<base-branch>` after successful checks, and repeat the checkpoint before pushing (see Rebase and cleanup).
 - **Durable root**: `~/.claude/worktrees/<repo-name>-<slug>` (`<repo-name>` is the main checkout's directory name). Never under `/tmp`, `$TMPDIR` or another directory cleared at reboot.
-- **Record the base branch and the SHA you branched from** in the plan. The SHA is the initial baseline; later rebases target the newly fetched `origin/<base-branch>`. A `main`/protected base still gets a worktree.
+- **Record the base branch and the SHA you branched from** in the plan, read with `git rev-parse HEAD` inside the new worktree after `worktree add` (a concurrent fetch can move `origin/<base-branch>` after the scans). The SHA is the initial baseline; later rebases target the newly fetched `origin/<base-branch>`. A `main`/protected base still gets a worktree.
 - **Create after the review gate, before the first commit**:
   ```bash
   mkdir -p "$HOME/.claude/worktrees"
@@ -84,7 +84,7 @@ Paste verbatim below the header (copy, don't paraphrase):
 - The AGENTS.md §1 post-implementation review is clean.
 - **2 verification passes are done and acted on** (two, whatever the stakes). A pass covers tests, lint/typecheck, the §4 per-change-type verification (UI smoke, API curl, etc.), and a re-read of the diff against the plan. Fix what each pass finds; don't keep re-verifying for a pass that finds nothing. A clean pass on the exact same SHA counts for every gate that sees it (`AGENTS.md` §1, same-hash rule).
 
-**On completion**: repeat the pre-push checkpoint and rebase onto the freshly fetched `origin/<base_branch>` as described in Rebase and cleanup, push under existing PR rules, then (inside the AGENTS.md tenet 9 exception only when the branch tip is an ancestor of the pushed base, `git merge-base --is-ancestor <branch> origin/<base>`; otherwise ask) `git worktree remove` the worktree, flip `status:` to `merged`, then archive this plan file (`plans/archive/`). If the PR merges out-of-band (a human or another agent's `merge-watch` merges it after this session is gone), any later session reclaims this worktree with `reclaim-merged-worktrees.sh` ("Reclaiming merged worktrees, branches and build dirs" in the `worktrees` skill).
+**On completion**: repeat the pre-push checkpoint, rebasing onto the freshly fetched `origin/<base_branch>` only when needed, as described in Rebase and cleanup, push under existing PR rules, then (inside the AGENTS.md tenet 9 exception only when the branch tip is an ancestor of the pushed base, `git merge-base --is-ancestor <branch> origin/<base>`; otherwise ask) `git worktree remove` the worktree, flip `status:` to `merged`, then archive this plan file (`plans/archive/`). If the PR merges out-of-band (a human or another agent's `merge-watch` merges it after this session is gone), any later session reclaims this worktree with `reclaim-merged-worktrees.sh` ("Reclaiming merged worktrees, branches and build dirs" in the `worktrees` skill).
 
 **On abandonment**: flip `status:` to `abandoned`, clear `pid:`, archive the plan file, and remove the worktree only after user confirmation (abandoned work is outside the AGENTS.md tenet 9 exception).
 ```
@@ -116,7 +116,7 @@ The next session enumerates `~/.claude/projects/<project>/plans/` and reads each
 - `host:` matches AND `kill -0 <pid>` succeeds: **active**, leave alone.
 - `host:` matches AND `kill -0` fails: **orphaned locally**, safe to adopt.
 - `host:` differs: PIDs can't be verified across machines; orphaned only if `pid_updated:` is older than 24h. Otherwise coordinate (`multi-agent-comms`).
-- After adoption, `cd` to `worktree:`, re-read the embedded workflow, run `git status` and `git log <base_branch>..HEAD`, resume from the first unchecked task.
+- After adoption, `cd` to `worktree:`, re-read the embedded workflow, run `git status`, `git fetch origin` and `git log origin/<base_branch>..HEAD`, resume from the first unchecked task.
 
 ## Staleness and disappearance
 
@@ -140,7 +140,7 @@ The gate is the "Merge gate" block in the embedded checklist above (all plan ite
 
 ## Rebase and cleanup
 
-- **Before pushing**: fetch origin and repeat the issue, ownership and complete PR checks from Preconditions and creation. Challenge the issue against current code again, especially if the base moved since the recorded baseline. After the embedded pre-rebase gate, rebase onto the freshly fetched remote branch:
+- **Before pushing**: fetch origin and repeat the issue, ownership and complete PR checks from Preconditions and creation. Challenge the issue against current code again, especially if the base moved since the recorded baseline. After the embedded pre-rebase gate, rebase onto the freshly fetched remote branch when it has moved (`git rev-list --count HEAD..origin/<base-branch>` is non-zero) and the PR needs it (conflicts, a required up-to-date base, changes the work depends on); otherwise push without rebasing, so a reviewed SHA is not churned. The fetch and the checks above always run:
   ```bash
   git fetch origin
   git rebase origin/<base-branch>
