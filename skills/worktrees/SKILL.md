@@ -152,7 +152,7 @@ The gate is the "Merge gate" block in the embedded checklist above (all plan ite
 
 ## Reclaiming merged worktrees, branches and build dirs
 
-`~/.claude/scripts/reclaim-merged-worktrees.sh [--apply] [--repo PATH] [--branch NAME]` is the implementation; never hand-roll the sweep. Without `--apply` it only reports, one line per item: `reclaimed|reclaimable|blocked|ask|skip|prunable <name> <reason>`.
+`~/.claude/scripts/reclaim-merged-worktrees.sh [--apply] [--repo PATH] [--branch NAME]` is the implementation; never hand-roll the sweep. `--allow-fork` (opt-in) also reclaims a branch merged through your own fork PR: it needs a local remote for that fork, deletes the fork branch (never origin's) and blocks on a stash for the branch. Without `--apply` it only reports, one line per item: `reclaimed|reclaimable|blocked|ask|skip|prunable <name> <reason>`.
 
 **When**: report mode at session start and before ending; `--apply --branch <b>` right after each merge, from the primary checkout. The session that performs or first observes the merge (a human merge, a merge driver, a peer's `merge-watch`) owns the reclaim, and any session may reclaim another session's merged worktree because the gates below protect live work.
 

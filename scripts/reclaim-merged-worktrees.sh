@@ -3,7 +3,10 @@
 # This is the implementation of the AGENTS.md tenet 9 post-merge exception; the
 # `worktrees` skill describes when to run it.
 #
-#   reclaim-merged-worktrees.sh [--apply] [--repo PATH] [--branch NAME]
+#   reclaim-merged-worktrees.sh [--apply] [--allow-fork] [--repo PATH] [--branch NAME]
+#
+# --allow-fork also reclaims a branch whose merged PR came from the authenticated user's own fork
+# (a local remote must point at it); the fork branch is deleted, origin is never touched.
 #
 # Output, one line per item: <state> <name> <reason>, then a totals line.
 #   state: reclaimed | reclaimable | blocked | ask | skip | prunable
@@ -17,6 +20,7 @@
 set -uo pipefail
 
 APPLY=0
+ALLOW_FORK=0
 REPO_ARG=.
 ONLY_BRANCH=
 PLANS_GLOB="${RECLAIM_PLANS_GLOB:-$HOME/.claude/projects/*/plans/*.md}"
@@ -25,7 +29,7 @@ PR_OPEN_LIMIT=1000
 IGNORE_ALLOW=" node_modules target dist build .terraform __pycache__ coverage .next test-results playwright-report "
 
 usage() {
-  printf 'usage: %s [--apply] [--repo PATH] [--branch NAME]\n' "$0" >&2
+  printf 'usage: %s [--apply] [--allow-fork] [--repo PATH] [--branch NAME]\n' "$0" >&2
   exit 2
 }
 
@@ -37,6 +41,7 @@ die() {
 while [ $# -gt 0 ]; do
   case "$1" in
     --apply) APPLY=1 ;;
+    --allow-fork) ALLOW_FORK=1 ;;
     --repo) [ $# -ge 2 ] || usage; REPO_ARG="$2"; shift ;;
     --branch) [ $# -ge 2 ] || usage; ONLY_BRANCH="$2"; shift ;;
     *) usage ;;
@@ -89,13 +94,60 @@ gh_list() {
   [ "$n" -lt "$limit" ] || die "gh returned $n results, equal to the limit $limit"
 }
 
+# url_slug <url>: sets URL_HOST and URL_SLUG (owner/name) lowercase; host is empty for a local path.
+url_slug() {
+  local u="$1" rest path name owner
+  case "$u" in
+    *://*)
+      rest="${u#*://}"
+      URL_HOST="${rest%%/*}"; URL_HOST="${URL_HOST##*@}"
+      path="${rest#*/}"
+      [ "$path" != "$rest" ] || return 1
+      ;;
+    /*) URL_HOST=; path="$u" ;;
+    *:*) URL_HOST="${u%%:*}"; URL_HOST="${URL_HOST##*@}"; path="${u#*:}" ;;
+    *) return 1 ;;
+  esac
+  URL_HOST="${URL_HOST%%:*}"
+  path="${path%/}"; path="${path%.git}"
+  name="${path##*/}"
+  case "$path" in */*) owner="${path%/*}"; owner="${owner##*/}" ;; *) return 1 ;; esac
+  [ -n "$owner" ] && [ -n "$name" ] || return 1
+  URL_SLUG="$(printf '%s/%s' "$owner" "$name" | tr '[:upper:]' '[:lower:]')"
+  URL_HOST="$(printf '%s' "$URL_HOST" | tr '[:upper:]' '[:lower:]')"
+}
+
+# load_remotes: $TMP/remotes gets "remote TAB owner/name" for every non-origin remote on origin's host.
+load_remotes() {
+  local r u host
+  u="$(G remote get-url origin 2>/dev/null)" || die "cannot read the origin url"
+  url_slug "$u" || die "cannot parse the origin url"
+  host="$URL_HOST"
+  : > "$TMP/remotes"
+  for r in $(G remote); do
+    [ "$r" != origin ] || continue
+    u="$(G remote get-url "$r" 2>/dev/null)" || continue
+    url_slug "$u" || continue
+    [ "$URL_HOST" = "$host" ] && printf '%s\t%s\n' "$r" "$URL_SLUG" >> "$TMP/remotes"
+  done
+}
+
 load_pr_data() {
-  local def b
+  local def b cols
   def="$(gh repo view "$GH_REPO" --json defaultBranchRef --jq .defaultBranchRef.name 2>"$TMP/gh.err")" ||
     die "gh repo view failed: $(head -c 300 "$TMP/gh.err")"
   [ -n "$def" ] || die "empty default branch"
   DEFAULT_BRANCH="$def"
   local mfields=headRefName,headRefOid,baseRefName,isCrossRepository,number
+  cols='.headRefName, .headRefOid, .baseRefName, (.number|tostring), (.isCrossRepository|tostring)'
+  if [ "$ALLOW_FORK" -eq 1 ]; then
+    mfields="$mfields,headRepository,headRepositoryOwner"
+    cols="$cols"', ((.headRepositoryOwner.login // "-")|ascii_downcase), ((.headRepository.name // "-")|ascii_downcase)'
+    GH_USER="$(gh api user --jq .login 2>"$TMP/gh.err")" || die "gh api user failed: $(head -c 300 "$TMP/gh.err")"
+    [ -n "$GH_USER" ] || die "empty gh user"
+    GH_USER="$(printf '%s' "$GH_USER" | tr '[:upper:]' '[:lower:]')"
+    load_remotes
+  fi
   : > "$TMP/protected"
   if [ -n "$ONLY_BRANCH" ]; then
     b="$ONLY_BRANCH"
@@ -112,8 +164,8 @@ load_pr_data() {
     jq -r '.[] | .headRefName' "$TMP/open.json" > "$TMP/open_heads"
   fi
   printf '%s\n%s\n%s\n' main master "$DEFAULT_BRANCH" >> "$TMP/protected"
-  # head TAB oid TAB base TAB number TAB cross
-  jq -r '.[] | [.headRefName, .headRefOid, .baseRefName, (.number|tostring), (.isCrossRepository|tostring)] | @tsv' \
+  # head TAB oid TAB base TAB number TAB cross [TAB head-owner TAB head-repo, only with --allow-fork]
+  jq -r ".[] | [$cols] | @tsv" \
     "$TMP/merged.json" > "$TMP/merged.tsv" || die "cannot parse merged PRs"
 }
 
@@ -121,26 +173,62 @@ is_protected() { grep -Fxq -- "$1" "$TMP/protected"; }
 
 # ---------------------------------------------------------------- classification
 
-# classify <name> <branch> <tip>: returns 0 when the branch is merged and safe to consider.
-# Otherwise emits skip/ask and returns 1. Sets MATCH_OIDS to every same-repo merged head.
+# have_pr_head <oid> <number>: true when the object is local or fetched from origin's pull ref.
+have_pr_head() {
+  G cat-file -e "$1^{commit}" 2>/dev/null || G fetch -q origin "pull/$2/head" 2>/dev/null
+}
+
+# stash_on <branch>: true when a stash entry was made on that branch (fixed-prefix match).
+stash_on() {
+  local s
+  while IFS= read -r s; do
+    case "$s" in "WIP on $1: "* | "On $1: "*) return 0 ;; esac
+  done <<EOF
+$(G stash list --format=%gs 2>/dev/null)
+EOF
+  return 1
+}
+
+# classify <name> <branch> <tip>: 0 when merged and safe, else emits skip/ask and returns 1.
+# Sets MATCH_OIDS (same-repo heads); with --allow-fork also IS_FORK, FORK_OIDS, FORK_REMOTE.
 classify() {
-  local name="$1" br="$2" tip="$3" head oid base num cross matched=0 fetch_failed=0
-  local any=0 same=0 base_ok=0 other_base=
+  local name="$1" br="$2" tip="$3" head oid base num cross fowner fname matched=0 fetch_failed=0
+  local any=0 same=0 base_ok=0 fork_cand=0 fork_matched=0 fork_base_ok=0
+  local frem='' fork_why='' fork_other_base='' other_base=
   MATCH_OIDS=
+  FORK_OIDS=
+  FORK_REMOTE=
+  IS_FORK=0
   if is_protected "$br"; then
     emit skip "$name" "branch $br has an open PR or is protected"
     return 1
   fi
-  while IFS="$(printf '\t')" read -r head oid base num cross; do
+  while IFS="$(printf '\t')" read -r head oid base num cross fowner fname; do
     [ "$head" = "$br" ] || continue
     any=1
-    [ "$cross" = false ] || continue
-    same=1
-    if ! G cat-file -e "$oid^{commit}" 2>/dev/null; then
-      if ! G fetch -q origin "pull/$num/head" 2>/dev/null; then
+    if [ "$cross" != false ]; then
+      [ "$ALLOW_FORK" -eq 1 ] || continue
+      if [ "$fname" = - ]; then fork_why="has no head repository (deleted fork)"; continue; fi
+      if [ "$fowner" != "$GH_USER" ]; then fork_why="is from $fowner, not $GH_USER"; continue; fi
+      frem="$(awk -F'\t' -v s="$fowner/$fname" '$2 == s { print $1; exit }' "$TMP/remotes")"
+      if [ -z "$frem" ]; then fork_why="has no local remote for $fowner/$fname"; continue; fi
+      fork_cand=1
+      if ! have_pr_head "$oid" "$num"; then
         fetch_failed=1
         continue
       fi
+      FORK_OIDS="$FORK_OIDS $oid"
+      if [ "$tip" = "$oid" ] || G merge-base --is-ancestor "$tip" "$oid" 2>/dev/null; then
+        fork_matched=1
+        FORK_REMOTE="$frem"
+        if [ "$base" = "$DEFAULT_BRANCH" ]; then fork_base_ok=1; else fork_other_base="$base"; fi
+      fi
+      continue
+    fi
+    same=1
+    if ! have_pr_head "$oid" "$num"; then
+      fetch_failed=1
+      continue
     fi
     MATCH_OIDS="$MATCH_OIDS $oid"
     if [ "$tip" = "$oid" ] || G merge-base --is-ancestor "$tip" "$oid" 2>/dev/null; then
@@ -152,9 +240,19 @@ classify() {
     emit skip "$name" "no merged PR for $br"
     return 1
   fi
-  if [ "$same" -eq 0 ]; then
-    emit ask "$name" "only fork PRs merged for $br (reused name)"
+  if [ "$same" -eq 0 ] && [ "$fork_cand" -eq 0 ]; then
+    if [ -n "$fork_why" ]; then
+      emit ask "$name" "fork PR for $br $fork_why"
+    else
+      emit ask "$name" "only fork PRs merged for $br (reused name)"
+    fi
     return 1
+  fi
+  if [ "$matched" -eq 0 ] && [ "$fork_matched" -eq 1 ]; then
+    IS_FORK=1
+    matched=1
+    base_ok="$fork_base_ok"
+    other_base="$fork_other_base"
   fi
   if [ "$matched" -eq 0 ]; then
     if [ "$fetch_failed" -eq 1 ]; then
@@ -166,6 +264,10 @@ classify() {
   fi
   if [ "$base_ok" -eq 0 ]; then
     emit ask "$name" "PR for $br merged into $other_base, not $DEFAULT_BRANCH"
+    return 1
+  fi
+  if [ "$IS_FORK" -eq 1 ] && stash_on "$br"; then
+    emit blocked "$name" "stash entry on $br"
     return 1
   fi
   return 0
@@ -423,6 +525,32 @@ remote_state() {
   printf 'ahead'
 }
 
+# delete_fork_remote <br>: after a fork match, keep origin and delete the branch on the fork remote
+# only when it is at or behind a merged fork head. Sets REF_STATE and REF_NOTE.
+delete_fork_remote() {
+  local br="$1" line sha oid ok=0 msg
+  [ -z "$(G ls-remote origin "refs/heads/$br" 2>/dev/null)" ] || REF_NOTE="$REF_NOTE; origin $br kept (fork PR)"
+  line="$(G ls-remote "$FORK_REMOTE" "refs/heads/$br" 2>/dev/null)" || {
+    REF_STATE=ask; REF_NOTE="$REF_NOTE; fork branch kept (ls-remote failed)"; return
+  }
+  sha="${line%%[[:space:]]*}"
+  [ -n "$sha" ] || { REF_NOTE="$REF_NOTE; fork branch already gone"; return; }
+  G fetch -q "$FORK_REMOTE" "refs/heads/$br" 2>/dev/null || {
+    REF_STATE=ask; REF_NOTE="$REF_NOTE; fork branch kept (cannot fetch it)"; return
+  }
+  for oid in $FORK_OIDS; do
+    if [ "$sha" = "$oid" ] || G merge-base --is-ancestor "$sha" "$oid" 2>/dev/null; then ok=1; break; fi
+  done
+  if [ "$ok" -eq 0 ]; then
+    REF_STATE=ask; REF_NOTE="$REF_NOTE; fork branch ahead of merged head, kept"
+  elif msg="$(G push --force-with-lease="refs/heads/$br:$sha" "$FORK_REMOTE" ":refs/heads/$br" 2>&1)"; then
+    REF_NOTE="$REF_NOTE; deleted fork branch"
+  else
+    REF_STATE=ask
+    REF_NOTE="$REF_NOTE; fork branch delete failed: $(printf '%s' "$msg" | head -1)"
+  fi
+}
+
 # delete_refs <br>: sets REF_STATE (reclaimed|blocked|ask) and REF_NOTE.
 delete_refs() {
   local br="$1" tip="$2" rs sha msg
@@ -438,6 +566,10 @@ delete_refs() {
     return
   fi
   REF_NOTE="deleted local $br"
+  if [ "$IS_FORK" -eq 1 ]; then
+    delete_fork_remote "$br"
+    return
+  fi
   rs="$(remote_state "$br")"
   case "$rs" in
     gone) REF_NOTE="$REF_NOTE; remote already gone" ;;
