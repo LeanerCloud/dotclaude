@@ -11,9 +11,13 @@ Default owners: `vibedarling`, `LeanerCloud`, `cristim`. Override from the reque
 
 All open draft PRs authored by the user in the given owners:
 `gh search prs --owner <owner> --state open --draft --author @me --limit 1000` per owner; if an
-owner returns 1000, the inventory is truncated, so split with `--repo`. Record the list in the
-plan file: PR number, head SHA, base, stack parent, local checkout path (`~/.claude/projects.md`,
-`local-paths.md`). Skip PRs the user did not author and report them. Report any owner whose search
+owner returns 1000, the inventory is truncated, so split with `--repo`. Search results lack head
+and base, so read each PR:
+`gh pr view <n> --repo <owner>/<repo> --json headRefName,headRefOid,baseRefName,headRepository,isCrossRepository,commits`.
+Record the list in the plan file: PR number, head SHA, base, stack parent (the PR whose head branch
+is this one's base), local checkout path (`~/.claude/projects.md`, `local-paths.md`). Skip PRs the
+user did not author and report them. Defer, and report, a PR whose latest commit is by someone
+other than the user or a bot (stricter than the `pr-iterate` active-human guard). Report any owner whose search
 errored (private repos or orgs the `gh` account cannot reach) instead of treating it as empty.
 Confirm the list first only if it is over 15 PRs.
 
