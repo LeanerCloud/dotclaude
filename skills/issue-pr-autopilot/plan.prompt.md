@@ -48,7 +48,7 @@ Create the labels if missing:
 ## Phase 2 - Plan + claim (per chosen issue, sequentially)
 For EACH chosen issue, do the following in THIS ORDER. Treat the branch+marker+label as a tight claim sequence right after the plan commit lands, to minimise the window where the other staggered planner might grab the same issue (labels are not atomic locks - see skills/issue-pr-autopilot/SKILL.md concurrency model).
 a. Read the issue fully (gh issue view <n>) and the conventions from both repos.
-b. Decide if it is plannable. If ambiguous, under-specified, needs a human design decision, security-sensitive in an irreversible way, or too large for one focused PR -> SKIP it (no branch, no label) and log the reason. Never guess on irreversible design choices.
+b. Decide if it is plannable. If ambiguous, under-specified, needs a human design decision, security-sensitive in an irreversible way, or not one coherent concern (size alone is not a reason) -> SKIP it (no branch, no label) and log the reason. Never guess on irreversible design choices.
 c. SLUG=<short kebab slug of the title>. Branch off base: git fetch origin main && git switch -c auto/<issue#>-$SLUG origin/main
 d. Write the plan to plan.md at the repo root: atomic tasks with explicit file paths, each independently verifiable; what changes, where, and how to prove it works (build/lint/test commands); call out reuse of existing helpers and the blast radius. This file is a SCRATCH artifact - the worker will erase it from history before opening the PR, so it never ships.
 e. Commit the plan as the branch's FIRST commit. Write the message to a temp file and commit via -F (NEVER heredoc -m): printf 'chore(autopilot): plan for #<issue>\n' > /tmp/planmsg.txt && git add plan.md && git commit -F /tmp/planmsg.txt
