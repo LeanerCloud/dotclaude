@@ -293,8 +293,8 @@ Global rules (commit format, pre-commit, em-dashes, self-merge, push lock, label
   base branch, find the closing issue via the body-reference detection above, not
   `closingIssuesReferences`.
 - NEVER edit a runtime-injected attribution footer (`Generated with Claude Code` /
-  `claude.ai/code/session...`) out of a PR body you touch; the runtime adds it on purpose. The
-  no-Claude-mention rule covers commit messages.
+  `claude.ai/code/session...`) out of a PR body you touch; the runtime adds it on purpose. Commit
+  messages likewise keep the harness attribution trailer.
 - ALWAYS wrap `gh` / `git` network calls in a small retry loop (a few attempts, short sleep);
   transient TLS-handshake / i-o timeouts must not abort a run.
 - In a constrained/remote runtime (no subagent tool): do NOT spawn watchers or subagents; rely on the
