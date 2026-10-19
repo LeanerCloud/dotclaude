@@ -327,6 +327,16 @@ func TestHandoffFormatRejectsHeadingInjection(t *testing.T) {
 	}
 }
 
+func TestHandoffFormatRejectsPathClaims(t *testing.T) {
+	t.Parallel()
+	for _, repo := range []string{"../x", "..", ".", "a/b"} {
+		h := &Handoff{Slot: "a", NextAction: "x", Claims: []Claim{{ClaimPR, repo, 1}}}
+		if _, err := h.Format(); err == nil {
+			t.Errorf("repo %q: want error", repo)
+		}
+	}
+}
+
 func TestParseClaim(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -340,6 +350,11 @@ func TestParseClaim(t *testing.T) {
 		{"issue a/b", Claim{}, false},
 		{"claim-pr-cli.txt", Claim{}, false},
 		{"pr a/b#1", Claim{}, false},
+		{"claim-pr-../../etc-1.txt", Claim{}, false},
+		{"claim-pr-..-1.txt", Claim{}, false},
+		{"claim-pr-.-1.txt", Claim{}, false},
+		{"claim-pr-a/b-1.txt", Claim{}, false},
+		{"claim-pr-a.b_c-1.txt", Claim{ClaimPR, "a.b_c", 1}, true},
 	}
 	for _, tt := range tests {
 		got, err := ParseClaim(tt.in)
@@ -481,7 +496,27 @@ func TestScrub(t *testing.T) {
 		{"aws period sentence 1", "key cfnPUA0TSUpxH/mjjNULAJM0NEl+MXGSxKQ0YZJn. Next", "key [REDACTED:high-entropy]. Next"},
 		{"key dot json 1", "cfnPUA0TSUpxH/mjjNULAJM0NEl+MXGSxKQ0YZJn.json", "cfnPUA0TSUpxH/mjjNULAJM0NEl+MXGSxKQ0YZJn.json"},
 		{"key dot v2 1", "cfnPUA0TSUpxH/mjjNULAJM0NEl+MXGSxKQ0YZJn.v2", "cfnPUA0TSUpxH/mjjNULAJM0NEl+MXGSxKQ0YZJn.v2"},
+		{"slack bot", "xoxb-000000000000-fakefakefake", "[REDACTED:slack-token]"},
+		{"slack user", "t xoxp-000000000000-fakefakefake.", "t [REDACTED:slack-token]."},
+		{"slack app", "xapp-1-A0000-0000-fakefake", "[REDACTED:slack-token]"},
+		{"url password", "https://user:hunter2@example.com/x", "https://user:[REDACTED:url-password]@example.com/x"},
+		{"postgres url", "postgres://admin:hunter2@db:5432/app", "postgres://admin:[REDACTED:url-password]@db:5432/app"},
+		{"basic auth", "Authorization: Basic dXNlcjpodW50ZXIy", "Authorization: Basic [REDACTED:basic-auth]"},
+		{"npm token", "npm_" + randomToken(36, 11), "[REDACTED:npm-token]"},
+		{"stripe live", "sk_live_" + "0000fakefake0000", "[REDACTED:stripe-key]"},
+		{"stripe test", "sk_test_" + "0000fakefake0000", "[REDACTED:stripe-key]"},
+		{"google key", "AIza" + "SyFakeFakeFakeFakeFakeFakeFakeFake0", "[REDACTED:google-api-key]"},
+		{"env password", "DB_PASSWORD=hunter2", "DB_PASSWORD=[REDACTED:assignment]"},
+		{"export api key", "export API_KEY=abc123", "export API_KEY=[REDACTED:assignment]"},
+		{"token colon", "token: abc123 end", "token: [REDACTED:assignment] end"},
+		{"json password", `{"password":"hunter2"}`, `{"password":"[REDACTED:assignment]"}`},
 		// False-positive guards.
+		{"password prose", "password reset requested", "password reset requested"},
+		{"token bucket", "the token bucket refills", "the token bucket refills"},
+		{"max tokens", "max_tokens=100", "max_tokens=100"},
+		{"already redacted value", "password=[REDACTED:x]", "password=[REDACTED:x]"},
+		{"url without password", "https://example.com:8080/x@y", "https://example.com:8080/x@y"},
+		{"basic prose", "Basic authentication is off", "Basic authentication is off"},
 		{"bearer prose", "Bearer tokens are short", "Bearer tokens are short"},
 		{"long branch", "feat/Fix-Issue-1234-handle-nil-pointer-in-Handoff-parser", "feat/Fix-Issue-1234-handle-nil-pointer-in-Handoff-parser"},
 		{"long mixed path", "/Users/x/Dropbox/devel/Cloud2Go1/AbcWorktree9/internal/stateFoo", "/Users/x/Dropbox/devel/Cloud2Go1/AbcWorktree9/internal/stateFoo"},

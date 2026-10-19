@@ -17,7 +17,7 @@ var handoffHeadings = []string{
 var (
 	titleRE     = regexp.MustCompile(`^# ([a-z0-9][a-z0-9-]{0,63}) handoff$`)
 	issueClaim  = regexp.MustCompile(`^issue ([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#([0-9]+)$`)
-	prClaimFile = regexp.MustCompile(`^claim-pr-(.+)-([0-9]+)\.txt$`)
+	prClaimFile = regexp.MustCompile(`^claim-pr-([A-Za-z0-9_.-]+)-([0-9]+)\.txt$`)
 )
 
 type ClaimKind string
@@ -48,7 +48,7 @@ func ParseClaim(s string) (Claim, error) {
 		n, err := strconv.Atoi(m[2])
 		return Claim{ClaimIssue, m[1], n}, err
 	}
-	if m := prClaimFile.FindStringSubmatch(s); m != nil {
+	if m := prClaimFile.FindStringSubmatch(s); m != nil && m[1] != "." && m[1] != ".." {
 		n, err := strconv.Atoi(m[2])
 		return Claim{ClaimPR, m[1], n}, err
 	}

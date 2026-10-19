@@ -28,7 +28,19 @@ var scrubRules = []rule{
 	{"jwt", regexp.MustCompile(`\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+`), ""},
 	{"bearer", regexp.MustCompile(`(?i)(\bAuthorization:[ \t]*Bearer[ \t]+)[^\s\[]\S*`), "${1}[REDACTED:bearer]"},
 	{"bearer", regexp.MustCompile(`(?i)(\bBearer[ \t]+)[A-Za-z0-9._~+/=-]{20,}`), "${1}[REDACTED:bearer]"},
+	{"basic-auth", regexp.MustCompile(`(?i)(\bAuthorization:[ \t]*Basic[ \t]+)[A-Za-z0-9+/=]{8,}`), "${1}[REDACTED:basic-auth]"},
+	{"url-password", regexp.MustCompile(`(://[^/\s:@]+:)[^@\s/]+(@)`), "${1}[REDACTED:url-password]${2}"},
+	{"slack-token", regexp.MustCompile(`\b(?:xox[abprs]-[A-Za-z0-9-]+|xapp-[A-Za-z0-9-]+)`), ""},
+	{"npm-token", regexp.MustCompile(`\bnpm_[A-Za-z0-9]{30,}`), ""},
+	{"stripe-key", regexp.MustCompile(`\bsk_(?:live|test)_[A-Za-z0-9]+`), ""},
+	{"google-api-key", regexp.MustCompile(`\bAIza[0-9A-Za-z_-]{35}`), ""},
 }
+
+// assignmentRule runs after the entropy rule, so values it already redacted (they start with "[") and
+// the AWS secret key forms keep their more specific labels. It redacts the value of NAME=value or
+// NAME: value when NAME ends in password, passwd, passphrase, secret, token or api key; prose such as
+// "password reset" or "token bucket" has no "=" or ":" after the keyword and is left alone.
+var assignmentRule = regexp.MustCompile(`(?i)([A-Za-z0-9_]*(?:password|passwd|passphrase|secret|token|api[_-]?key)["']?[ \t]*[=:][ \t]*["']?)[^\s\["']+`)
 
 var (
 	// tokenRE deliberately excludes "~", so a home-relative path or "~secret" splits at the tilde.
@@ -50,6 +62,13 @@ var (
 // characters and is split by "/", "-" or "_" into segments shorter than MinEntropyLen escapes the
 // entropy rule (40-character keys containing "+" or "/", such as AWS secret access keys, have their
 // own rule; the prefix rules catch most vendor tokens).
+//
+// Beyond the prefix rules, Scrub redacts Slack, npm, Stripe and Google API keys, "Authorization: Basic"
+// credentials, the password in "scheme://user:password@host", and the value of NAME=value or NAME: value
+// when NAME ends in password, passwd, passphrase, secret, token or api key. Remaining gaps: URL
+// passwords containing "/" or "@", assignments under other names (DB_PASS, client_secret_value, a bare
+// "key="), only the first word of a quoted value with spaces, and Basic credentials sent without an
+// "Authorization:" prefix.
 func Scrub(s string) string {
 	for _, r := range scrubRules {
 		repl := r.repl
@@ -59,7 +78,7 @@ func Scrub(s string) string {
 		s = r.re.ReplaceAllString(s, repl)
 	}
 	s = redactSlashKeys(s)
-	return tokenRE.ReplaceAllStringFunc(s, func(tok string) string {
+	s = tokenRE.ReplaceAllStringFunc(s, func(tok string) string {
 		for _, seg := range strings.FieldsFunc(tok, func(r rune) bool { return r == '/' || r == '-' || r == '_' || r == '.' }) {
 			if len(seg) >= MinEntropyLen && looksSecret(seg) {
 				return "[REDACTED:high-entropy]"
@@ -67,6 +86,7 @@ func Scrub(s string) string {
 		}
 		return tok
 	})
+	return assignmentRule.ReplaceAllString(s, "${1}[REDACTED:assignment]")
 }
 
 // redactSlashKeys redacts standalone 40-character base64 runs containing "+" or "/" that look random.
