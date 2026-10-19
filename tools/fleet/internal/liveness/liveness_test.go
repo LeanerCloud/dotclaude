@@ -374,3 +374,33 @@ func TestMemoryRoundTrip(t *testing.T) {
 		t.Fatalf("round trip: %+v %v", got, err)
 	}
 }
+
+// A gap resets the progress timers but must not forget nudges already sent: the per-hour cap counts
+// wall time, which a sleep does not erase.
+func TestGapKeepsNudgeCap(t *testing.T) {
+	t.Parallel()
+	nudged := Input{Agent: agent("b-impl", "idle", 2), WorkLeft: true}
+	_, mem := run(t, Memory{}, t0, nudged)
+	for i := 1; i <= 3; i++ {
+		n := nudged
+		n.Agent.StateChangeSeq += int64(i)
+		_, mem = run(t, mem, t0.Add(time.Duration(i)*time.Minute), n)
+	}
+	if len(mem.Slots["b-impl"].Sent) != 3 {
+		t.Fatalf("setup failed: %+v", mem.Slots["b-impl"])
+	}
+	wake := mem.LastTick.Add(20 * time.Minute)
+	res, rec := run(t, mem, wake, nudged)
+	if !res.Recovery {
+		t.Fatalf("a 20 minute gap must enter recovery: %+v", res)
+	}
+	if len(rec.Slots["b-impl"].Sent) != 3 {
+		t.Fatalf("gap forgot the sent nudges: %+v", rec.Slots["b-impl"])
+	}
+	nudged.Agent.StateChangeSeq = 99
+	_, rec = run(t, rec, wake.Add(5*time.Minute), nudged)
+	res, _ = run(t, rec, wake.Add(10*time.Minute), nudged)
+	if res.Recovery || len(res.Decisions) != 0 {
+		t.Fatalf("the cap of %d per hour must still hold after recovery: %+v", MaxPerHour, res)
+	}
+}
