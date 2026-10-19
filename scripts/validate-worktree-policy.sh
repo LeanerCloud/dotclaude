@@ -27,16 +27,6 @@ fail() {
   failures=$((failures + 1))
 }
 
-read_path() {
-  local path="$1"
-
-  if [ "$mode" = staged ]; then
-    git -C "$repo_root" show ":$path"
-  else
-    cat "$repo_root/$path"
-  fi
-}
-
 assert_contains() {
   local path="$1"
   local text="$2"
@@ -83,20 +73,45 @@ assert_not_contains skills/worktrees/SKILL.md 'worktree add ../<repo>-<slug>' 'w
 assert_not_contains skills/pr-orchestration/SKILL.md "\$TMPDIR/claude/" 'orchestration still routes worktrees through TMPDIR'
 assert_not_contains skills/pr-iterate/SKILL.md '.worktrees/<repo>/<slug>' 'PR iteration still uses a repo-local worktree root'
 
-# Every `git ... worktree add <dest>` example must put <dest> under the durable
-# root. Lines are split at ; & | so a safe command cannot vouch for an unsafe
-# one beside it. A quoted ~ is not expanded, so only a bare ~ counts.
-add_cmd='git[[:space:]].*worktree[[:space:]]+add[[:space:]]+[^[:space:]]'
+# Worktree-destination contract. Scanned text is first-party Markdown/shell prose, not parsed shell.
+# In: the text after `worktree add` must contain $HOME, ${HOME} or a bare ~ followed by
+#   /.claude/worktrees/, unquoted or double-quoted, with no `..`; ; & | split the line so a safe
+#   command cannot vouch for an unsafe one; quotes and backslashes inside the command words are
+#   ignored when detecting the command; a command ending in `add \` (destination on the next
+#   line) and a single-quoted destination are rejected. `#138` in prose is scanned like any text.
+#   Prose containing `git worktree add` plus a non-durable word is scanned like a command and fails.
+# Out of contract (not detected, pinned by "out of contract:" cases in tests/): a segment starting
+#   with a run of # and a space or EOL (heading or comment), text after a space-#-space comment, a `#`
+#   glued to the next word (`add /tmp/job #"$HOME/.claude/worktrees/"`), a durable path in an
+#   argument other than the destination (`add /tmp/x "$HOME/.claude/worktrees/y"`, `add -b
+#   "$HOME/.claude/worktrees/x" /tmp/job`), a command broken before `worktree` or a non-`git`
+#   command word (`$GIT worktree add`), and `"$HOME"/...` spellings (rejected as false positives).
+q="['\"]*"
+add_cmd="git${q}[[:space:]].*worktree${q}[[:space:]]+${q}add${q}[[:space:]]+([^[:space:]].*)\$"
+wrapped="git${q}[[:space:]].*worktree${q}[[:space:]]+${q}add${q}[[:space:]]*\$"
 # shellcheck disable=SC2016 # literal $HOME in the pattern
-durable='(\$HOME|\$\{HOME\}|(^|[[:space:]])~)/\.claude/worktrees/'
-escape='(^|[[:space:]/"])\.\.(/|$)'
-if lines="$(git -C "$repo_root" "${grep_args[@]}" -n -E "$add_cmd" -- "${pathspecs[@]}")"; then
+durable='((^|[[:space:]"])(\$HOME|\$\{HOME\})|(^|[[:space:]])~)/\.claude/worktrees/'
+escape='(^|[[:space:]/"])\.\.([^.]|$)'
+# Pre-filter: the word worktree with optional quotes or backslashes between its letters.
+prefilter=
+for c in w o r k t r e e; do prefilter+="${c}[\\'\"]*"; done
+if lines="$(git -C "$repo_root" "${grep_args[@]}" -n -E "$prefilter" -- "${pathspecs[@]}")"; then
   while IFS= read -r line; do
+    body="${line#*:}"
+    body="${body#*:}"
     while IFS= read -r segment; do
-      if [[ $segment =~ $add_cmd ]] && { ! [[ $segment =~ $durable ]] || [[ $segment =~ $escape ]]; }; then
-        fail "$line; expected the worktree destination to be under \$HOME/.claude/worktrees/"
+      if [[ $segment =~ ^[[:space:]]*#+([[:space:]]|$) ]]; then continue; fi
+      segment="${segment%%[[:space:]]#[[:space:]]*}"
+      unesc="${segment//\\/}"
+      if [[ $unesc =~ $wrapped ]] && [[ $segment =~ \\[[:space:]]*$ ]]; then
+        fail "$line; put the worktree destination on the same line (see the contract in $0)"
+      elif [[ $unesc =~ $add_cmd ]]; then
+        dest="${BASH_REMATCH[1]}"
+        if ! [[ $dest =~ $durable ]] || [[ $dest =~ $escape ]]; then
+          fail "$line; expected the worktree destination to be under \$HOME/.claude/worktrees/ (see the contract in $0)"
+        fi
       fi
-    done <<< "${line//[;&|]/$'\n'}"
+    done <<< "${body//[;&|]/$'\n'}"
   done <<< "$lines"
 else
   status=$?
