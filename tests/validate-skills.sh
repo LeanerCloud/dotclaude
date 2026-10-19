@@ -56,6 +56,22 @@ run_case "non-string name fails" fail "invalid YAML frontmatter"
 make_skill demo $'name: demo\ndescription: bad bytes \xff\xfe here'
 run_case "invalid UTF-8 fails per skill" fail "invalid YAML frontmatter"
 
+make_skill demo $'name: demo\ndescription: &a hi\nother: *a'
+run_case "YAML alias fails" fail "invalid YAML frontmatter"
+
+make_skill demo $'name: 2024-01-01\ndescription: date name'
+run_case "date-valued name fails" fail "invalid YAML frontmatter"
+
+# Keep-chomped fold ends in a newline; the counted length (7 + 4 + 4 = 15) must be the trimmed one.
+make_skill demo $'name: demo\ndescription: >+\n  abc def\n'
+run_case "trailing newline is trimmed from the count" pass "exported skill list: 15 / "
+
+make_skill demo $'name: demo\ndescription: "   "'
+run_case "whitespace-only description fails" fail "no 'description:' field"
+
+make_skill 'a\b' $'name: a\\b\ndescription: backslash dir'
+run_case "backslash in directory name passes" pass "ok: all skills"
+
 if [ "$failures" -gt 0 ]; then
   printf '%s case(s) failed\n' "$failures" >&2
   exit 1

@@ -100,7 +100,7 @@ for skill_path in "$skills_dir"/*/; do
     continue
   fi
 
-  record="$(printf '%s\n' "$parsed" | awk -F "$us" -v n="$skill_name" '$1 == n { print; exit }')"
+  record="$(printf '%s\n' "$parsed" | n="$skill_name" awk -F "$us" '$1 == ENVIRON["n"] { print; exit }')"
   IFS="$us" read -r _ parse_status declared_name parsed_description <<EOF
 $record
 EOF
