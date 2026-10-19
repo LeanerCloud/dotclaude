@@ -42,13 +42,23 @@ func (c Claim) String() string {
 	return fmt.Sprintf("claim-pr-%s-%d.txt", c.Repo, c.N)
 }
 
+// dotSegment reports whether any "/"-separated part of repo is "." or "..".
+func dotSegment(repo string) bool {
+	for _, part := range strings.Split(repo, "/") {
+		if part == "." || part == ".." {
+			return true
+		}
+	}
+	return false
+}
+
 // ParseClaim accepts "issue owner/repo#n" and "claim-pr-<repo>-<n>.txt".
 func ParseClaim(s string) (Claim, error) {
-	if m := issueClaim.FindStringSubmatch(s); m != nil {
+	if m := issueClaim.FindStringSubmatch(s); m != nil && !dotSegment(m[1]) {
 		n, err := strconv.Atoi(m[2])
 		return Claim{ClaimIssue, m[1], n}, err
 	}
-	if m := prClaimFile.FindStringSubmatch(s); m != nil && m[1] != "." && m[1] != ".." {
+	if m := prClaimFile.FindStringSubmatch(s); m != nil && !dotSegment(m[1]) {
 		n, err := strconv.Atoi(m[2])
 		return Claim{ClaimPR, m[1], n}, err
 	}
