@@ -261,3 +261,61 @@ func TestObserverOutputRefusesIdentitySwapsAndPartialState(t *testing.T) {
 		})
 	}
 }
+
+func TestObserverOutputRemovesOnlyStaleAtomicTemps(t *testing.T) {
+	t.Parallel()
+	_, paths := observerOutputFixture(t)
+	out, err := openObserverOutput(t.Context(), paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := []string{observerMarker + ".tmp-ABCDEFGH234567", observerMemory + ".tmp-ZZZZ2222"}
+	for _, name := range stale {
+		if err := out.root.WriteFile(name, []byte("{partial"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := out.close(); err != nil {
+		t.Fatal(err)
+	}
+	out, err = openObserverOutput(t.Context(), paths)
+	if err != nil {
+		t.Fatal("stale atomic temp files wedged the output:", err)
+	}
+	for _, name := range stale {
+		if _, err := out.root.Lstat(name); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s not removed: %v", name, err)
+		}
+	}
+	for _, name := range []string{observerMarker, observerLock} {
+		if _, err := out.root.Lstat(name); err != nil {
+			t.Errorf("%s lost: %v", name, err)
+		}
+	}
+	for _, name := range []string{"journal.jsonl.tmp-AAAA", observerMarker + ".tmp-", observerMarker + ".tmp-abc", "other.tmp-AAAA"} {
+		if err := out.root.WriteFile(name, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := out.initialize(paths); err == nil {
+			t.Errorf("%s accepted", name)
+		}
+		if _, err := out.root.Lstat(name); err != nil {
+			t.Errorf("%s removed: %v", name, err)
+		}
+		if err := out.root.Remove(name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := out.root.Mkdir(observerMemory+".tmp-DIR2", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := out.initialize(paths); err == nil {
+		t.Error("temp-named directory accepted")
+	}
+	if _, err := out.root.Lstat(observerMemory + ".tmp-DIR2"); err != nil {
+		t.Error("temp-named directory removed:", err)
+	}
+	if err := out.close(); err != nil {
+		t.Fatal(err)
+	}
+}
