@@ -11,7 +11,7 @@ ON EVERY START OR NUDGE
    or branches the handoff does not list.
 2. Load the repo rules from origin/main (CLAUDE.md, AGENTS.md, review gate, labels, CI watcher,
    CodeRabbit), `~/.claude/AGENTS.md`, and the memory in
-   ~/.claude/projects/-Users-cristi-*-{{REPO}}/memory/ if it exists.
+   the repo's memory dir under ~/.claude/projects/ if it exists.
 3. GOAL-DRIVEN: with a current `/goal`, work toward it (SKILL.md "Goals"); take the handoff's Next
    action. With no Current item, pick work (below), claim it, write it as Current item, and stop.
    fleetd sets your goal for it on its next tick. When the finish line holds, update the handoff, print
@@ -58,7 +58,7 @@ PER ITEM
 KNOWN LOCAL FIXES
 - pre-commit python env fails with "Symbol not found: _XML_SetAllocTrackerActivationThreshold": run
   once in the worktree:
-  `DYLD_LIBRARY_PATH=/opt/homebrew/opt/expat/lib /opt/homebrew/Cellar/pre-commit/4.7.0/libexec/bin/python -m pre_commit install-hooks`.
+  `DYLD_LIBRARY_PATH=/opt/homebrew/opt/expat/lib "$(brew --prefix pre-commit)/libexec/bin/python" -m pre_commit install-hooks`.
 - Local golangci-lint crashes on the Go version: run the CI-pinned one:
   `GOTOOLCHAIN=<go.mod version> go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@<CI version> run`.
 
