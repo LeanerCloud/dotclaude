@@ -13,11 +13,15 @@ All open draft PRs authored by the user in the given owners:
 `gh search prs --owner <owner> --state open --draft --author @me --limit 1000` per owner; if an
 owner returns 1000, the inventory is truncated, so split with `--repo`. Search results lack head
 and base, so read each PR:
-`gh pr view <n> --repo <owner>/<repo> --json headRefName,headRefOid,baseRefName,headRepository,isCrossRepository,commits`.
+`gh pr view <n> --repo <owner>/<repo> --json headRefName,headRefOid,baseRefName,headRepository,isCrossRepository`.
+Its `commits` field lists only the first 100, so read the head commit's author directly and require
+its `oid` to equal `headRefOid`:
+`gh api graphql -F owner=<owner> -F name=<repo> -F n=<n> -f query='query($owner:String!,$name:String!,$n:Int!){repository(owner:$owner,name:$name){pullRequest(number:$n){commits(last:1){nodes{commit{oid author{name user{login}}}}}}}}'`.
 Record the list in the plan file: PR number, head SHA, base, stack parent (the PR whose head branch
 is this one's base), local checkout path (`~/.claude/projects.md`, `local-paths.md`). Skip PRs the
 user did not author and report them. Defer, and report, a PR whose latest commit is by someone
-other than the user or a bot (stricter than the `pr-iterate` active-human guard). Report any owner whose search
+other than the user or a bot (stricter than the `pr-iterate` active-human guard); a null `user`
+(an email linked to no account) counts as someone else. Report any owner whose search
 errored (private repos or orgs the `gh` account cannot reach) instead of treating it as empty.
 Confirm the list first only if it is over 15 PRs.
 
