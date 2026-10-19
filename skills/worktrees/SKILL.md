@@ -81,7 +81,7 @@ Paste verbatim below the header (copy, don't paraphrase):
 
 **While working**: refresh `pid_updated:` at least every 30 min (or at each task checkpoint) so a watchdog can tell a live session from a stuck one.
 
-**Merge gate - ALL must hold before rebasing onto `origin/<base_branch>`**:
+**Merge gate - ALL must hold before the pre-push rebase onto `origin/<base_branch>` (or the push, when no rebase is needed)**:
 - Every item in this plan is implemented (tick each line).
 - The AGENTS.md §1 post-implementation review is clean.
 - **2 verification passes are done and acted on** (two, whatever the stakes). A pass covers tests, lint/typecheck, the §4 per-change-type verification (UI smoke, API curl, etc.), and a re-read of the diff against the plan. Fix what each pass finds; don't keep re-verifying for a pass that finds nothing. A clean pass on the exact same SHA counts for every gate that sees it (`AGENTS.md` §1, same-hash rule).
@@ -145,7 +145,7 @@ The gate is the "Merge gate" block in the embedded checklist above (all plan ite
 - **Before pushing**: fetch origin and repeat the issue, ownership and complete PR checks from Preconditions and creation. Challenge the issue against current code again, especially if the base moved since the recorded baseline. After the embedded pre-rebase gate, rebase onto the freshly fetched remote branch when it has moved (`git rev-list --count HEAD..origin/<base-branch>` is non-zero) and the PR needs it (conflicts, a required up-to-date base, changes the work depends on); otherwise push without rebasing, so a reviewed SHA is not churned. The fetch and the checks above always run:
   ```bash
   git fetch origin
-  git rebase origin/<base-branch>
+  git rebase origin/<base-branch>   # only when needed, per the condition above
   ```
   Never substitute the recorded initial SHA or stale local base, or reset the shared local base to make it current. If HEAD changes, repeat affected verification/review gates against the new SHA. Immediately before publication, recheck issue/claim/PR state if it could have changed during those gates. Push the authorized feature branch under existing PR rules, including force-with-lease, CI watching, CodeRabbit and human merge gates; this grants no new permission to push a protected base, self-merge or delete data.
 - **Rebase, don't merge, by default**. Merge commit only if the base protects against force-pushes or the team convention demands it.

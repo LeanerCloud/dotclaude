@@ -184,8 +184,8 @@ Each runs to a fixed point; "I fixed round 1" is not an exit.
 
 **Order the work** by triage priority (`priority/p0` first), not number or interest (`triage-labels`).
 
-**Rebase before reviewing, always.** Findings triaged against a tree other than the one under review
-are wasted or misleading.
+**Rebase before reviewing, never after**, whenever a rebase is needed (`worktrees`, Rebase and
+cleanup). Findings triaged against a tree other than the one under review are wasted or misleading.
 
 **Review-bot loop**: full rules in `cr-loop` (trigger/watcher atomicity, triage buckets, never
 `@coderabbitai resolve`, `full review` after a throttle). Orchestration-level: exit is *zero
