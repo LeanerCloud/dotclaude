@@ -5,14 +5,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/LeanerCloud/dotclaude/tools/fleet/internal/lock"
 	"github.com/LeanerCloud/dotclaude/tools/fleet/internal/state"
 )
+
+// maxObserverEntries bounds how many directory entries the stale-temp sweep reads.
+const maxObserverEntries = 256
 
 type observerOutput struct {
 	root, parent *os.Root
@@ -157,6 +162,9 @@ func (out *observerOutput) initialize(paths ObserverPaths) error {
 	if err := out.checkIdentity(); err != nil {
 		return err
 	}
+	if err := removeStaleObserverTemps(out.root); err != nil {
+		return err
+	}
 	initialized, err := inspectObserverOutput(out.root, paths)
 	if err != nil || initialized {
 		return err
@@ -169,6 +177,39 @@ func (out *observerOutput) initialize(paths ObserverPaths) error {
 		return err
 	}
 	return state.WriteFileAtomicRoot(out.root, observerMarker, data, 0o600)
+}
+
+// removeStaleObserverTemps deletes the "<artifact>.tmp-<suffix>" files a crashed atomic write leaves
+// behind. It runs only with the observer flock held, and every atomic write happens under that flock,
+// so no live writer owns them. Only regular files named exactly after the two atomically written
+// artifacts are removed; anything else is left for inspectObserverOutput to reject.
+func removeStaleObserverTemps(root *os.Root) error {
+	dir, err := root.Open(".")
+	if err != nil {
+		return err
+	}
+	entries, err := dir.ReadDir(maxObserverEntries)
+	if err = errors.Join(err, dir.Close()); err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	for _, entry := range entries {
+		if !isObserverTemp(entry.Name()) || !entry.Type().IsRegular() {
+			continue
+		}
+		if err := root.Remove(entry.Name()); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
+}
+
+func isObserverTemp(name string) bool {
+	for _, artifact := range []string{observerMarker, observerMemory} {
+		if suffix, ok := strings.CutPrefix(name, artifact+".tmp-"); ok && suffix != "" {
+			return strings.Trim(suffix, "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567") == ""
+		}
+	}
+	return false
 }
 
 func waitObserverLock(ctx context.Context, f *os.File) error {
