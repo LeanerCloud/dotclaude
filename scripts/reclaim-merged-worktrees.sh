@@ -316,7 +316,7 @@ secret_file_under() {
 
 # gate <name> <canon> <locked 0|1> <plansfile>: emits blocked and returns 1 when not safe.
 gate() {
-  local name="$1" dir="$2" locked="$3" found="$4" line entry p why hit
+  local name="$1" dir="$2" locked="$3" found="$4" rec entry p why hit skip=0
   if [ "$locked" -eq 1 ]; then
     emit blocked "$name" "worktree is locked"
     return 1
@@ -325,9 +325,16 @@ gate() {
     emit blocked "$name" "uncommitted or untracked changes"
     return 1
   fi
-  while IFS= read -r line; do
-    case "$line" in '!! '*) ;; *) continue ;; esac
-    entry="${line#!! }"
+  # -z gives unquoted paths; a rename/copy record is followed by its source path as a separate field.
+  if ! git -C "$dir" status --porcelain -z --ignored > "$TMP/status.z" 2> "$TMP/status.err"; then
+    emit blocked "$name" "git status failed: $(head -c 200 "$TMP/status.err")"
+    return 1
+  fi
+  while IFS= read -r -d '' rec; do
+    if [ "$skip" -eq 1 ]; then skip=0; continue; fi
+    case "$rec" in [RC]?* | ?[RC]*) skip=1 ;; esac
+    case "$rec" in '!! '*) ;; *) continue ;; esac
+    entry="${rec#!! }"
     entry="${entry%/}"
     if secret_name "$entry"; then
       :
@@ -341,9 +348,7 @@ gate() {
     fi
     emit blocked "$name" "ignored file not on the build allowlist: $entry"
     return 1
-  done <<EOF
-$(git -C "$dir" status --porcelain --ignored 2>&1)
-EOF
+  done < "$TMP/status.z"
   if awk -v p="$dir" '{ s = substr($0, 2); if (s == p || index(s, p "/") == 1) { f = 1; exit } } END { exit !f }' "$(cwd_file)"; then
     emit blocked "$name" "a live process has its cwd in the worktree"
     return 1

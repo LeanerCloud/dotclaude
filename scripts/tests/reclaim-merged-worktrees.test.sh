@@ -267,6 +267,54 @@ c04d_tracked_build_dir_with_ignored_output_blocked() {
   run_s --apply
   a_out '^blocked a .*build/out.o'; a_wt a present
 }
+# quoted_fixture <name> <dir> <files...>: a merged worktree with the files ignored under <dir>;
+# TRACK=1 tracks <dir>/keep.txt, otherwise only a sibling src.txt is tracked.
+quoted_fixture() {
+  local n="$1" d="$2"; shift 2
+  mkenv "$n"; merged_wt a
+  printf 'build/\n' >> "$C/main/.git/info/exclude"
+  mkdir -p "$C/wt/a/$d"
+  local k="${d%/build}/src.txt"
+  [ -z "${TRACK:-}" ] || k="$d/keep.txt"
+  echo k > "$C/wt/a/$k"; git -C "$C/wt/a" add -f -- "$k"; git -C "$C/wt/a" commit -q -m keep
+  git -C "$C/wt/a" push -q origin b-a; add_merged b-a "$(tip a)"
+  local f; for f in "$@"; do echo x > "$C/wt/a/$d/$f"; done
+}
+c04f_spaced_path_secret_blocked() {
+  TRACK=1 quoted_fixture c04f "a b/build" prod.pem
+  run_s --apply
+  a_out '^blocked a .*prod.pem'; a_wt a present
+  [ -f "$C/wt/a/a b/build/prod.pem" ] || bad "secret file was deleted"
+}
+c04g_spaced_path_secret_names_blocked() {
+  TRACK=1 quoted_fixture c04g "a b/build" x.tfvars
+  run_s --apply
+  a_out '^blocked a .*x.tfvars'; a_wt a present
+  [ -f "$C/wt/a/a b/build/x.tfvars" ] || bad "x.tfvars was deleted"
+}
+c04h_non_ascii_path_secret_blocked() {
+  TRACK=1 quoted_fixture c04h "café/build" k.key
+  run_s --apply
+  a_out '^blocked a .*k.key'; a_wt a present
+}
+c04i_spaced_build_dir_harmless_output_reclaimed() {
+  quoted_fixture c04i "a b/build" out.js
+  run_s --apply
+  a_out '^reclaimed a '; a_wt a absent
+}
+c04j_tab_and_newline_paths_no_misparse() {
+  TRACK=1 quoted_fixture c04j "t	b/build" prod.pem
+  mkdir -p "$C/wt/a/n
+l/build"; echo k > "$C/wt/a/n
+l/src.txt"; echo x > "$C/wt/a/n
+l/build/out.js"
+  git -C "$C/wt/a" add -- "n
+l/src.txt"; git -C "$C/wt/a" commit -q -m nl
+  git -C "$C/wt/a" push -q origin b-a; add_merged b-a "$(tip a)"
+  run_s --apply
+  a_out '^blocked a .*prod.pem'; a_wt a present
+  [ -f "$C/wt/a/t	b/build/prod.pem" ] || bad "tab-path secret was deleted"
+}
 c05b_plan_md_not_a_plan_symlink() {
   mkenv c05b; merged_wt a; merged_wt b
   echo plan.md >> "$C/main/.git/info/exclude"
@@ -493,7 +541,7 @@ c24_local_branch_pass() {
 }
 
 CASES="c01_merged_clean c02_squash_tip_not_in_main c02b_tip_behind_merged_head c03_dirty c04_ignored_env
-c04b_nested_build_output_allowed_nested_env_blocked c04e_node_modules_fixtures_and_more_secret_names c03b_local_branch_moves_before_delete c03c_branch_held_by_second_worktree c04c_tracked_build_dir_and_secret_names_blocked c04d_tracked_build_dir_with_ignored_output_blocked c05_plan_symlink_only c05b_plan_md_not_a_plan_symlink c06_extra_commits c07_fork_pr_same_name
+c04b_nested_build_output_allowed_nested_env_blocked c04e_node_modules_fixtures_and_more_secret_names c03b_local_branch_moves_before_delete c03c_branch_held_by_second_worktree c04c_tracked_build_dir_and_secret_names_blocked c04d_tracked_build_dir_with_ignored_output_blocked c04f_spaced_path_secret_blocked c04g_spaced_path_secret_names_blocked c04h_non_ascii_path_secret_blocked c04i_spaced_build_dir_harmless_output_reclaimed c04j_tab_and_newline_paths_no_misparse c05_plan_symlink_only c05b_plan_md_not_a_plan_symlink c06_extra_commits c07_fork_pr_same_name
 c08_remote_ahead c08b_remote_moves_before_push c09_open_pr_head c10_stacked_open_base c11_live_cwd_prefix_and_symlink c12_plan_liveness
 c13_build_dirs_report_refusals c13b_build_dirs_apply c13c_build_dir_outside_allowed_roots c13d_build_dir_canonical_git_and_cwd c14_gh_failure_aborts c15_submodule_refused_and_c17_isolation
 c16_prunable c18_branch_mode_worktree_gone c19_report_mode_changes_nothing c20_locked c21_no_pr_and_detached
