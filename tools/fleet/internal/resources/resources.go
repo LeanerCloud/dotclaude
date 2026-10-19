@@ -35,11 +35,13 @@ func (l Level) String() string {
 	return fmt.Sprintf("level(%d)", int(l))
 }
 
-// Default swap thresholds, as a percentage of total swap in use. Swap files live on the data
-// volume, so heavy swapping also eats the disk the fleet needs.
+// Default swap thresholds, as absolute megabytes of swap in use. macOS grows the swap total on
+// demand, so used/total sits at 75-95% with almost nothing swapped; only the used figure says how
+// much the machine is paging. Swap files live on the data volume, so heavy swapping also eats the
+// disk the fleet needs.
 const (
-	DefaultSwapWarnPct     = 75
-	DefaultSwapCriticalPct = 90
+	DefaultSwapWarnMB     = 8 << 10
+	DefaultSwapCriticalMB = 16 << 10
 )
 
 // Thresholds classify a sample. Only the disk figures are configurable (fleet.json); the load,
@@ -50,8 +52,8 @@ type Thresholds struct {
 	LoadWarnPerCore, LoadCriticalPerCore float64
 	// MemFreePct is memory_pressure's system-wide free percentage; lower is worse.
 	MemFreeWarnPct, MemFreeCriticalPct int
-	// SwapUsedPct is the share of total swap in use; higher is worse.
-	SwapWarnPct, SwapCriticalPct int
+	// SwapUsedMB is the swap in use, in megabytes; higher is worse.
+	SwapWarnMB, SwapCriticalMB int
 }
 
 // DefaultThresholds takes the disk limits from config. The fleet normally runs at 1.2 to 1.8 load
@@ -59,7 +61,7 @@ type Thresholds struct {
 func DefaultThresholds(c config.Thresholds) Thresholds {
 	return Thresholds{DiskWarnGB: c.DiskWarnGB, DiskCriticalGB: c.DiskCriticalGB,
 		LoadWarnPerCore: 2.5, LoadCriticalPerCore: 4, MemFreeWarnPct: 20, MemFreeCriticalPct: 10,
-		SwapWarnPct: DefaultSwapWarnPct, SwapCriticalPct: DefaultSwapCriticalPct}
+		SwapWarnMB: DefaultSwapWarnMB, SwapCriticalMB: DefaultSwapCriticalMB}
 }
 
 // Snapshot is one sample and its classification.
@@ -68,7 +70,7 @@ type Snapshot struct {
 	Load1       float64
 	Cores       int
 	MemFreePct  int
-	SwapUsedPct float64
+	SwapUsedMB  float64
 	Disk, Load  Level
 	Memory      Level
 	Swap        Level
@@ -119,7 +121,7 @@ func (s Sampler) Sample(ctx context.Context, dataDir string, th Thresholds) (Sna
 	if err != nil {
 		return snap, fmt.Errorf("swap usage: %w", err)
 	}
-	if snap.SwapUsedPct, err = ParseSwapUsedPct(string(out)); err != nil {
+	if snap.SwapUsedMB, err = ParseSwapUsedMB(string(out)); err != nil {
 		return snap, err
 	}
 	return snap.classify(th)
@@ -133,7 +135,7 @@ func (s Snapshot) classify(th Thresholds) (Snapshot, error) {
 	s.Disk = below(s.DiskFreeGB, float64(th.DiskWarnGB), float64(th.DiskCriticalGB))
 	s.Load = above(s.LoadPerCore, th.LoadWarnPerCore, th.LoadCriticalPerCore)
 	s.Memory = below(float64(s.MemFreePct), float64(th.MemFreeWarnPct), float64(th.MemFreeCriticalPct))
-	s.Swap = above(s.SwapUsedPct, float64(th.SwapWarnPct), float64(th.SwapCriticalPct))
+	s.Swap = above(s.SwapUsedMB, float64(th.SwapWarnMB), float64(th.SwapCriticalMB))
 	s.Overall = max(s.Disk, s.Load, s.Memory, s.Swap)
 	return s, nil
 }
@@ -161,29 +163,18 @@ func above(v, warn, critical float64) Level {
 var (
 	loadRE = regexp.MustCompile(`^\{?\s*(\d+(?:[.,]\d+)?)\s`)
 	memRE  = regexp.MustCompile(`free percentage:\s*(\d{1,3})%`)
-	swapRE = regexp.MustCompile(`total = (\d+(?:[.,]\d+)?)M\s+used = (\d+(?:[.,]\d+)?)M`)
+	swapRE = regexp.MustCompile(`total = \d+(?:[.,]\d+)?M\s+used = (\d+(?:[.,]\d+)?)M`)
 )
 
-// ParseSwapUsedPct returns the percentage of swap in use from `sysctl -n vm.swapusage`
+// ParseSwapUsedMB returns the megabytes of swap in use from `sysctl -n vm.swapusage`
 // ("total = 16384,00M  used = 14793,62M  free = 1590,38M  (encrypted)"). The decimal separator
-// follows the locale. No swap configured (total 0) is 0% used.
-func ParseSwapUsedPct(out string) (float64, error) {
+// follows the locale. The total is not used: it grows on demand, so used/total misleads.
+func ParseSwapUsedMB(out string) (float64, error) {
 	m := swapRE.FindStringSubmatch(out)
 	if m == nil {
 		return 0, fmt.Errorf("unparsable vm.swapusage %q", strings.TrimSpace(out))
 	}
-	total, err := strconv.ParseFloat(strings.Replace(m[1], ",", ".", 1), 64)
-	if err != nil {
-		return 0, err
-	}
-	used, err := strconv.ParseFloat(strings.Replace(m[2], ",", ".", 1), 64)
-	if err != nil {
-		return 0, err
-	}
-	if total == 0 {
-		return 0, nil
-	}
-	return used / total * 100, nil
+	return strconv.ParseFloat(strings.Replace(m[1], ",", ".", 1), 64)
 }
 
 // ParseLoadAvg returns the 1-minute average from `sysctl -n vm.loadavg` ("{ 1.23 4.56 7.89 }").
