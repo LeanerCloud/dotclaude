@@ -218,17 +218,19 @@ const pipeDrainGrace = 2 * time.Second
 
 // childEnv is the child's environment. A heavy child (one that holds a slot, taken now or inherited)
 // gets exactly one FLEET_HEAVY_HELD=1 so nested `fleet heavy` calls run without taking another slot.
+// Any other child (`fleet lock`) gets the environment unchanged: an inherited marker must survive,
+// or heavy -> lock -> heavy would take a second slot and block on heavy_slots=1.
 func childEnv(environ []string, heavy bool) []string {
+	if !heavy {
+		return append([]string(nil), environ...)
+	}
 	out := make([]string, 0, len(environ)+1)
 	for _, kv := range environ {
 		if !strings.HasPrefix(kv, lock.HeldEnv+"=") {
 			out = append(out, kv)
 		}
 	}
-	if heavy {
-		out = append(out, lock.HeldEnv+"=1")
-	}
-	return out
+	return append(out, lock.HeldEnv+"=1")
 }
 
 // newChild builds the child for both the locked and the FLEET_HEAVY_HELD path, so any later
