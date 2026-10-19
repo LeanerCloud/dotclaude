@@ -244,8 +244,9 @@ untriaged items, >5 PRs idle 7 days, or a stale P0. Label only items you create,
   placeholders (`<account-id>`, `123456789012`) and redact pasted logs and output.
 - Conventional, atomic commits; never heredoc `git commit -m`; never `--no-verify`; never
   `gh pr merge --admin` past failing or pending checks.
-- PRs: ≤400 lines, one concern, conventional title, branch `type/short-description`. Before ending PR
-  work, every PR you authored has a live CR watch, a clean terminal CR state, or is closed.
+- PRs: one coherent concern at any size, every commit ≤400 additions+deletions, conventional title,
+  branch `type/short-description`. Before ending PR work, every PR you authored has a live CR watch,
+  a clean terminal CR state, or is closed.
 - Track multi-step work in the task tools.
 
 ## Session handoff

@@ -11,7 +11,8 @@ CodeRabbit review rounds are the `cr-loop` skill; driving an existing PR to merg
 
 ## PR shape
 
-- **Small**: aim for <=400 lines of meaningful change; large PRs get shallow reviews.
+- **Small commits, coherent PRs**: a PR may be large if it is one coherent piece of work; each of its
+  commits stays within the `git-commit` size limit so reviews stay deep.
 - **One concern per PR**: no refactor mixed with behaviour change, or fix with feature; each PR
   independently revertable.
 - Title in conventional-commit format (changelog fallback). Description says *why*, not just *what*.

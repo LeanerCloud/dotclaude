@@ -29,6 +29,7 @@ The rule is `AGENTS.md` section Git (repo init at task start). In short:
 ## Atomic commits
 
 - One distinct, independently revertable piece of functionality per commit; stage small chunks within a file separately.
+- **At most 400 additions plus deletions per commit**, tests included (`git diff --cached --shortstat`); net change is not the measure. Split larger work at real responsibility boundaries, never by golfing code or dropping proof.
 - **Don't commit throwaway or personal-only artefacts** (one-off scripts, debugging helpers, scratch files, session tooling, ad-hoc migration scripts, curl loops, log one-liners). Ask: would another contributor find this useful? If not, keep it in `/tmp/claude/` or delete it. If genuinely reusable, promote it to `scripts/`, `tools/` or a `Makefile` target with docs and tests.
 
 ## ⚠️ Mandatory pre-commit review loop - NO EXCEPTIONS
