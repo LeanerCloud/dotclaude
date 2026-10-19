@@ -191,6 +191,18 @@ run_case ok 'out of contract: heading is not scanned' \
   '## git worktree add /tmp/job'
 run_case ok 'out of contract: glued hash is not a comment' \
   'git worktree add /tmp/job #"$HOME/.claude/worktrees/"'
+run_case violation 'traversal ending the quoted destination' \
+  'git worktree add "$HOME/.claude/worktrees/x/.."'
+run_case violation 'traversal as the quoted destination followed by a space' \
+  'git worktree add "$HOME/.claude/worktrees/.." main'
+run_case violation 'traversal followed by a space' \
+  'git worktree add $HOME/.claude/worktrees/x/.. main'
+run_case violation 'traversal followed by punctuation' \
+  'See `git worktree add $HOME/.claude/worktrees/x/..,` here'
+run_case ok 'ellipsis after a durable destination is not traversal' \
+  'git worktree add "$HOME/.claude/worktrees/x" ... main'
+run_case violation 'prose with a non-durable word after worktree add' \
+  'Always run git worktree add elsewhere first'
 run_case violation 'plain temp destination' \
   'git worktree add /tmp/job main'
 run_case violation 'TMPDIR destination' \
@@ -234,8 +246,8 @@ if bash "$fixture_repo/scripts/validate-worktree-policy.sh" --worktree >/dev/nul
 fi
 
 total=$((passed + failed + unknown))
-if [ "$total" -ne 62 ]; then
-  printf 'expected 62 parser cases, ran %d\n' "$total" >&2
+if [ "$total" -ne 68 ]; then
+  printf 'expected 68 parser cases, ran %d\n' "$total" >&2
   exit 1
 fi
 if [ "$failed" -gt 0 ] || [ "$unknown" -gt 0 ] || [ "$staged_failures" -gt 0 ]; then

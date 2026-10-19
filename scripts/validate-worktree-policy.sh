@@ -79,6 +79,7 @@ assert_not_contains skills/pr-iterate/SKILL.md '.worktrees/<repo>/<slug>' 'PR it
 #   command cannot vouch for an unsafe one; quotes and backslashes inside the command words are
 #   ignored when detecting the command; a command ending in `add \` (destination on the next
 #   line) and a single-quoted destination are rejected. `#138` in prose is scanned like any text.
+#   Prose containing `git worktree add` plus a non-durable word is scanned like a command and fails.
 # Out of contract (not detected, pinned by "out of contract:" cases in tests/): a segment starting
 #   with a run of # and a space or EOL (heading or comment), text after a space-#-space comment, a `#`
 #   glued to the next word (`add /tmp/job #"$HOME/.claude/worktrees/"`), a durable path in an
@@ -90,7 +91,7 @@ add_cmd="git${q}[[:space:]].*worktree${q}[[:space:]]+${q}add${q}[[:space:]]+([^[
 wrapped="git${q}[[:space:]].*worktree${q}[[:space:]]+${q}add${q}[[:space:]]*\$"
 # shellcheck disable=SC2016 # literal $HOME in the pattern
 durable='((^|[[:space:]"])(\$HOME|\$\{HOME\})|(^|[[:space:]])~)/\.claude/worktrees/'
-escape='(^|[[:space:]/"])\.\.(/|$)'
+escape='(^|[[:space:]/"])\.\.([^.]|$)'
 # Pre-filter: the word worktree with optional quotes or backslashes between its letters.
 prefilter=
 for c in w o r k t r e e; do prefilter+="${c}[\\'\"]*"; done
