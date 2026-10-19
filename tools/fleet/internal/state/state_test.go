@@ -520,6 +520,10 @@ func TestScrub(t *testing.T) {
 		{"export api key", "export API_KEY=abc123", "export API_KEY=[REDACTED:assignment]"},
 		{"token colon", "token: abc123 end", "token: [REDACTED:assignment] end"},
 		{"json password", `{"password":"hunter2"}`, `{"password":"[REDACTED:assignment]"}`},
+		{"value with equals", "password=a=b", "password=[REDACTED:assignment]"},
+		{"api key with equals", "api_key=ab=cdef", "api_key=[REDACTED:assignment]"},
+		{"base64 padded secret", "secret=Zm9vYmFy=YmF6", "secret=[REDACTED:assignment]"},
+		{"query token with equals", "?token=abc=def&a=1", "?token=[REDACTED:assignment]"},
 		// False-positive guards.
 		{"go define", "token := strings.TrimSpace(tok)", "token := strings.TrimSpace(tok)"},
 		{"go equals", `if token == "" {`, `if token == "" {`},
