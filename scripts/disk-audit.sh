@@ -3,7 +3,7 @@
 # ~/.claude/reports/disk-cleanup/. Never modifies anything outside that dir.
 set -uo pipefail
 
-REPORT_DIR="${REPORT_DIR:-$HOME/.claude/reports/disk-cleanup}"
+REPORT_DIR="$HOME/.claude/reports/disk-cleanup"
 mkdir -p "$REPORT_DIR"
 TOP="$REPORT_DIR/top-level.tsv"
 REPOS="$REPORT_DIR/repos.tsv"
@@ -71,9 +71,12 @@ find "$HOME" -xdev \( "${PRUNE_ARGS[@]}" \) -prune -o -name .git -print0 -prune 
         || "${GIT[@]}" -C "$r" config --worktree --includes --get-regexp "$FRE" >/dev/null 2>&1; then
         dirty="skipped: filter config"
       else
-        out="$("$TMO" 120 "${GIT[@]}" -C "$r" status --porcelain 2>/dev/null)"
-        if [ $? -eq 124 ]; then dirty=timeout
-        else dirty="$(printf '%s' "$out" | grep -c '^')"; fi
+        out="$("$TMO" 120 "${GIT[@]}" -C "$r" status --porcelain 2>/dev/null)"; rc=$?
+        case $rc in
+          0) dirty="$(printf '%s' "$out" | grep -c '^')" ;;
+          124) dirty=timeout ;;
+          *) dirty=error ;;
+        esac
       fi
       unpushed="$("${GIT[@]}" -C "$r" rev-list --count --branches --tags HEAD --not --remotes 2>/dev/null || echo '?')"
       stashes="$("${GIT[@]}" -C "$r" stash list 2>/dev/null | wc -l | tr -d ' ')"
