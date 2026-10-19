@@ -236,6 +236,12 @@ c04e_node_modules_fixtures_and_more_secret_names() {
   mkdir -p "$C/wt/a/node_modules/pkg" "$C/wt/b/build" "$C/wt/c/build"
   echo fixture > "$C/wt/a/node_modules/pkg/.env"
   echo state > "$C/wt/b/build/terraform.tfstate.backup"; echo tok > "$C/wt/c/build/.npmrc"
+  mkdir -p "$C/outside/x/node_modules/q" "$C/wt/j/node_modules" "$C/wt/k/node_modules"
+  printf 'pnpm-top\n' >> "$C/main/.git/info/exclude"
+  ln -s "$C/outside/x/node_modules/q" "$C/wt/j/pnpm-top"
+  ln -s node_modules/q "$C/wt/k/pnpm-top"
+  ln -s node_modules/.. "$C/wt/l/.claude/skills/pnpm-x"
+  ln -s ../../../../../../../../node_modules/q "$C/wt/m/.claude/skills/pnpm-x"
   run_s --apply
   a_out '^reclaimed a '; a_wt a absent
   a_out '^blocked b .*tfstate'; a_out '^blocked c .*npmrc'
@@ -345,6 +351,61 @@ l/src.txt"; git -C "$C/wt/a" commit -q -m nl
   run_s --apply
   a_out '^blocked a .*prod.pem'; a_wt a present
   [ -f "$C/wt/a/t	b/build/prod.pem" ] || bad "tab-path secret was deleted"
+}
+c04k_ignored_links_into_build_dirs() {
+  mkenv c04k
+  mkdir -p "$C/main/.claude/skills"; echo 'pnpm-*' > "$C/main/.claude/skills/.gitignore"
+  git -C "$C/main" add -A; git -C "$C/main" commit -q -m skills; git -C "$C/main" push -q origin main
+  local w
+  for w in a b c d e f g h i j k l m; do merged_wt "$w"; done
+  printf 'node_modules/\nbuild/\n' >> "$C/main/.git/info/exclude"
+  mkdir -p "$C/outside/skill" "$C/wt/g-evil/node_modules/x"
+  for w in a b c d e f g h i j k l m; do mkdir -p "$C/wt/$w/.claude/skills"; done
+  mkdir -p "$C/wt/a/node_modules/.pnpm/p/skills/x"
+  ln -s ../../node_modules/.pnpm/p/skills/x "$C/wt/a/.claude/skills/pnpm-x"
+  ln -s "$C/outside/skill" "$C/wt/b/.claude/skills/pnpm-x"
+  ln -s ../../node_modules/missing "$C/wt/c/.claude/skills/pnpm-x"
+  mkdir -p "$C/wt/d/build"; echo run > "$C/wt/d/build/run.sh"
+  git -C "$C/wt/d" add -f build/run.sh; git -C "$C/wt/d" commit -q -m run; git -C "$C/wt/d" push -q origin b-d
+  add_merged b-d "$(tip d)"
+  ln -s ../../build/run.sh "$C/wt/d/.claude/skills/pnpm-x"
+  echo regular > "$C/wt/e/.claude/skills/pnpm-x"
+  mkdir -p "$C/wt/f/node_modules/.pnpm"; echo f > "$C/wt/f/node_modules/.pnpm/file"
+  ln -s ../../node_modules/.pnpm/file "$C/wt/f/.claude/skills/pnpm-x"
+  ln -s "$C/wt/g-evil/node_modules/x" "$C/wt/g/.claude/skills/pnpm-x"
+  ln -s ../../../b/node_modules/x "$C/wt/h/.claude/skills/pnpm-x"
+  mkdir -p "$C/wt/i/node_modules"
+  ln -s "$C/outside/skill" "$C/wt/i/node_modules/x"
+  ln -s ../../node_modules/x "$C/wt/i/.claude/skills/pnpm-x"
+  printf 'pnpm-top\n' >> "$C/main/.git/info/exclude"
+  mkdir -p "$C/outside/x/node_modules/q" "$C/wt/j/node_modules" "$C/wt/k/node_modules"
+  ln -s "$C/outside/x/node_modules/q" "$C/wt/j/pnpm-top"
+  ln -s node_modules/q "$C/wt/k/pnpm-top"
+  ln -s node_modules/.. "$C/wt/l/.claude/skills/pnpm-x"
+  ln -s ../../../../../../../../node_modules/q "$C/wt/m/.claude/skills/pnpm-x"
+  run_s --apply
+  a_out '^reclaimed a '; a_wt a absent
+  a_out '^blocked b .*pnpm-x'; a_wt b present
+  a_out '^reclaimed c '; a_wt c absent
+  a_out '^blocked d .*pnpm-x'; a_wt d present
+  a_out '^blocked e .*pnpm-x'; a_wt e present
+  a_out '^reclaimed f '; a_wt f absent
+  a_out '^blocked g .*pnpm-x'; a_wt g present
+  a_out '^blocked h .*pnpm-x'; a_wt h present
+  a_out '^reclaimed i '; a_wt i absent
+  a_out '^blocked j .*pnpm-top'; a_wt j present
+  a_out '^reclaimed k '; a_wt k absent
+  a_out '^blocked l .*pnpm-x'; a_wt l present
+  a_out '^blocked m .*pnpm-x'; a_wt m present
+  a_exists "$C/outside/skill"; a_exists "$C/wt/g-evil/node_modules/x"
+}
+c04l_ignored_link_secret_name() {
+  mkenv c04l; merged_wt a
+  printf 'node_modules/\n.env*\n' >> "$C/main/.git/info/exclude"
+  mkdir -p "$C/wt/a/node_modules/d"
+  ln -s node_modules/d "$C/wt/a/.env.link"
+  run_s --apply
+  a_out '^blocked a .*\.env\.link'; a_wt a present
 }
 c05b_plan_md_not_a_plan_symlink() {
   mkenv c05b; merged_wt a; merged_wt b
@@ -955,7 +1016,7 @@ c49_locked_with_reason() {
 }
 
 CASES="c01_merged_clean c02_squash_tip_not_in_main c02b_tip_behind_merged_head c03_dirty c04_ignored_env
-c04b_nested_build_output_allowed_nested_env_blocked c04e_node_modules_fixtures_and_more_secret_names c03b_local_branch_moves_before_delete c03c_branch_held_by_second_worktree c04c_tracked_build_dir_and_secret_names_blocked c04d_tracked_build_dir_with_ignored_output_blocked c04f_spaced_path_secret_blocked c04g_spaced_path_secret_names_blocked c04h_non_ascii_path_secret_blocked c04i_spaced_build_dir_harmless_output_reclaimed c04j_tab_and_newline_paths_no_misparse c05_plan_symlink_only c05b_plan_md_not_a_plan_symlink c06_extra_commits c07_fork_pr_same_name
+c04b_nested_build_output_allowed_nested_env_blocked c04e_node_modules_fixtures_and_more_secret_names c03b_local_branch_moves_before_delete c03c_branch_held_by_second_worktree c04c_tracked_build_dir_and_secret_names_blocked c04d_tracked_build_dir_with_ignored_output_blocked c04f_spaced_path_secret_blocked c04g_spaced_path_secret_names_blocked c04h_non_ascii_path_secret_blocked c04i_spaced_build_dir_harmless_output_reclaimed c04j_tab_and_newline_paths_no_misparse c04k_ignored_links_into_build_dirs c04l_ignored_link_secret_name c05_plan_symlink_only c05b_plan_md_not_a_plan_symlink c06_extra_commits c07_fork_pr_same_name
 c08_remote_ahead c08b_remote_moves_before_push c09_open_pr_head c10_stacked_open_base c11_live_cwd_prefix_and_symlink c12_plan_liveness
 c13_build_dirs_report_refusals c13b_build_dirs_apply c13c_build_dir_outside_allowed_roots c13d_build_dir_canonical_git_and_cwd c14_gh_failure_aborts c15_submodule_refused_and_c17_isolation
 c16_prunable c18_branch_mode_worktree_gone c19_report_mode_changes_nothing c20_locked c21_no_pr_and_detached
