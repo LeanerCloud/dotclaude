@@ -126,13 +126,16 @@ merge order. Serialize stacks (#A -> #B rebased on #A -> #C rebased on #B), one 
 
 ## Phase 1 - Triage (read-only)
 
-1. `gh pr view <N> --json title,headRefName,headRefOid,baseRefName,mergeStateStatus,state,isDraft`.
+1. `gh pr view <N> --json title,body,closingIssuesReferences,headRefName,headRefOid,baseRefName,mergeStateStatus,state,isDraft`.
    If `state != OPEN`, report and stop. If `isDraft`, surface but continue.
 2. Find the worktree: `git -C <repo-root> worktree list`, match by branch (path may differ). If none,
-   create one off the existing remote branch (do NOT create a fresh branch):
+   first resolve the linked issue (`closingIssuesReferences`, or the PR body per "Issue <-> PR link
+   detection" below on a non-default base), then create one off the existing remote branch (do NOT
+   create a fresh branch):
    `git -C <repo-root> fetch origin <branch>`, `mkdir -p "$HOME/.claude/worktrees"`,
    `git -C <repo-root> worktree add "$HOME/.claude/worktrees/<repo-name>-issue-<issue-number>-<slug>" <branch>`.
-   This example has a linked issue; otherwise use `<repo-name>-no-issue-<slug>` per the `worktrees` skill.
+   This example has a linked issue; use `<repo-name>-no-issue-<slug>` per the `worktrees` skill only
+   after both checks find none.
 3. Pull CR signal into `/tmp/claude/`:
    ```
    gh api repos/<owner>/<repo>/pulls/<N>/reviews \
