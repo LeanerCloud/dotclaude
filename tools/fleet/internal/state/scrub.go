@@ -39,10 +39,10 @@ var scrubRules = []rule{
 // assignmentRule runs after the entropy rule, so values it already redacted (they start with "[") and
 // the AWS secret key forms keep their more specific labels. It redacts the value of NAME=value or
 // NAME: value when NAME ends in password, passwd, passphrase, secret, token or api key; prose such as
-// "password reset" or "token bucket" has no "=" or ":" after the keyword and is left alone. A value
+// "password reset" or "token bucket" has no "=" or ":" after the keyword and is left alone. The value
 // cannot start with "=", so Go operators (":=", "==") and "!=", "<=", ">=" are not assignments.
 // Prose such as "secret: see vault" is over-redacted on purpose: dropping a word costs less than a leak.
-var assignmentRule = regexp.MustCompile(`(?i)([A-Za-z0-9_]*(?:password|passwd|passphrase|secret|token|api[_-]?key)["']?[ \t]*[=:][ \t]*["']?)[^\s\["'=]+`)
+var assignmentRule = regexp.MustCompile(`(?i)([A-Za-z0-9_]*(?:password|passwd|passphrase|secret|token|api[_-]?key)["']?[ \t]*[=:][ \t]*["']?)[^\s\["'=][^\s\["']*`)
 
 var (
 	// tokenRE deliberately excludes "~", so a home-relative path or "~secret" splits at the tilde.
