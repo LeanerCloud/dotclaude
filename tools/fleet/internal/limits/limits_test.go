@@ -245,6 +245,34 @@ func TestCodexEntryIgnoresStaleReadingsAndPastResets(t *testing.T) {
 	}
 }
 
+func TestCodexEntryFailsClosedOnFutureReadingAndMissingReset(t *testing.T) {
+	t.Parallel()
+	future := &CodexLimits{Primary: &CodexWindow{UsedPercent: 10}, ObservedAt: now.Add(time.Minute), HasCredits: true}
+	if e := future.Entry(now); e.Kind != Unknown {
+		t.Fatalf("a reading from the future must be unknown, got %+v", e)
+	}
+	noReset := &CodexLimits{Primary: &CodexWindow{UsedPercent: 100}, ObservedAt: now.Add(-time.Minute), HasCredits: true}
+	if e := noReset.Entry(now); e.Kind != Throttled || !e.Until.Equal(now.Add(UnparsedWait)) {
+		t.Fatalf("a full window with no reset must throttle for UnparsedWait, got %+v", e)
+	}
+	// End to end: a rollout window without resets_at must not read as 1970.
+	dir := t.TempDir()
+	line := `{"timestamp":"` + now.Add(-time.Minute).Format(time.RFC3339) + `","payload":{"rate_limits":{"primary":{"used_percent":100,"window_minutes":300}}}}` + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "rollout-a.jsonl"), []byte(line), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	lim, err := ReadCodexRateLimits(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !lim.Primary.ResetsAt.IsZero() {
+		t.Fatalf("absent resets_at must stay zero, got %v", lim.Primary.ResetsAt)
+	}
+	if e := lim.Entry(now); e.Kind != Throttled {
+		t.Fatalf("got %+v", e)
+	}
+}
+
 func TestCodexReadsOnlyNewestDayAndTail(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
