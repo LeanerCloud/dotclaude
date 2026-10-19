@@ -49,3 +49,9 @@ repos:
         language: system
         files: '^(scripts/validate-worktree-policy\.sh|tests/validate-worktree-policy\.sh)$'
         pass_filenames: false
+      - id: test-validate-skills
+        name: test skill frontmatter validator cases
+        entry: bash tests/validate-skills.sh
+        language: system
+        files: '^(scripts/validate-skills\.sh|tests/validate-skills\.sh)$'
+        pass_filenames: false

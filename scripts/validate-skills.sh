@@ -39,6 +39,42 @@ if [ ! -d "$skills_dir" ]; then
   exit 1
 fi
 
+# Real YAML parsing, one process for every skill: the text tools below cannot tell that
+# "description: Prepare taxes from the country: collect" is invalid YAML, but every agent's parser can.
+# Output: one line per skill, fields joined by US (0x1f): dir, ok|err, name, description (or message).
+if ! command -v ruby >/dev/null 2>&1; then
+  echo "error: ruby is required to parse SKILL.md frontmatter (Psych ships with it); install ruby" >&2
+  exit 1
+fi
+us=$'\x1f'
+skill_files=()
+for f in "$skills_dir"/*/SKILL.md; do
+  [ -f "$f" ] && skill_files+=("$f")
+done
+parsed=""
+if [ "${#skill_files[@]}" -gt 0 ]; then
+  parsed="$(ruby -ryaml -e '
+    one = ->(v) { v.to_s.scrub.gsub(/[\r\n]/, " ") }
+    ARGV.each do |f|
+      dir = File.basename(File.dirname(f))
+      begin
+        lines = File.readlines(f, chomp: true)
+        next unless lines[0] == "---"
+        fm = lines[1..-1].take_while { |l| l != "---" }.join("\n")
+        next if fm.strip.empty?
+        d = YAML.safe_load(fm, aliases: false)
+        raise "frontmatter is not a YAML mapping" unless d.is_a?(Hash)
+        %w[name description].each do |k|
+          raise "#{k} must be a string" unless d[k].nil? || d[k].is_a?(String)
+        end
+        puts [dir, "ok", one.(d["name"]), one.(d["description"].to_s.strip)].join("\x1f")
+      rescue Exception => e
+        puts [dir, "err", one.(e.message)].join("\x1f")
+      end
+    end
+  ' "${skill_files[@]}")" || { echo "error: ruby YAML helper failed" >&2; exit 1; }
+fi
+
 for skill_path in "$skills_dir"/*/; do
   [ -d "$skill_path" ] || continue
   # Gitignored trees (the runtime-synced skills/synced/) are not ours to validate.
@@ -64,14 +100,21 @@ for skill_path in "$skills_dir"/*/; do
     continue
   fi
 
-  declared_name="$(printf '%s\n' "$frontmatter" | sed -n 's/^name:[[:space:]]*//p' | head -n 1)"
+  record="$(printf '%s\n' "$parsed" | awk -F "$us" -v n="$skill_name" '$1 == n { print; exit }')"
+  IFS="$us" read -r _ parse_status declared_name parsed_description <<EOF
+$record
+EOF
+  if [ "$parse_status" != "ok" ]; then
+    fail "$skill_name: invalid YAML frontmatter: ${declared_name:-unparsed}"
+    continue
+  fi
   if [ -z "$declared_name" ]; then
     fail "$skill_name: frontmatter has no 'name:' field"
   elif [ "$declared_name" != "$skill_name" ]; then
     fail "$skill_name: frontmatter name '$declared_name' does not match directory name"
   fi
 
-  # description may be folded across continuation lines (indented, no 'key:' of its own).
+  # Raw text, used only for the plain-scalar comment check below; the value itself is parsed.
   description="$(printf '%s\n' "$frontmatter" |
     awk '/^description:[[:space:]]*/ { found=1; sub(/^description:[[:space:]]*/, ""); print; next }
          found && /^[[:space:]]+[^[:space:]]/ { sub(/^[[:space:]]+/, " "); print; next }
@@ -87,10 +130,7 @@ for skill_path in "$skills_dir"/*/; do
       ;;
   esac
 
-  # Drop the block-scalar indicator so the length reflects what the model actually reads.
-  description="${description#[>|]}"
-  description="${description#[-+]}"
-  description="${description# }"
+  description="$parsed_description"
 
   imported=false
   skill_is_imported "$skill_path" && imported=true
