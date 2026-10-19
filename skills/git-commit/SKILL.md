@@ -35,7 +35,7 @@ The rule is `AGENTS.md` section Git (repo init at task start). In short:
 
 Before every commit run **2 review passes** over the staged diff (per `AGENTS.md` §1), fix what they find, then commit. A staged diff whose tree hash was already reviewed clean is not re-reviewed (`AGENTS.md` §1, same-hash rule). Don't skip, shortcut or batch this step; the goal is clean commits with no fix-up history.
 
-**Review on Sonnet 5.5 high, as comprehensively as possible: CodeRabbit's lens is the floor, not the ceiling.** The judgement is top-tier (like the §1c loop and plan-review gate, per `AGENTS.md` §2), even for the hardest money-path diffs. The six `AGENTS.md` §1 dimensions are the baseline; review as CodeRabbit would (Actionable / Nitpick categories, the project's CR config, recurring past findings) AND as a demanding staff engineer, across at least:
+**Review with the independent host-mapped reviewer (`skills/HOSTS.md` §Reviewer models), as comprehensively as possible: CodeRabbit's lens is the floor, not the ceiling.** This applies to the §1c loop and plan-review gate too, including the hardest money-path diffs. The six `AGENTS.md` §1 dimensions are the baseline; review as CodeRabbit would (Actionable / Nitpick categories, the project's CR config, recurring past findings) AND as a demanding staff engineer, across at least:
 
 - **Architecture & design fit**: belongs where it landed, follows the module's patterns, no leaked abstractions.
 - **Type design & invariants**: illegal states unrepresentable, invariants in types not runtime asserts, encapsulation intact (brief: `lenses/type-design.md`).
@@ -69,7 +69,7 @@ For a sequence of atomic commits implementing one plan, review each commit's sta
 
 ### Delegation
 
-For diffs touching multiple concerns (Go + TS + Terraform) or any substantial diff, fan out up to 3-4 `general-purpose` subagents in parallel, each given the full text of the lens brief file(s) it owns (`~/.claude/skills/git-commit/lenses/`; group related lenses) plus one general code reviewer. Spawn each on the appropriate tier (the review judgement is top-tier, even for the hardest money-path diffs; mechanical single-file diffs can drop to Sonnet 5.5 low), then aggregate, dedupe overlaps and resolve every actionable item before committing.
+For diffs touching multiple concerns (Go + TS + Terraform) or any substantial diff, fan out up to 3-4 `general-purpose` subagents in parallel, each given the full text of the lens brief file(s) it owns (`~/.claude/skills/git-commit/lenses/`; group related lenses) plus one general code reviewer. Spawn each on the host reviewer mapping, including mechanical single-file and money-path reviews, then aggregate, dedupe overlaps and resolve every actionable item before committing.
 
 ### Fix before committing, never after
 
