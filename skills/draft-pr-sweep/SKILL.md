@@ -21,7 +21,8 @@ Confirm the list first only if it is over 15 PRs.
 
 One PR at a time, finished before the next. Order: stack parents before children, then oldest first.
 
-1. **Challenge.** Check the PR against the current base (`AGENTS.md` §1). Already fixed, superseded
+1. **Challenge.** Read the repo's own `AGENTS.md`/`CLAUDE.md` and `known-issues.md` first, then
+   check the PR against the current base (`AGENTS.md` §1). Already fixed, superseded
    or built on a wrong assumption: comment and propose closing or rephrasing; never close unprompted.
    If the PR stays open, write its task-and-proof plan in the plan file and get it through two
    adversarial passes by the same reviewer (`review-and-implement`) before any worktree or code
