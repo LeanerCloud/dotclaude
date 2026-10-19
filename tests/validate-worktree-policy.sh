@@ -123,7 +123,7 @@ run_case violation 'line continuation before the path' \
   "$HOME/.claude/worktrees/repo-slug" main'
 run_case ok 'unrelated worktree command' \
   'git worktree prune'
-run_case xfail-violation 'comment mentioning worktree add' \
+run_case ok 'out of contract: comment mentioning worktree add' \
   '# remember to run git worktree add under the durable root'
 run_case ok 'trailing comment does not mask a durable root on the same line' \
   'git worktree add "$HOME/.claude/worktrees/safe" main # git worktree add /tmp/job'
@@ -197,6 +197,18 @@ run_case ok 'out of contract: durable option value is not the destination' \
   'git worktree add -b "$HOME/.claude/worktrees/x" /tmp/job'
 run_case violation 'out of contract: quoted HOME followed by a slash is rejected' \
   'git worktree add "$HOME"/.claude/worktrees/x'
+run_case violation 'issue number is not a comment' \
+  'Per #138 run git worktree add /tmp/job'
+run_case violation 'issue number inside a code span' \
+  'See PR #138: `git worktree add /tmp/job`'
+run_case ok 'prose ending in worktree add' \
+  'Do not run git worktree add'
+run_case ok 'table cell ending in worktree add' \
+  '| create | git worktree add |'
+run_case ok 'out of contract: heading is not scanned' \
+  '## git worktree add /tmp/job'
+run_case ok 'out of contract: glued hash is not a comment' \
+  'git worktree add /tmp/job #"$HOME/.claude/worktrees/"'
 run_case violation 'plain temp destination' \
   'git worktree add /tmp/job main'
 run_case violation 'TMPDIR destination' \
@@ -240,8 +252,8 @@ if bash "$fixture_repo/scripts/validate-worktree-policy.sh" --worktree >/dev/nul
 fi
 
 total=$((passed + xfailed + failed + unexpected + unknown))
-if [ "$total" -ne 56 ]; then
-  printf 'expected 56 parser cases, ran %d\n' "$total" >&2
+if [ "$total" -ne 62 ]; then
+  printf 'expected 62 parser cases, ran %d\n' "$total" >&2
   exit 1
 fi
 if [ "$failed" -gt 0 ] || [ "$unexpected" -gt 0 ] || [ "$unknown" -gt 0 ] || [ "$staged_failures" -gt 0 ]; then

@@ -77,10 +77,12 @@ assert_not_contains skills/pr-iterate/SKILL.md '.worktrees/<repo>/<slug>' 'PR it
 # In: the text after `worktree add` must contain $HOME, ${HOME} or a bare ~ followed by
 #   /.claude/worktrees/, unquoted or double-quoted, with no `..`; ; & | split the line so a safe
 #   command cannot vouch for an unsafe one; quotes and backslashes inside the command words are
-#   ignored when detecting the command; text after a space-#-space comment is cut; a command ending in `add \` (destination on the next line)
-#   and a single-quoted destination are rejected.
-# Out of contract (not detected, pinned by "out of contract:" cases in tests/): a durable path in
-#   an argument other than the destination (`add /tmp/x "$HOME/.claude/worktrees/y"`, `add -b
+#   ignored when detecting the command; a command ending in `add \` (destination on the next
+#   line) and a single-quoted destination are rejected. `#138` in prose is scanned like any text.
+# Out of contract (not detected, pinned by "out of contract:" cases in tests/): a segment starting
+#   with a run of # and a space or EOL (heading or comment), text after a space-#-space comment, a `#`
+#   glued to the next word (`add /tmp/job #"$HOME/.claude/worktrees/"`), a durable path in an
+#   argument other than the destination (`add /tmp/x "$HOME/.claude/worktrees/y"`, `add -b
 #   "$HOME/.claude/worktrees/x" /tmp/job`), a command broken before `worktree` or a non-`git`
 #   command word (`$GIT worktree add`), and `"$HOME"/...` spellings (rejected as false positives).
 q="['\"]*"
@@ -94,7 +96,10 @@ prefilter=
 for c in w o r k t r e e; do prefilter+="${c}[\\'\"]*"; done
 if lines="$(git -C "$repo_root" "${grep_args[@]}" -n -E "$prefilter" -- "${pathspecs[@]}")"; then
   while IFS= read -r line; do
+    body="${line#*:}"
+    body="${body#*:}"
     while IFS= read -r segment; do
+      if [[ $segment =~ ^[[:space:]]*#+([[:space:]]|$) ]]; then continue; fi
       segment="${segment%%[[:space:]]#[[:space:]]*}"
       unesc="${segment//\\/}"
       if [[ $unesc =~ $wrapped ]] && [[ $segment =~ \\[[:space:]]*$ ]]; then
@@ -105,7 +110,7 @@ if lines="$(git -C "$repo_root" "${grep_args[@]}" -n -E "$prefilter" -- "${paths
           fail "$line; expected the worktree destination to be under \$HOME/.claude/worktrees/ (see the contract in $0)"
         fi
       fi
-    done <<< "${line//[;&|]/$'\n'}"
+    done <<< "${body//[;&|]/$'\n'}"
   done <<< "$lines"
 else
   status=$?
