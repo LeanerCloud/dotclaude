@@ -36,10 +36,11 @@ Multi-commit or long-running work, and any work in a checkout another session ma
 
   Any fetch/API/query failure, missing or unreadable issue/claim data, or incomplete pagination stops creation/publication: partial output and empty failed queries prove no absence. Successful empty comment/PR lists are legitimate for an unclaimed issue. These checks reduce races; they are not atomic locks. A directly authorized task without a tracked issue needs no invented issue; existing coordination rules still apply. Branch from `origin/<base-branch>` after successful checks, and repeat the checkpoint before pushing (see Rebase and cleanup).
 - **Durable root**: `~/.claude/worktrees/<repo-name>-<slug>` (`<repo-name>` is the main checkout's directory name). Never under `/tmp`, `$TMPDIR` or another directory cleared at reboot.
-- **Record the base branch and the SHA you branched from** in the plan, read with `git rev-parse HEAD` inside the new worktree after `worktree add` (a concurrent fetch can move `origin/<base-branch>` after the scans). The SHA is the initial baseline; later rebases target the newly fetched `origin/<base-branch>`. A `main`/protected base still gets a worktree.
+- **Record the base branch and the SHA you branched from** in the plan (`base_branch:`, `base_sha:`), read with `git rev-parse HEAD` inside the new worktree after `worktree add` (a concurrent fetch can move `origin/<base-branch>` after the scans). The SHA is the initial baseline; later rebases target the newly fetched `origin/<base-branch>`. A `main`/protected base still gets a worktree.
 - **Create after the review gate, before the first commit**:
   ```bash
   mkdir -p "$HOME/.claude/worktrees"
+  git fetch origin
   git worktree add "$HOME/.claude/worktrees/<repo-name>-<slug>" -b <type>/<slug> origin/<base-branch>
   ```
   `<type>` is a conventional-commit type, `<slug>` short kebab-case. All implementation, commits, tests and reviews run inside the worktree.
@@ -54,6 +55,7 @@ Write the authoritative plan to `~/.claude/projects/<project>/plans/<slug>.md` (
 ---
 worktree: /absolute/path/to/.claude/worktrees/<repo-name>-<slug>
 base_branch: <base-branch>
+base_sha: <SHA the worktree was created from>
 feature_branch: <type>/<slug>
 started: <ISO-8601 timestamp>
 status: in-progress   # in-progress | verifying | merged | abandoned
