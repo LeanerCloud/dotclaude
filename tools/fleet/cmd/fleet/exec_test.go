@@ -453,9 +453,38 @@ func TestHeldAndLockedPathsBuildTheChildTheSameWay(t *testing.T) {
 			t.Errorf("%s: child must lead its own process group", name)
 		}
 	}
-	plain := newChild(env{environ: environ}, []string{"true"}, false)
-	if strings.Contains(strings.Join(plain.Env, ","), lock.HeldEnv) {
-		t.Fatal("a non-heavy child must not carry the held marker")
+	fresh := newChild(env{environ: []string{"A=1"}}, []string{"true"}, false)
+	if strings.Contains(strings.Join(fresh.Env, ","), lock.HeldEnv) {
+		t.Fatal("a non-heavy child must not gain the held marker")
+	}
+}
+
+// heavy -> lock -> heavy: the inner heavy must see the marker through the lock, or with one slot it
+// waits for the slot its own ancestor holds.
+func TestLockPassesInheritedHeldMarkerThrough(t *testing.T) {
+	t.Parallel()
+	got := childEnv([]string{"A=1", lock.HeldEnv + "=1"}, false)
+	if strings.Join(got, ",") != "A=1,"+lock.HeldEnv+"=1" {
+		t.Fatalf("fleet lock must keep an inherited marker, got %q", got)
+	}
+	e, _, _ := testEnv(t, 1)
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := exec.Command(self, "heavy", "--", self, "lock", "x", "--", self, "heavy", "--", "sh", "-c", "exit 3")
+	c.Env = append(e.environ, "FLEET_TEST_AS_FLEET=1", "HOME="+e.home)
+	done := make(chan error, 1)
+	go func() { done <- c.Run() }()
+	select {
+	case err := <-done:
+		var ee *exec.ExitError
+		if !errors.As(err, &ee) || ee.ExitCode() != 3 {
+			t.Fatalf("want exit 3, got %v", err)
+		}
+	case <-time.After(2 * time.Second): // the test fleet's lock wait is 3s, so a second slot request times out later
+		_ = c.Process.Kill()
+		t.Fatal("heavy -> lock -> heavy blocked on a second slot with heavy_slots=1")
 	}
 }
 
