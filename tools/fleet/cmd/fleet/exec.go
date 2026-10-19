@@ -262,7 +262,7 @@ func newChild(e env, argv []string, heavy bool) *exec.Cmd {
 // isTTY reports whether f is a terminal, by asking for its window size, which any terminal answers
 // and anything else refuses with ENOTTY. TIOCGPGRP would answer ENOTTY for a terminal that is not
 // this process's controlling one, and that stdin would then get Setpgid and a SIGTTIN risk. The
-// descriptor is borrowed through SyscallConn: f.Fd() would switch a non-blocking stdin to blocking.
+// descriptor is borrowed through SyscallConn, which needs no extra file-mode handling.
 func isTTY(f *os.File) bool {
 	rc, err := f.SyscallConn()
 	if err != nil {
@@ -308,7 +308,9 @@ func runChild(e env, argv []string, heavy bool, sigs <-chan os.Signal) int {
 				case ok:
 					_ = c.Process.Signal(s)
 				}
-				if ok && escalate == nil {
+				// Only TERM and HUP ask the child to quit; a child that handles INT (a REPL, a shell,
+				// ssh) is expected to keep running, so INT never arms the SIGKILL.
+				if (sig == syscall.SIGTERM || sig == syscall.SIGHUP) && escalate == nil {
 					escalate = time.AfterFunc(grace, func() {
 						if grouped {
 							_ = syscall.Kill(-pgid, syscall.SIGKILL)
