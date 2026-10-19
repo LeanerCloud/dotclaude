@@ -88,3 +88,6 @@ RTK.md
 
 # Agent decision docs: may hold sensitive context
 /decisions/
+
+# Disk-cleanup skill reports (local, never committed)
+/reports/

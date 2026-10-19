@@ -5,7 +5,7 @@ description: Reclaim disk space under ~/ (hidden dirs included) without losing u
 
 # Disk Cleanup
 
-Loop until the reclaimable remainder is under ~1 GB or only needs-human items remain: audit, classify, protect, clean, report. Tenet 9 (AGENTS.md) still holds: deletion happens only for the safe classes below, from exact paths, with a logged reason.
+Audit, classify, protect, clean, report. Tenet 9 (AGENTS.md) holds and no space target overrides it: only MERGED items are removed unprompted; every REBUILDABLE or UPSTREAM deletion needs per-item user confirmation (decision doc, `ask-user.sh`, per "Asking the user" in AGENTS.md). Delete from exact paths, with a logged reason.
 
 ## Reports (maintained every pass)
 
@@ -27,20 +27,21 @@ Update them as you go, not at the end; a crashed run must be resumable from them
 
 ## Steps
 
-1. **Audit** (read-only): `bash ~/.claude/scripts/disk-audit.sh`. Run it in the background; it can take minutes. It writes `INVENTORY.md` and TSVs of top-level sizes, every repo/worktree (dirty files, unpushed commits, remotes, size) and rebuildable candidates. Scanned repos are untrusted: the script runs git with fsmonitor and hooks disabled, and drops paths containing control characters into `rejected-paths.log`; list those in `NEEDS-HUMAN.md`. Do the same when running git in any repo you did not create (a repo's own config can execute commands).
+1. **Audit** (read-only): `bash ~/.claude/scripts/disk-audit.sh`. Run it in the background; it can take minutes. It writes `INVENTORY.md` and TSVs of top-level sizes, every repo/worktree (dirty files, unpushed commits, remotes, size) and rebuildable candidates. Scanned repos are untrusted: the script runs git with fsmonitor and hooks disabled and skips `git status` in repos whose local config defines `filter.*.clean`/`process` (dirty column "skipped: filter config"), and drops paths containing control characters into `rejected-paths.log`; list those in `NEEDS-HUMAN.md`. Do the same when running git in any repo you did not create (a repo's own config can execute commands).
 2. **Classify** each item:
-   - **MERGED** (safe): PR MERGED and the tip is the PR head or an ancestor, clean tree, no lock or live owner. Do not reimplement this; run `scripts/reclaim-merged-worktrees.sh --repo <path>` (report first, then `--apply`).
-   - **REBUILDABLE** (safe): build output, caches, `node_modules`, venvs, anything regenerable from source or a lockfile. Prefer native pruners (`docker`/`podman system prune`, `cargo`/`npm`/`go` cache clean, `journalctl --vacuum-size`, `coredumpctl`) over `rm`.
-   - **UPSTREAM** (safe): every local ref, stash and commit exists on a remote and the tree is clean (`git rev-list --count --all --not --remotes` is 0, `git stash list` empty, `git status --porcelain` empty).
+   - **MERGED** (safe): PR MERGED and the tip is the PR head or an ancestor, clean tree, no lock or live owner. Do not reimplement this; run `~/.claude/scripts/reclaim-merged-worktrees.sh --apply --branch <b>` (report first without `--apply`). This is the only unprompted deletion.
+   - **REBUILDABLE** (confirm per item): build output, caches, `node_modules`, venvs, anything regenerable from source or a lockfile. Native pruners (`cargo`/`npm` cache clean) beat `rm`; `docker`/`podman system prune`, `journalctl --vacuum-size` and `coredumpctl` cleanups delete volumes or logs, so they need confirmation too. Do not run `go clean -cache` here: it races the go-build-cache trimmer and the disk guard.
+   - Never run `git status` (or any git command that runs filters) in repos the audit marked "skipped: filter config"; list them in `NEEDS-HUMAN.md`.
+   - **UPSTREAM** (confirm per item): every local ref, stash and commit exists on a remote and the tree is clean (`git rev-list --count --all --not --remotes` is 0, `git stash list` empty, `git status --porcelain` empty).
    - **UNIQUE**: unpushed commits, dirty or untracked work, stashes, remote-less branches, ignored files that are not build output. Never deleted before step 3.
 3. **Protect UNIQUE work** and log it in `UNIQUE-WORK.md`:
    - Scan for secrets first (gitleaks or grep) and redact home paths, usernames and hostnames from anything that leaves the machine.
-   - Choose the remote: `origin`, an existing fork, the upstream's fork, or the sibling worktree's remote. If no fork exists, `gh repo fork` to the user's account and push a branch there.
+   - Choose the remote: `origin`, an existing fork, the upstream's fork, or the sibling worktree's remote. Creating a fork or pushing unique work is publication: get user confirmation first, including for `gh repo fork`.
    - Darling-looking repos (remote or path matches `darling`/`darlinghq`): open a PR to upstream when the work is worth upstreaming; skip WIP noise, duplicates and already-upstreamed work and record why. One concern per PR, up to 400 lines, grouped by topic. Open and watch (`ci-watch`, `cr-loop`), never merge.
    - Other repos: push to a fork or remote branch; PR only if it makes sense.
    - If pushing is impossible, write a `git bundle` to `~/.claude/backups/`. Anything unresolved goes to `NEEDS-HUMAN.md`.
    - An item counts as protected only after you verify the PR or branch exists on the remote (re-check with `gh`/`git ls-remote` this turn).
-4. **Clean**: delete SAFE items by exact path (no globs, no shared dirs such as `build-master`), `git worktree remove` without `--force`, then prune refs. Re-check the item's state immediately before deleting; skip it if it changed since classification. Log each action in `ACTIONS.md`.
+4. **Clean**: delete MERGED items, and REBUILDABLE or UPSTREAM items the user confirmed, by exact path (no globs, no shared dirs such as `build-master`), `git worktree remove` without `--force`, then prune refs. Re-check the item's state immediately before deleting; skip it if it changed since classification. Log each action in `ACTIONS.md`.
 5. **Standardise work dirs** so later sweeps can classify them: new temp work (darling prefixes and profiles, build dirs, scratch) goes under `~/.claude/work/<project>/{builds,profiles,prefixes,tmp}`, worktrees stay in `~/.claude/worktrees/`. Record each in a registry TSV (project, owner branch or PR, created, rebuild command) and note paths in `local-paths.md`. Move existing dirs only when safe; otherwise list them.
 6. **Report**: append the pass row to `STATUS.md` (df before/after, GB per class, PRs opened, forks created, skipped items and why). Repeat from step 1.
 
