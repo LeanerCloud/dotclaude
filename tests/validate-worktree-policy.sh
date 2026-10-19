@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2016 # case bodies are literal shell text
+# Cases labelled "out of contract:" pin behavior the validator documents as unsupported (see the
+# contract comment in scripts/validate-worktree-policy.sh); changing them is a deliberate decision.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -116,7 +118,7 @@ run_case violation 'dash destination after end-of-options' \
   'git worktree add -- -tmp/foo'
 run_case ok 'markdown bullet around inline code' \
   '- `git -C <repo-root> worktree add "$HOME/.claude/worktrees/<repo>-<slug>" <branch>` (do NOT create a fresh branch).'
-run_case xfail-violation 'line continuation before the path' \
+run_case violation 'line continuation before the path' \
   'git worktree add \
   "$HOME/.claude/worktrees/repo-slug" main'
 run_case ok 'unrelated worktree command' \
@@ -130,17 +132,17 @@ run_case ok 'UTF-8 prose around a compliant command' \
 run_case violation 'UTF-8 prose around an unsafe command' \
   'Per §1b: `git worktree add /tmp/job main` OK'
 
-run_case xfail-ok 'single-quoted git' \
+run_case violation 'single-quoted git' \
   "'git' worktree add /tmp/job"
-run_case xfail-ok 'double-quoted git' \
+run_case violation 'double-quoted git' \
   '"git" worktree add /tmp/job'
-run_case xfail-ok 'quoted worktree and add' \
+run_case violation 'quoted worktree and add' \
   'git "worktree" "add" /tmp/job'
 run_case ok 'quoted command with a durable destination' \
   "'git' worktree add \"\$HOME/.claude/worktrees/repo-slug\" main"
 run_case violation 'single-quoted tilde is not expanded' \
   "git worktree add '~/.claude/worktrees/repo-slug'"
-run_case xfail-ok 'single-quoted HOME stays literal' \
+run_case violation 'single-quoted HOME stays literal' \
   "git worktree add '\$HOME/.claude/worktrees/repo-slug'"
 run_case violation 'double-quoted tilde is not expanded' \
   'git worktree add "~/.claude/worktrees/repo-slug"'
@@ -168,20 +170,33 @@ run_case violation 'unmatched double quote does not mask a violation' \
   'The "durable root rule; git worktree add /tmp/job'
 run_case ok 'apostrophe before a compliant command' \
   "Don't use /tmp; git worktree add \"\$HOME/.claude/worktrees/repo-slug\" main"
-run_case xfail-ok 'apostrophe plus a single-quoted HOME' \
+run_case violation 'apostrophe plus a single-quoted HOME' \
   "Don't use /tmp; git worktree add '\$HOME/.claude/worktrees/repo-slug'"
 
-run_case xfail-ok 'escaped git command word' \
+run_case violation 'escaped git command word' \
   'The worktree rule: g\it worktree add /tmp/job'
-run_case xfail-ok 'escaped worktree command word' \
-  'The worktree rule: git wor\ktree add /tmp/job'
-run_case xfail-ok 'escaped add command word' \
+run_case violation 'escaped worktree command word' \
+  'The rule: git wor\ktree add /tmp/job'
+run_case violation 'escaped add command word' \
   'The worktree rule: git worktree a\dd /tmp/job'
 run_case ok 'escaped command words with a durable destination' \
   'The worktree rule: g\it wor\ktree a\dd "$HOME/.claude/worktrees/repo-slug"'
 
-run_case xfail-ok 'comment conceals a temp destination' \
+run_case violation 'comment cannot conceal a temp destination' \
   'git worktree add /tmp/job # git worktree add "$HOME/.claude/worktrees/safe"'
+run_case violation 'durable -C repo path does not vouch for the destination' \
+  'git -C "$HOME/.claude/worktrees/x" worktree add /tmp/job'
+run_case ok 'out of contract: variable command word' \
+  '$GIT worktree add /tmp/job'
+run_case ok 'out of contract: command broken before worktree' \
+  'git \
+  worktree add /tmp/job'
+run_case ok 'out of contract: later durable argument is not the destination' \
+  'git worktree add /tmp/job "$HOME/.claude/worktrees/x"'
+run_case ok 'out of contract: durable option value is not the destination' \
+  'git worktree add -b "$HOME/.claude/worktrees/x" /tmp/job'
+run_case violation 'out of contract: quoted HOME followed by a slash is rejected' \
+  'git worktree add "$HOME"/.claude/worktrees/x'
 run_case violation 'plain temp destination' \
   'git worktree add /tmp/job main'
 run_case violation 'TMPDIR destination' \
@@ -225,8 +240,8 @@ if bash "$fixture_repo/scripts/validate-worktree-policy.sh" --worktree >/dev/nul
 fi
 
 total=$((passed + xfailed + failed + unexpected + unknown))
-if [ "$total" -ne 50 ]; then
-  printf 'expected 50 parser cases, ran %d\n' "$total" >&2
+if [ "$total" -ne 56 ]; then
+  printf 'expected 56 parser cases, ran %d\n' "$total" >&2
   exit 1
 fi
 if [ "$failed" -gt 0 ] || [ "$unexpected" -gt 0 ] || [ "$unknown" -gt 0 ] || [ "$staged_failures" -gt 0 ]; then
