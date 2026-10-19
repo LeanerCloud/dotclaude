@@ -61,8 +61,8 @@ mechanical checks keep their existing tiers; model selection grants no merge or 
 
 ## Tiers
 
-`AGENTS.md` §2 names three tiers by role: low (mechanical), medium (writes code), high (decides,
-reviews, verifies).
+`AGENTS.md` §2 names three tiers by role: low (mechanical), medium (writes code), high (plans,
+diagnoses). Reviews and verification use §Reviewer models.
 
 | Host | low | medium | high |
 |---|---|---|---|
@@ -74,8 +74,7 @@ reviews, verifies).
 | Antigravity CLI | `agy -p --effort low` | `--effort medium` | `--effort high` (pick `--model` from `agy models`; unverified) |
 
 The Sonnet-only general tiers in `AGENTS.md` §2 cover Claude models outside the reviewer role above;
-other hosts use
-their own models. Kimi's medium row is effort high because `k3` offers only low, high and max.
+other hosts use their own models. Kimi's medium row is effort high because `k3` offers only low, high and max.
 Exercised live: `kimi-code/k3` (the default) and opencode's free model; the opencode Sonnet ID is from
 `opencode models` (that account had no funds to run it).
 opencode lists no effort variants for Sonnet (`provider/model#variant`), so state the effort in the brief.

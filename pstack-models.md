@@ -2,7 +2,7 @@
 
 `interrogate`, `arena`, `reflect`, `figure-it-out` and `architect` fan out across models. Upstream
 reads this roster from `~/.cursor/rules/pstack-models.mdc`; on Claude Code it lives here. Tiers are
-the ones in `CLAUDE.md` and the `subagent-strategy` skill (Sonnet 5.5 low / Sonnet 5.5 medium / Sonnet 5.5 high, Sonnet 5.5 high the top tier);
+the ones in `CLAUDE.md` and the `subagent-strategy` skill (Sonnet 5.5 low / Sonnet 5.5 medium / Sonnet 5.5 high, Sonnet 5.5 high the top planning tier; reviewers per `skills/HOSTS.md` §Reviewer models);
 OpenAI- and Gemini-backed tooling maps them through the table at the top of `CLAUDE.md`. Set `model`
 explicitly on every `Agent` call.
 

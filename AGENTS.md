@@ -163,14 +163,14 @@ format, length cap). Continue a live agent (Claude Code: `SendMessage`) holding 
 unless independence is the point, the tier differs or its context is polluted. Background by default
 for anything >~30s; never poll; reap finished agents. Usually 1-2 working agents sized to the work
 (e.g. an implementer and a reviewer), at most 3-4 unless asked; CI waits in a background shell;
-tests print only failures. Always name the tier: in Claude Code set `model: sonnet` and state the
+tests print only failures. Always name the tier: in Claude Code set `model: sonnet` (reviewers excepted) and state the
 effort in the brief. Other hosts' primitives and tier models, plus the reviewer-role overrides: `skills/HOSTS.md`.
 
 | Tier | Use for |
 |------|---------|
 | Sonnet 5.5 low | mechanical edits with a clear spec, lookups, single commands, rubric classification, short summaries |
 | Sonnet 5.5 medium | **all code writing**, any difficulty: implementation, tests, applying decided fixes, rebases, refactors, `gh`/`git` mechanics |
-| Sonnet 5.5 high | **deciding, reviewing, verifying**: planning, design, diagnosis, reading a large codebase cold, every review loop, triaging findings, reproducing evidence. Never writes the code |
+| Sonnet 5.5 high | **deciding**: planning, design, diagnosis, reading a large codebase cold. Reviews and verification use the `skills/HOSTS.md` reviewer mapping. Never writes the code |
 
 Test: writes code, medium; plans or diagnoses, high. Reviews, review-findings triage and independent
 verification use the host reviewer mapping in `skills/HOSTS.md`; prescribed mechanical checks keep
