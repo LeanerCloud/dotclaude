@@ -5,6 +5,15 @@
 // The heavy cap is honour-system: FLEET_HEAVY_HELD is an ordinary environment variable, so any
 // process that sets it (or clears its inherited copy) can run without a slot. It stops accidental
 // self-deadlock in nested `fleet heavy` calls, not a hostile or careless caller.
+//
+// The flock belongs to the fleet process, not to the child it runs: the lock file is close-on-exec,
+// so kill -9 of fleet releases the slot while an orphaned child keeps running, and a later job can
+// then run beside it (reproduced: 3 heavy children on 2 slots). Passing the descriptor to the child
+// through ExtraFiles would keep the slot for the child's life, but every descendant inherits it
+// too, so a daemon the build starts (an ssh ControlPersist master, a gradle or bazel server) would
+// hold the slot for hours with no way to find it, and the timeout-based waiters would stall behind
+// it. Losing the cap after a SIGKILL of fleet is the lesser failure, so it is accepted. The orphan
+// is bounded by what it was already running, and fleet itself cleans up on every other exit path.
 package lock
 
 import (
