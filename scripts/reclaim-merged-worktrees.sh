@@ -422,16 +422,16 @@ secret_name() {
   return 1
 }
 
-# decl_valid <line>: an exact repo-relative file path, no glob characters, no dot components.
+# decl_valid <line>: an exact repo-relative path of safe characters only; git quotes other names in status output, which would defeat the exact match.
 decl_valid() {
-  local IFS=/ c
+  local IFS=/ c LC_ALL=C
   case "$1" in
-    *'*'* | *'?'* | *'['* | *']'* | *$'\\'* | *$'\r'* | /* | ./* | */ | *//*) return 1 ;;
+    *[!A-Za-z0-9._@+/-]* | /* | ./* | */ | *//*) return 1 ;;
   esac
   set -f
   for c in $1; do
     case "$c" in
-      . | .. | .git) set +f; return 1 ;;
+      . | .. | .[Gg][Ii][Tt]) set +f; return 1 ;;
     esac
   done
   set +f
