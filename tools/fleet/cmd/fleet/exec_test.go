@@ -557,3 +557,67 @@ func TestNoTerminalGroupChangeOnPty(t *testing.T) {
 		t.Fatal("pty session hung")
 	}
 }
+
+// Asking whether stdin is a terminal must not change how stdin is read.
+func TestIsTTYKeepsNonblockingMode(t *testing.T) {
+	t.Parallel()
+	var fds [2]int
+	if err := syscall.Pipe(fds[:]); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = syscall.Close(fds[1]) }()
+	if err := syscall.SetNonblock(fds[0], true); err != nil {
+		t.Fatal(err)
+	}
+	f := os.NewFile(uintptr(fds[0]), "pipe")
+	defer func() { _ = f.Close() }()
+	if isTTY(f) {
+		t.Fatal("a pipe is not a terminal")
+	}
+	flags, _, errno := syscall.Syscall(syscall.SYS_FCNTL, uintptr(fds[0]), syscall.F_GETFL, 0)
+	if errno != 0 {
+		t.Fatal(errno)
+	}
+	if flags&syscall.O_NONBLOCK == 0 {
+		t.Fatal("isTTY switched a non-blocking descriptor to blocking")
+	}
+}
+
+// A pty slave that is not the caller's controlling terminal is still a terminal: giving it Setpgid
+// risks SIGTTIN. The helper runs fleet in a new session with no controlling terminal and the slave
+// as stdin; the child must stay in fleet's process group.
+const noCttyHelper = `import os, pty, subprocess, sys
+master, slave = pty.openpty()
+p = subprocess.Popen([sys.argv[1], "heavy", "--", "sh", "-c", "ps -o pgid= -p $$"], stdin=slave,
+                     stdout=subprocess.PIPE, start_new_session=True)
+out = p.communicate()[0].decode().strip()
+print(p.pid, out)
+sys.exit(p.returncode)
+`
+
+func TestNonControllingTerminalStdinKeepsCallersGroup(t *testing.T) {
+	t.Parallel()
+	py, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 not found: the pty regression test needs it")
+	}
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, _, _ := testEnv(t, 1)
+	hp := filepath.Join(t.TempDir(), "noctty_helper.py")
+	if err := os.WriteFile(hp, []byte(noCttyHelper), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c := exec.Command(py, "-I", hp, self)
+	c.Env = append(append([]string(nil), e.environ...), "FLEET_TEST_AS_FLEET=1", "HOME="+e.home)
+	out, err := c.Output()
+	if err != nil {
+		t.Fatalf("helper: %v", err)
+	}
+	f := strings.Fields(string(out))
+	if len(f) != 2 || f[0] != f[1] {
+		t.Fatalf("fleet pid and child pgid differ, so the child was moved to its own group: %q", out)
+	}
+}

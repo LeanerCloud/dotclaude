@@ -252,11 +252,24 @@ func newChild(e env, argv []string, heavy bool) *exec.Cmd {
 	return c
 }
 
-// isTTY reports whether f is a terminal, by asking for its foreground process group.
+// isTTY reports whether f is a terminal, by asking for its window size, which any terminal answers
+// and anything else refuses with ENOTTY. TIOCGPGRP would answer ENOTTY for a terminal that is not
+// this process's controlling one, and that stdin would then get Setpgid and a SIGTTIN risk. The
+// descriptor is borrowed through SyscallConn: f.Fd() would switch a non-blocking stdin to blocking.
 func isTTY(f *os.File) bool {
-	var pgrp int32
-	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), syscall.TIOCGPGRP, uintptr(unsafe.Pointer(&pgrp)))
-	return errno == 0
+	rc, err := f.SyscallConn()
+	if err != nil {
+		return false
+	}
+	isTerm := false
+	if err := rc.Control(func(fd uintptr) {
+		var ws [4]uint16 // struct winsize: rows, cols, xpixel, ypixel
+		_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, fd, syscall.TIOCGWINSZ, uintptr(unsafe.Pointer(&ws)))
+		isTerm = errno == 0
+	}); err != nil {
+		return false
+	}
+	return isTerm
 }
 
 // runChild runs cmd with the parent's stdio and returns its exit code. Termination signals from sigs
