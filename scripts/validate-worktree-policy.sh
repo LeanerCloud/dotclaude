@@ -27,16 +27,6 @@ fail() {
   failures=$((failures + 1))
 }
 
-read_path() {
-  local path="$1"
-
-  if [ "$mode" = staged ]; then
-    git -C "$repo_root" show ":$path"
-  else
-    cat "$repo_root/$path"
-  fi
-}
-
 assert_contains() {
   local path="$1"
   local text="$2"
