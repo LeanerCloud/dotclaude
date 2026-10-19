@@ -680,6 +680,16 @@ c44_fork_oids_bound_to_selected_repo() {
   a_out '^ask a .*fork branch ahead'; a_fremote b-a present
 }
 
+c45_fork_base_bound_to_selected_repo() {
+  mkenv c45; mkfork; mkwtf a
+  git init -q --bare -b main "$C/forks/me/repo2.git"
+  git -C "$C/main" remote add fork2 "$C/forks/me/repo2.git"
+  fadd b-a "$(tip a)" release
+  fadd b-a "$(tip a)" main me repo2
+  run_s --apply --allow-fork
+  a_out '^ask a .*release'; a_wt a present; a_local b-a present; a_fremote b-a present
+}
+
 CASES="c01_merged_clean c02_squash_tip_not_in_main c02b_tip_behind_merged_head c03_dirty c04_ignored_env
 c04b_nested_build_output_allowed_nested_env_blocked c04e_node_modules_fixtures_and_more_secret_names c03b_local_branch_moves_before_delete c03c_branch_held_by_second_worktree c04c_tracked_build_dir_and_secret_names_blocked c04d_tracked_build_dir_with_ignored_output_blocked c05_plan_symlink_only c05b_plan_md_not_a_plan_symlink c06_extra_commits c07_fork_pr_same_name
 c08_remote_ahead c08b_remote_moves_before_push c09_open_pr_head c10_stacked_open_base c11_live_cwd_prefix_and_symlink c12_plan_liveness
@@ -690,7 +700,7 @@ c25_fork_pr_without_flag c26_fork_tip_is_head c27_fork_tip_behind_head c28_fork_
 c30_fork_stash_blocks c30b_fork_stash_on_other_branch_does_not_block c31_fork_keeps_same_named_origin_branch
 c32_fork_third_party_owner c33_fork_null_head_repository c34_fork_without_local_remote c35_fork_remote_ahead
 c36_fork_match_beside_same_repo_row c37_fork_https_remote_uppercase_owner c38_fork_local_branch_without_worktree
-c39_fork_open_pr_same_head_name c40_fork_pr_head_not_fetchable c41_unknown_flag c42_gh_user_failure_aborts_only_with_flag c43_fork_remote_moves_before_push c44_fork_oids_bound_to_selected_repo"
+c39_fork_open_pr_same_head_name c40_fork_pr_head_not_fetchable c41_unknown_flag c42_gh_user_failure_aborts_only_with_flag c43_fork_remote_moves_before_push c44_fork_oids_bound_to_selected_repo c45_fork_base_bound_to_selected_repo"
 
 for t in $CASES; do
   if [ $# -gt 0 ]; then

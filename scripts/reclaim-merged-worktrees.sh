@@ -194,7 +194,7 @@ EOF
 classify() {
   local name="$1" br="$2" tip="$3" head oid base num cross fowner fname matched=0 fetch_failed=0
   local any=0 same=0 base_ok=0 fork_cand=0 fork_matched=0 fork_base_ok=0
-  local frem='' fork_why='' fork_other_base='' other_base='' fork_rows='' fork_slug='' fs fo
+  local frem='' fork_why='' fork_other_base='' other_base='' fork_rows='' fork_hits='' fork_slug='' fs fo fb
   MATCH_OIDS=
   FORK_OIDS=
   FORK_REMOTE=
@@ -222,7 +222,8 @@ classify() {
       if [ "$tip" = "$oid" ] || G merge-base --is-ancestor "$tip" "$oid" 2>/dev/null; then
         fork_matched=1
         if [ -z "$FORK_REMOTE" ]; then FORK_REMOTE="$frem"; fork_slug="$fowner/$fname"; fi
-        if [ "$base" = "$DEFAULT_BRANCH" ]; then fork_base_ok=1; else fork_other_base="$base"; fi
+        fork_hits="$fork_hits$fowner/$fname $base
+"
       fi
       continue
     fi
@@ -255,6 +256,12 @@ classify() {
       [ "$fs" != "$fork_slug" ] || FORK_OIDS="$FORK_OIDS $fo"
     done <<EOF
 $fork_rows
+EOF
+    while read -r fs fb; do
+      [ "$fs" = "$fork_slug" ] || continue
+      if [ "$fb" = "$DEFAULT_BRANCH" ]; then fork_base_ok=1; else fork_other_base="$fb"; fi
+    done <<EOF
+$fork_hits
 EOF
     matched=1
     base_ok="$fork_base_ok"
