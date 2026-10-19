@@ -12,14 +12,15 @@ Multi-commit or long-running work, and any work in a checkout another session ma
 ## Preconditions and creation
 
 - **Precondition: the plan has passed the §1 review gate** (2 adversarial passes, acted on). The worktree is the commitment to implement; while the plan is still being revised, stay on the base branch.
-- **Durable root**: `~/.claude/worktrees/<repo-name>-<slug>` (`<repo-name>` is the main checkout's directory name). Never under `/tmp`, `$TMPDIR` or another directory cleared at reboot.
+- **Durable root**: `~/.claude/worktrees/` (`<repo-name>` is the main checkout's directory name). Never under `/tmp`, `$TMPDIR` or another directory cleared at reboot.
+- **New PR worktree names**: with a linked issue, use `<repo-name>-issue-<issue-number>-<slug>`. For multiple issues, use the primary issue being implemented and list the others in the plan and PR. With no associated issue, use `<repo-name>-no-issue-<slug>`, including work started before a PR exists; keep that name after creating the PR. Existing worktrees keep their paths, including during recovery.
 - **Record the base branch** (the branch checked out at task start) in the plan; that is what you rebase onto. A `main`/protected base still gets a worktree.
 - **Create after the review gate, before the first commit**:
   ```bash
   mkdir -p "$HOME/.claude/worktrees"
-  git worktree add "$HOME/.claude/worktrees/<repo-name>-<slug>" -b <type>/<slug> <base-branch>
+  git worktree add "$HOME/.claude/worktrees/<repo-name>-issue-<issue-number>-<slug>" -b <type>/<slug> <base-branch>
   ```
-  `<type>` is a conventional-commit type, `<slug>` short kebab-case. All implementation, commits, tests and reviews run inside the worktree.
+  This example has a linked issue; for no-issue work, use `<repo-name>-no-issue-<slug>` instead. `<type>` is a conventional-commit type, `<slug>` short kebab-case. All implementation, commits, tests and reviews run inside the worktree.
 
 ## Persisting the plan
 
@@ -29,7 +30,7 @@ Write the authoritative plan to `~/.claude/projects/<project>/plans/<slug>.md` (
 
 ```yaml
 ---
-worktree: /absolute/path/to/.claude/worktrees/<repo-name>-<slug>
+worktree: /absolute/path/to/.claude/worktrees/<repo-name>-issue-<issue-number>-<slug>
 base_branch: <base-branch>
 feature_branch: <type>/<slug>
 started: <ISO-8601 timestamp>

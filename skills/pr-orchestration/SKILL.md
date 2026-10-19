@@ -36,7 +36,9 @@ Owned elsewhere, cross-referenced not restated:
 | Cron routines, RemoteTrigger bodies, run budget | `skills/issue-pr-autopilot/SKILL.md` |
 
 Paths use placeholders: `<repo>` main checkout, `<repo-name>` its directory name, `<wt>` a durable
-worktree at `$HOME/.claude/worktrees/<repo-name>-<slug>`. Never put a worktree that carries
+worktree at `$HOME/.claude/worktrees/<repo-name>-issue-<issue-number>-<slug>` for issue-linked work.
+Choose new directory names with the `worktrees` skill, including its no-issue fallback; preserve
+existing worktree paths. Never put a worktree that carries
 implementation or plan state under `/tmp`, `$TMPDIR`, or another reboot-cleared directory.
 
 ---
