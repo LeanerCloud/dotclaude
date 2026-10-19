@@ -39,8 +39,10 @@ var scrubRules = []rule{
 // assignmentRule runs after the entropy rule, so values it already redacted (they start with "[") and
 // the AWS secret key forms keep their more specific labels. It redacts the value of NAME=value or
 // NAME: value when NAME ends in password, passwd, passphrase, secret, token or api key; prose such as
-// "password reset" or "token bucket" has no "=" or ":" after the keyword and is left alone.
-var assignmentRule = regexp.MustCompile(`(?i)([A-Za-z0-9_]*(?:password|passwd|passphrase|secret|token|api[_-]?key)["']?[ \t]*[=:][ \t]*["']?)[^\s\["']+`)
+// "password reset" or "token bucket" has no "=" or ":" after the keyword and is left alone. A value
+// cannot start with "=", so Go operators (":=", "==") and "!=", "<=", ">=" are not assignments.
+// Prose such as "secret: see vault" is over-redacted on purpose: dropping a word costs less than a leak.
+var assignmentRule = regexp.MustCompile(`(?i)([A-Za-z0-9_]*(?:password|passwd|passphrase|secret|token|api[_-]?key)["']?[ \t]*[=:][ \t]*["']?)[^\s\["'=]+`)
 
 var (
 	// tokenRE deliberately excludes "~", so a home-relative path or "~secret" splits at the tilde.
@@ -63,12 +65,16 @@ var (
 // entropy rule (40-character keys containing "+" or "/", such as AWS secret access keys, have their
 // own rule; the prefix rules catch most vendor tokens).
 //
-// Beyond the prefix rules, Scrub redacts Slack, npm, Stripe and Google API keys, "Authorization: Basic"
-// credentials, the password in "scheme://user:password@host", and the value of NAME=value or NAME: value
-// when NAME ends in password, passwd, passphrase, secret, token or api key. Remaining gaps: URL
-// passwords containing "/" or "@", assignments under other names (DB_PASS, client_secret_value, a bare
-// "key="), only the first word of a quoted value with spaces, and Basic credentials sent without an
-// "Authorization:" prefix.
+// Beyond the prefix rules, Scrub redacts Slack, npm, Stripe (sk_) and Google AIza API keys,
+// "Authorization: Basic" credentials, the password in "scheme://user:password@host", and the value of
+// NAME=value or NAME: value when NAME ends in password, passwd, passphrase, secret, token or api key.
+//
+// Remaining gaps: Slack webhook URLs, Stripe rk_live_ and whsec_ keys, Google ya29. OAuth tokens,
+// Cookie: headers, "://token@host" (Sentry-style) and "://:password@host" URLs, "curl -u user:password",
+// "--password value" flags, "mysql -pPASSWORD", assignments under other names (private_key=, pwd=,
+// DB_PASS, client_secret_value, a bare "key="), values starting with "=", only the first word of a
+// quoted value with spaces, Basic credentials without an "Authorization:" prefix, and URL passwords
+// containing "/" or "@" (the part after the first such character stays visible).
 func Scrub(s string) string {
 	for _, r := range scrubRules {
 		repl := r.repl

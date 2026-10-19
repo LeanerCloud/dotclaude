@@ -332,7 +332,13 @@ func TestHandoffFormatRejectsPathClaims(t *testing.T) {
 	for _, repo := range []string{"../x", "..", ".", "a/b"} {
 		h := &Handoff{Slot: "a", NextAction: "x", Claims: []Claim{{ClaimPR, repo, 1}}}
 		if _, err := h.Format(); err == nil {
-			t.Errorf("repo %q: want error", repo)
+			t.Errorf("pr repo %q: want error", repo)
+		}
+	}
+	for _, repo := range []string{"../..", "./.", "o/.."} {
+		h := &Handoff{Slot: "a", NextAction: "x", Claims: []Claim{{ClaimIssue, repo, 1}}}
+		if _, err := h.Format(); err == nil {
+			t.Errorf("issue repo %q: want error", repo)
 		}
 	}
 }
@@ -351,6 +357,10 @@ func TestParseClaim(t *testing.T) {
 		{"claim-pr-cli.txt", Claim{}, false},
 		{"pr a/b#1", Claim{}, false},
 		{"claim-pr-../../etc-1.txt", Claim{}, false},
+		{"issue ../..#1", Claim{}, false},
+		{"issue ./.#1", Claim{}, false},
+		{"issue o/..#1", Claim{}, false},
+		{"issue o/.r#1", Claim{ClaimIssue, "o/.r", 1}, true},
 		{"claim-pr-..-1.txt", Claim{}, false},
 		{"claim-pr-.-1.txt", Claim{}, false},
 		{"claim-pr-a/b-1.txt", Claim{}, false},
@@ -511,6 +521,11 @@ func TestScrub(t *testing.T) {
 		{"token colon", "token: abc123 end", "token: [REDACTED:assignment] end"},
 		{"json password", `{"password":"hunter2"}`, `{"password":"[REDACTED:assignment]"}`},
 		// False-positive guards.
+		{"go define", "token := strings.TrimSpace(tok)", "token := strings.TrimSpace(tok)"},
+		{"go equals", `if token == "" {`, `if token == "" {`},
+		{"go not equals", `if secret != nil {`, `if secret != nil {`},
+		{"go ge le", "if token >= 3 || password <= 1 {", "if token >= 3 || password <= 1 {"},
+		{"prose colon over-redacted", "secret: see vault", "secret: [REDACTED:assignment] vault"},
 		{"password prose", "password reset requested", "password reset requested"},
 		{"token bucket", "the token bucket refills", "the token bucket refills"},
 		{"max tokens", "max_tokens=100", "max_tokens=100"},
