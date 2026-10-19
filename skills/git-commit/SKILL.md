@@ -22,7 +22,7 @@ The rule is `AGENTS.md` section Git (repo init at task start). In short:
 
 - **Conventional commits**: `type(scope): subject`, e.g. `feat(auth): add OAuth2 login`, `fix(api): handle nil pointer on empty response`. Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf`, `ci`, `build`. Scope optional (omit in small repos). Enables changelog/release notes (`infra-ops` CI/CD).
 - Subject: imperative, lowercase, no trailing period, <=72 chars. Body (when needed): bullets on the *why*, wrapped at 72.
-- **NEVER** mention Anthropic or Claude in commit messages (no Co-Authored-By lines).
+- Keep the harness-supplied attribution trailer (for example `Co-Authored-By: Claude ... <noreply@anthropic.com>`) as the last line of the commit message; do not add other AI mentions.
 - **No heredocs for `git commit -m`** (`$(cat <<'EOF' ...)` triggers approval prompts and breaks pre-commit hooks that stash unstaged changes). For each commit **`Write` a fresh file** under `/tmp/claude/` (`mkdir -p /tmp/claude` first; rationale in `tool-usage` § "Two script locations by lifetime"), commit with `git commit -F <path>`, then `rm` that file.
   - Use a unique name per commit (`/tmp/claude/commit-<short-subject>.txt` or timestamped). `Write` echoes the content, so no separate `Read`. Never `Edit` an existing message file; always `Write` a new one.
 

@@ -213,8 +213,8 @@ Verify each finding against current code; fix only still-valid issues, skip the 
    highest-severity finding, stash-verify (stash the prod change, run the test, confirm failure, pop).
    Green tests are NOT proof (AGENTS.md §4): trace the real end-to-end path after fixing. For a
    finding a prior "fix" already claimed to resolve, verify adversarially against the committed code.
-4. Atomic commits per file or concern, `type(scope): subject`. NO `Co-Authored-By: claude-flow`; NO
-   Anthropic/Claude mentions; NO em-dashes. Write the message to a unique file under `/tmp/claude/`
+4. Atomic commits per file or concern, `type(scope): subject`. NO `Co-Authored-By: claude-flow`; keep the
+   harness attribution trailer; NO em-dashes. Write the message to a unique file under `/tmp/claude/`
    and `git commit -F <path>`. NO heredoc `-m`.
 5. Verify before push (all must pass): `gofmt -l ./...`, `go vet ./...`, `go build ./...`,
    `go test ./<touched-pkg>/... -count=1`; frontend `npm test` + `npx tsc --noEmit` if touched.
@@ -293,8 +293,8 @@ Global rules (commit format, pre-commit, em-dashes, self-merge, push lock, label
   base branch, find the closing issue via the body-reference detection above, not
   `closingIssuesReferences`.
 - NEVER edit a runtime-injected attribution footer (`Generated with Claude Code` /
-  `claude.ai/code/session...`) out of a PR body you touch; the runtime adds it on purpose. The
-  no-Claude-mention rule covers commit messages.
+  `claude.ai/code/session...`) out of a PR body you touch; the runtime adds it on purpose. Commit
+  messages likewise keep the harness attribution trailer.
 - ALWAYS wrap `gh` / `git` network calls in a small retry loop (a few attempts, short sleep);
   transient TLS-handshake / i-o timeouts must not abort a run.
 - In a constrained/remote runtime (no subagent tool): do NOT spawn watchers or subagents; rely on the

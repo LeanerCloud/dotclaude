@@ -51,7 +51,7 @@ a. Read the issue fully (gh issue view <n>) and the conventions from both repos.
 b. Decide if it is plannable. If ambiguous, under-specified, needs a human design decision, security-sensitive in an irreversible way, or too large for one focused PR -> SKIP it (no branch, no label) and log the reason. Never guess on irreversible design choices.
 c. SLUG=<short kebab slug of the title>. Branch off base: git fetch origin main && git switch -c auto/<issue#>-$SLUG origin/main
 d. Write the plan to plan.md at the repo root: atomic tasks with explicit file paths, each independently verifiable; what changes, where, and how to prove it works (build/lint/test commands); call out reuse of existing helpers and the blast radius. This file is a SCRATCH artifact - the worker will erase it from history before opening the PR, so it never ships.
-e. Commit the plan as the branch's FIRST commit. Write the message to a temp file and commit via -F (NEVER heredoc -m): printf 'chore(autopilot): plan for #<issue>\n' > /tmp/planmsg.txt && git add plan.md && git commit -F /tmp/planmsg.txt
+e. Commit the plan as the branch's FIRST commit. Write the message to a temp file and commit via -F (NEVER heredoc -m), replacing `<harness attribution trailer>` with the real trailer line the harness supplies, so it is the message's last line: printf 'chore(autopilot): plan for #<issue>\n\n<harness attribution trailer>\n' > /tmp/planmsg.txt && git add plan.md && git commit -F /tmp/planmsg.txt
 f. Push the branch: git push -u origin auto/<issue#>-$SLUG (push ONLY this auto/ branch; never push base or main).
 g. Post the parseable marker comment on the issue, EXACTLY this line as its own line (the worker greps for it): gh issue comment <issue> --body "autopilot-branch: auto/<issue#>-$SLUG"
 h. Claim LAST: gh issue edit <issue> --add-label plan-ready
@@ -59,7 +59,7 @@ If any step (c-g) fails, do NOT add plan-ready (so the issue stays eligible for 
 
 ## GLOBAL HARD CONSTRAINTS (non-negotiable)
 - NO em-dashes (U+2014) anywhere - chat, plan.md, commits, comments. Use commas/hyphens/colons.
-- NO Anthropic/Claude mentions and NO 'Co-Authored-By: claude-flow' in commits or comments.
+- Keep the harness attribution trailer; NO 'Co-Authored-By: claude-flow' in commits or comments.
 - git commit -F, never heredoc -m; never --no-verify; never --yes on project CLIs.
 - Only ever push the issue's own auto/<issue#>-<slug> branch; never push main.
 - You do PLANNING ONLY: never implement code, never open a PR, never trigger or respond to CodeRabbit, never add pr-created/pr-merged. Those are the worker routine's job.
