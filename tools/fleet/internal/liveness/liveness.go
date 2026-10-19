@@ -143,7 +143,7 @@ func Evaluate(cfg Config, now time.Time, inputs []Input, mem Memory) (Result, Me
 		switch {
 		case !seen || gap:
 			sm = SlotMemory{Seq: a.StateChangeSeq, Revision: a.Revision, Progress: now, Acted: sm.Acted, ActedSeq: sm.ActedSeq,
-				Blocked: sm.Blocked, BlockedSeq: sm.BlockedSeq}
+				Blocked: sm.Blocked, BlockedSeq: sm.BlockedSeq, Sent: sm.Sent}
 		case sm.Seq != a.StateChangeSeq || sm.Revision != a.Revision:
 			sm.Seq, sm.Revision, sm.Progress, sm.HangReported = a.StateChangeSeq, a.Revision, now, false
 		}
