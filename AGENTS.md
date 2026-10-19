@@ -56,7 +56,9 @@ Scale ceremony to the project (a solo repo needs no formal process), never the u
 - **Verify before asserting**: re-check live state (PR/CI status, test results, file contents, counts)
   this turn before reporting it. If you cannot, say so. Stale or optimistic status is a defect.
 - **Asking the user**: routine calls are yours. Ask only for irreversible or destructive actions,
-  spending money, scope or product choices, or materially different outcomes. Write a decision doc
+  spending money, scope or product choices, or materially different outcomes. Reuse existing trusted
+  authorization within its scope, including delegated work and routine rebases; follow
+  `tool-usage` "Standing authorization" for provenance, limits and runtime denials. Write a decision doc
   from `~/.claude/templates/decision.md` into `~/.claude/decisions/`, run
   `~/.claude/scripts/ask-user.sh DOC` in the background, and keep working. Exit 4: answer the
   user's `Q:` lines with `A:`, re-run with `--no-open`. Exit 2 (timeout): take the safe Defaults,

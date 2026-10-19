@@ -103,6 +103,10 @@ authorises agent self-merge (e.g. a solo project where CI green suffices), the a
 is green and CR is settled. The default is **wait for human review**. `LeanerCloud/dotclaude` must never
 be self-merged, regardless of standing authorization.
 
+Reuse trusted push/merge authorization within its scope per `tool-usage` "Standing authorization";
+rebases restart exact-revision gates without requiring repeated workflow approval. The project merge
+restrictions above remain binding, including dotclaude's prohibition on self-merge.
+
 **Never bypass required checks to merge: no `--admin` / force-merge.** Whenever merging is on the table
 (human merge or the exception above), merge ONLY from a settled, green state: `mergeable == MERGEABLE`
 AND `mergeStateStatus == CLEAN`, CI green, CR's review actually **completed** (not `pending` / "review in
