@@ -130,9 +130,12 @@ Never silently copy-paste; unavoidable cross-language mirrors reference each oth
 
 Multi-commit or long work, or any checkout another session may use, goes in a worktree under
 `~/.claude/worktrees/` (never `/tmp`), created only after the plan review, with the plan saved at
-`~/.claude/projects/<project>/plans/<slug>.md`. Never commit in-progress work on the branch you
-started from. Rebase, don't merge. `git submodule update` inside a worktree moves the main clone's
-submodule HEADs for every worktree. Details: `worktrees`.
+`~/.claude/projects/<project>/plans/<slug>.md`. Fetch and branch from `origin/<base-branch>`; for
+issue work, check that it is still open and no other owner has claimed or already opened a PR for it.
+Repeat the checkpoint before pushing. Never commit in-progress work on the branch you started from.
+Rebase, don't merge.
+`git submodule update` inside a worktree moves the main clone's submodule HEADs for every worktree.
+Details: `worktrees`.
 
 ### 1c. Local review loop
 
