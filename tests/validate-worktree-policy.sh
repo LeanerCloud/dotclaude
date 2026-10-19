@@ -37,8 +37,6 @@ git -C "$fixture_repo" -c commit.gpgsign=false commit -qm init
 
 passed=0
 failed=0
-xfailed=0
-unexpected=0
 unknown=0
 
 report_failure() {
@@ -72,22 +70,6 @@ run_case() {
       ;;
     violation)
       if [ "$got" = violation ]; then passed=$((passed + 1)); else report_failure "$name" "$expect" "$got" "$out"; fi
-      ;;
-    xfail-ok)
-      if [ "$got" = ok ]; then
-        xfailed=$((xfailed + 1))
-      else
-        unexpected=$((unexpected + 1))
-        printf '  RESOLVED? %s changed from the tracked xfail to %s\n' "$name" "$got" >&2
-      fi
-      ;;
-    xfail-violation)
-      if [ "$got" = violation ]; then
-        xfailed=$((xfailed + 1))
-      else
-        unexpected=$((unexpected + 1))
-        printf '  RESOLVED? %s changed from the tracked xfail to %s\n' "$name" "$got" >&2
-      fi
       ;;
     *)
       unknown=$((unknown + 1))
@@ -251,16 +233,15 @@ if bash "$fixture_repo/scripts/validate-worktree-policy.sh" --worktree >/dev/nul
   staged_failures=$((staged_failures + 1))
 fi
 
-total=$((passed + xfailed + failed + unexpected + unknown))
+total=$((passed + failed + unknown))
 if [ "$total" -ne 62 ]; then
   printf 'expected 62 parser cases, ran %d\n' "$total" >&2
   exit 1
 fi
-if [ "$failed" -gt 0 ] || [ "$unexpected" -gt 0 ] || [ "$unknown" -gt 0 ] || [ "$staged_failures" -gt 0 ]; then
-  printf '%d case(s) failed, %d tracked xfail(s) changed, %d unknown expectation(s), %d staged-mode check(s) failed\n' \
-    "$failed" "$unexpected" "$unknown" "$staged_failures" >&2
+if [ "$failed" -gt 0 ] || [ "$unknown" -gt 0 ] || [ "$staged_failures" -gt 0 ]; then
+  printf '%d case(s) failed, %d unknown expectation(s), %d staged-mode check(s) failed\n' \
+    "$failed" "$unknown" "$staged_failures" >&2
   exit 1
 fi
 
-printf 'ok: %d worktree policy cases passed, %d known gaps tracked in #115, staged/worktree divergence verified\n' \
-  "$passed" "$xfailed"
+printf 'ok: %d worktree policy cases passed, staged/worktree divergence verified\n' "$passed"
