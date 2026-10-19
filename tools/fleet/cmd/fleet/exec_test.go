@@ -29,7 +29,7 @@ func TestMain(m *testing.M) {
 		if err != nil {
 			os.Exit(1)
 		}
-		e.timeout, e.poll = 3*time.Second, 10*time.Millisecond
+		e.timeout, e.poll, e.killGrace = 3*time.Second, 10*time.Millisecond, 300*time.Millisecond
 		os.Exit(dispatch(e, os.Args[1:]))
 	}
 	os.Exit(m.Run())
@@ -619,5 +619,20 @@ func TestNonControllingTerminalStdinKeepsCallersGroup(t *testing.T) {
 	f := strings.Fields(string(out))
 	if len(f) != 2 || f[0] != f[1] {
 		t.Fatalf("fleet pid and child pgid differ, so the child was moved to its own group: %q", out)
+	}
+}
+
+// A child that ignores INT, TERM and HUP must not hold fleet and its slot forever.
+func TestSignalIgnoringChildIsKilledAfterGrace(t *testing.T) {
+	t.Parallel()
+	e, _, _ := testEnv(t, 1)
+	script := `trap "" INT TERM HUP; echo ready; sleep 30`
+	c, out := startFleet(t, e, nil, "heavy", "--", "sh", "-c", script)
+	waitLine(t, out, "ready")
+	if err := c.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	if got := exitOf(t, c); got != 128+int(syscall.SIGKILL) {
+		t.Fatalf("exit %d, want %d (killed after the grace period)", got, 128+int(syscall.SIGKILL))
 	}
 }

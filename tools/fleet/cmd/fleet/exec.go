@@ -35,6 +35,9 @@ type env struct {
 	stderr  io.Writer
 	// Zero values mean the lock package defaults.
 	timeout, poll time.Duration
+	// killGrace is how long a child gets to exit after a forwarded signal before its group is
+	// SIGKILLed; zero means defaultKillGrace.
+	killGrace time.Duration
 }
 
 func processEnv() (env, error) {
@@ -216,6 +219,10 @@ func signalExit(sig os.Signal) int {
 // pipeDrainGrace bounds how long Wait lingers on output pipes a stray grandchild still holds open.
 const pipeDrainGrace = 2 * time.Second
 
+// defaultKillGrace is how long a child may take to exit after fleet forwards INT, TERM or HUP. A
+// child that ignores all three would otherwise hold its slot, and fleet, forever.
+const defaultKillGrace = 10 * time.Second
+
 // childEnv is the child's environment. A heavy child (one that holds a slot, taken now or inherited)
 // gets exactly one FLEET_HEAVY_HELD=1 so nested `fleet heavy` calls run without taking another slot.
 // Any other child (`fleet lock`) gets the environment unchanged: an inherited marker must survive,
@@ -283,6 +290,11 @@ func runChild(e env, argv []string, heavy bool, sigs <-chan os.Signal) int {
 	}
 	grouped := c.SysProcAttr != nil && c.SysProcAttr.Setpgid
 	pgid := c.Process.Pid // Setpgid made the child its group's leader
+	grace := e.killGrace
+	if grace <= 0 {
+		grace = defaultKillGrace
+	}
+	var escalate *time.Timer
 	done, forwarded := make(chan struct{}), make(chan struct{})
 	go func() {
 		defer close(forwarded)
@@ -296,7 +308,19 @@ func runChild(e env, argv []string, heavy bool, sigs <-chan os.Signal) int {
 				case ok:
 					_ = c.Process.Signal(s)
 				}
+				if ok && escalate == nil {
+					escalate = time.AfterFunc(grace, func() {
+						if grouped {
+							_ = syscall.Kill(-pgid, syscall.SIGKILL)
+						} else {
+							_ = c.Process.Kill()
+						}
+					})
+				}
 			case <-done:
+				if escalate != nil {
+					escalate.Stop()
+				}
 				return
 			}
 		}
