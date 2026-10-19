@@ -103,9 +103,10 @@ merge order. Serialize stacks (#A -> #B rebased on #A -> #C rebased on #B), one 
 
 ### Collision and lock concerns
 
-1. Worktree paths are per PR (`"$HOME/.claude/worktrees/<repo-name>-<slug>"`, `<repo-name>` = the
-   checkout's directory name). Never place a persistent PR worktree under `/tmp`, `$TMPDIR`, or
-   another reboot-cleared directory.
+1. Choose new worktree names with the `worktrees` skill: issue-linked work uses
+   `"$HOME/.claude/worktrees/<repo-name>-issue-<issue-number>-<slug>"`; use its no-issue fallback
+   when no issue is associated. Preserve existing paths. Never place a persistent PR worktree
+   under `/tmp`, `$TMPDIR`, or another reboot-cleared directory.
 2. The push lock `/tmp/agent-locks/<repo>-git-push-<branch-key>.lock` (`<branch-key>` = branch name
    with every `/` replaced by `-`; `flock`, or `lockf` on macOS, per `multi-agent-comms`) serializes
    every push to that PR branch, including `ci-watch` fix pushes (same lock). Different PRs push in
@@ -130,7 +131,8 @@ merge order. Serialize stacks (#A -> #B rebased on #A -> #C rebased on #B), one 
 2. Find the worktree: `git -C <repo-root> worktree list`, match by branch (path may differ). If none,
    create one off the existing remote branch (do NOT create a fresh branch):
    `git -C <repo-root> fetch origin <branch>`, `mkdir -p "$HOME/.claude/worktrees"`,
-   `git -C <repo-root> worktree add "$HOME/.claude/worktrees/<repo-name>-<slug>" <branch>`.
+   `git -C <repo-root> worktree add "$HOME/.claude/worktrees/<repo-name>-issue-<issue-number>-<slug>" <branch>`.
+   This example has a linked issue; otherwise use `<repo-name>-no-issue-<slug>` per the `worktrees` skill.
 3. Pull CR signal into `/tmp/claude/`:
    ```
    gh api repos/<owner>/<repo>/pulls/<N>/reviews \
