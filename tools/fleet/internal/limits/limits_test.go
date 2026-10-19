@@ -273,6 +273,31 @@ func TestCodexEntryFailsClosedOnFutureReadingAndMissingReset(t *testing.T) {
 	}
 }
 
+func TestCodexEntryRejectsImplausibleResets(t *testing.T) {
+	t.Parallel()
+	obs := now.Add(-time.Minute)
+	far := &CodexLimits{Primary: &CodexWindow{UsedPercent: 100, ResetsAt: now.Add(CodexMaxResetAhead + time.Hour)}, ObservedAt: obs, HasCredits: true}
+	if e := far.Entry(now); e.Kind != Throttled || !e.Until.Equal(now.Add(UnparsedWait)) {
+		t.Fatalf("a reset beyond CodexMaxResetAhead must fall back to UnparsedWait, got %+v", e)
+	}
+	weekly := &CodexLimits{Primary: &CodexWindow{UsedPercent: 100, ResetsAt: now.Add(7 * 24 * time.Hour)}, ObservedAt: obs, HasCredits: true}
+	if e := weekly.Entry(now); !e.Until.Equal(now.Add(7 * 24 * time.Hour)) {
+		t.Fatalf("a weekly reset is plausible, got %+v", e)
+	}
+	// End to end with the corrupt value from the field.
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "rollout-a.jsonl"), []byte(codexEvent(obs, 100, 99999999999999999)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	lim, err := ReadCodexRateLimits(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := lim.Entry(now); e.Kind != Throttled || !e.Until.Equal(now.Add(UnparsedWait)) {
+		t.Fatalf("a corrupt resets_at must throttle for UnparsedWait only, got %+v", e)
+	}
+}
+
 func TestCodexReadsOnlyNewestDayAndTail(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
