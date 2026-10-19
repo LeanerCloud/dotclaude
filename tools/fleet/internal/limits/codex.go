@@ -213,8 +213,9 @@ func lastRateLimits(path string) (*CodexLimits, error) {
 // Entry converts the limits into an availability entry. A reading older than CodexMaxAge (or with
 // no timestamp, or one in the future) says nothing about now, so it is unknown. Otherwise a window at
 // 100% throttles the harness until the latest such reset still ahead of now; a window whose reset has
-// passed no longer counts. A full window with no (or an implausibly distant) reset time throttles for UnparsedWait. With no windows and no credits (the subscription is not metering and there is nothing to
-// spend) the harness is exhausted. Anything else is ok as of now.
+// passed no longer counts. A full window with no (or an implausibly distant) reset time throttles for
+// UnparsedWait. With no windows and no credits (the subscription is not metering and there is nothing
+// to spend) the harness is exhausted. Anything else is ok as of now.
 func (c *CodexLimits) Entry(now time.Time) Entry {
 	if c.ObservedAt.IsZero() || c.ObservedAt.After(now) || now.Sub(c.ObservedAt) > CodexMaxAge {
 		return Entry{Kind: Unknown, Reason: "codex rate_limits reading is stale"}
