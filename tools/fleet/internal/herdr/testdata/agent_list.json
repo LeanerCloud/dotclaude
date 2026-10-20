@@ -1,0 +1,150 @@
+{
+  "id": "cli:agent:list",
+  "result": {
+    "agents": [
+      {
+        "agent": "claude",
+        "agent_session": {
+          "agent": "claude",
+          "kind": "id",
+          "source": "herdr:claude",
+          "value": "00000000-0000-4000-8000-000000000000"
+        },
+        "agent_status": "working",
+        "cwd": "~/devel/AztecCraft",
+        "focused": false,
+        "foreground_cwd": "~/devel/AztecCraft",
+        "interactive_ready": true,
+        "name": "claude-azteccraft",
+        "pane_id": "w1:p48",
+        "revision": 3,
+        "state_change_seq": 1822,
+        "tab_id": "w1:t48",
+        "terminal_id": "term_fake0",
+        "terminal_title": "◑ claude-azteccraft",
+        "terminal_title_stripped": "claude-azteccraft",
+        "workspace_id": "w1"
+      },
+      {
+        "agent": "claude",
+        "agent_session": {
+          "agent": "claude",
+          "kind": "id",
+          "source": "herdr:claude",
+          "value": "00000000-0000-4000-8000-000000000001"
+        },
+        "agent_status": "blocked",
+        "cwd": "~/devel/cloud-commitments/cloud-commitments-platform",
+        "focused": false,
+        "foreground_cwd": "~/devel/cloud-commitments/cloud-commitments-platform",
+        "interactive_ready": true,
+        "name": "claude-cc-631",
+        "pane_id": "w1:p49",
+        "revision": 3,
+        "state_change_seq": 1904,
+        "tab_id": "w1:t49",
+        "terminal_id": "term_fake1",
+        "terminal_title": "✳ claude-cc-631",
+        "terminal_title_stripped": "claude-cc-631",
+        "workspace_id": "w1"
+      },
+      {
+        "agent": "claude",
+        "agent_session": {
+          "agent": "claude",
+          "kind": "id",
+          "source": "herdr:claude",
+          "value": "00000000-0000-4000-8000-000000000002"
+        },
+        "agent_status": "done",
+        "completion_seq": 437,
+        "cwd": "~/devel/cloud-commitments/cloud-commitments-platform",
+        "focused": false,
+        "foreground_cwd": "~/devel/cloud-commitments/cloud-commitments-platform",
+        "interactive_ready": true,
+        "name": "claude-cc-archera",
+        "pane_id": "w1:p4A",
+        "revision": 2,
+        "state_change_seq": 437,
+        "tab_id": "w1:t4A",
+        "terminal_id": "term_fake2",
+        "terminal_title": "✳ claude-cc-archera",
+        "terminal_title_stripped": "claude-cc-archera",
+        "workspace_id": "w1"
+      },
+      {
+        "agent": "claude",
+        "agent_session": {
+          "agent": "claude",
+          "kind": "id",
+          "source": "herdr:claude",
+          "value": "00000000-0000-4000-8000-000000000003"
+        },
+        "agent_status": "done",
+        "completion_seq": 722,
+        "cwd": "~/devel/cloud-commitments/cloud-commitments-platform",
+        "focused": false,
+        "foreground_cwd": "~/devel/cloud-commitments/cloud-commitments-platform",
+        "interactive_ready": true,
+        "name": "claude-cc-misc",
+        "pane_id": "w1:p4B",
+        "revision": 3,
+        "state_change_seq": 722,
+        "tab_id": "w1:t4B",
+        "terminal_id": "term_fake3",
+        "terminal_title": "✳ claude-cc-misc",
+        "terminal_title_stripped": "claude-cc-misc",
+        "workspace_id": "w1"
+      },
+      {
+        "agent": "claude",
+        "agent_session": {
+          "agent": "claude",
+          "kind": "id",
+          "source": "herdr:claude",
+          "value": "00000000-0000-4000-8000-000000000004"
+        },
+        "agent_status": "done",
+        "completion_seq": 1978,
+        "cwd": "~/devel/AztecCraft",
+        "focused": false,
+        "foreground_cwd": "~/devel/AztecCraft",
+        "interactive_ready": true,
+        "name": "claude-azteccraft-maya-ui",
+        "pane_id": "w1:p4D",
+        "revision": 3,
+        "state_change_seq": 1978,
+        "tab_id": "w1:t4D",
+        "terminal_id": "term_fake4",
+        "terminal_title": "✳ Maya 2026 UI parity",
+        "terminal_title_stripped": "Maya 2026 UI parity",
+        "workspace_id": "w1"
+      },
+      {
+        "agent": "claude",
+        "agent_session": {
+          "agent": "claude",
+          "kind": "id",
+          "source": "herdr:claude",
+          "value": "00000000-0000-4000-8000-000000000005"
+        },
+        "agent_status": "done",
+        "completion_seq": 1949,
+        "cwd": "~/devel/cloud-commitments/cloud-commitments-platform",
+        "focused": false,
+        "foreground_cwd": "~/devel/cloud-commitments/cloud-commitments-platform",
+        "interactive_ready": true,
+        "name": "claude-cc-pr-merge",
+        "pane_id": "w1:p4E",
+        "revision": 2,
+        "state_change_seq": 1949,
+        "tab_id": "w1:t4E",
+        "terminal_id": "term_fake5",
+        "terminal_title": "✳ Cloud commitments platform PR merge driver",
+        "terminal_title_stripped": "Cloud commitments platform PR merge driver",
+        "workspace_id": "w1"
+      }
+    ],
+    "type": "agent_list"
+  }
+}
