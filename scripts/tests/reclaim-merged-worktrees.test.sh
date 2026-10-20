@@ -26,6 +26,12 @@ cat > "$ROOT/bin/gh" <<'EOF'
 d="${FAKE_GH_DIR:?}"
 echo "$*" >> "$d/calls.log"
 [ -f "$d/fail" ] && { echo "gh: simulated failure" >&2; exit 1; }
+if [ "$1" = api ]; then
+  [ -f "$d/api_fail" ] && { echo "gh: simulated api failure" >&2; exit 1; }
+  [ "$2" = user ] && [ "$3" = --jq ] && [ "$4" = .login ] || { echo "gh: bad api args" >&2; exit 1; }
+  if [ -f "$d/user" ]; then cat "$d/user"; else echo me; fi
+  exit 0
+fi
 if [ "$1" = repo ]; then
   # real gh: `repo view` takes the repo positionally and has no -R flag
   [ "$2" = view ] && [ "$3" = test/repo ] && ! printf '%s\n' "$*" | grep -q -- ' -R ' || { echo "gh: bad repo view args" >&2; exit 1; }
@@ -87,11 +93,32 @@ mkbranch() { # name: branch without worktree, pushed
 
 tip() { git -C "$C/main" rev-parse "refs/heads/b-$1"; }
 
-add_merged() { # branch oid [base] [cross] [number]
+add_merged() { # branch oid [base] [cross] [number] [head-owner] [head-repo]
   SEQ=$((SEQ + 1))
   jq --arg h "$1" --arg o "$2" --arg b "${3:-main}" --argjson c "${4:-false}" --argjson n "${5:-$SEQ}" \
-    '. + [{headRefName:$h,headRefOid:$o,baseRefName:$b,isCrossRepository:$c,number:$n}]' \
+    --arg ro "${6:-}" --arg rn "${7:-}" \
+    '. + [{headRefName:$h,headRefOid:$o,baseRefName:$b,isCrossRepository:$c,number:$n,
+      headRepositoryOwner:(if $ro == "" then null else {login:$ro} end),
+      headRepository:(if $rn == "" then null else {name:$rn} end)}]' \
     "$C/gh/merged.json" > "$C/gh/m.tmp" && mv "$C/gh/m.tmp" "$C/gh/merged.json"
+}
+
+mkfork() { # bare fork repo me/repo plus a local remote named fork
+  mkdir -p "$C/forks/me"
+  git init -q --bare -b main "$C/forks/me/repo.git"
+  git -C "$C/main" remote add fork "$C/forks/me/repo.git"
+}
+
+mkwtf() { # like mkwt, but pushed to the fork instead of origin
+  git -C "$C/main" worktree add -q "$C/wt/$1" -b "b-$1" main
+  echo "$1" > "$C/wt/$1/$1.txt"
+  git -C "$C/wt/$1" add "$1.txt"
+  git -C "$C/wt/$1" commit -q -m "work $1"
+  git -C "$C/wt/$1" push -q fork "b-$1"
+}
+
+fadd() { # branch oid [base] [owner] [repo]: a merged fork PR row
+  add_merged "$1" "$2" "${3:-main}" true "" "${4-me}" "${5-repo}"
 }
 
 add_open() { # head base
@@ -163,6 +190,10 @@ a_local() { # branch present|absent
 a_remote() { # branch present|absent
   if git -C "$C/origin.git" show-ref --verify --quiet "refs/heads/$1"; then [ "$2" = present ] || bad "remote $1 still exists"
   else [ "$2" = absent ] || bad "remote $1 is gone"; fi
+}
+a_fremote() { # branch present|absent
+  if git -C "$C/forks/me/repo.git" show-ref --verify --quiet "refs/heads/$1"; then [ "$2" = present ] || bad "fork $1 still exists"
+  else [ "$2" = absent ] || bad "fork $1 is gone"; fi
 }
 a_exists() { [ -e "$1" ] || bad "$1 is gone"; }
 a_missing() { [ ! -e "$1" ] || bad "$1 still exists"; }
@@ -540,12 +571,184 @@ c24_local_branch_pass() {
   a_out '^reclaimed b-a '; a_local b-a absent; a_remote b-a absent
 }
 
+c25_fork_pr_without_flag() {
+  mkenv c25; mkfork; mkwtf a; fadd b-a "$(tip a)"
+  touch "$C/gh/api_fail"
+  run_s --apply
+  a_rc 0; a_out '^ask a .*only fork PRs merged'; a_wt a present; a_local b-a present; a_fremote b-a present
+  if grep -q 'api user' "$C/gh/calls.log"; then bad "a run without the flag called gh api user"; fi
+  true
+}
+c26_fork_tip_is_head() {
+  mkenv c26; mkfork; mkwtf a; fadd b-a "$(tip a)"
+  before="$(git -C "$C/origin.git" for-each-ref)"
+  run_s --apply --allow-fork
+  a_rc 0; a_out '^reclaimed a .*deleted fork branch'; a_wt a absent; a_local b-a absent; a_fremote b-a absent
+  [ "$(git -C "$C/origin.git" for-each-ref)" = "$before" ] || bad "origin refs changed"
+}
+c27_fork_tip_behind_head() {
+  mkenv c27; mkfork; mkwtf a
+  echo more > "$C/wt/a/more.txt"; git -C "$C/wt/a" add more.txt; git -C "$C/wt/a" commit -q -m more
+  head="$(git -C "$C/wt/a" rev-parse HEAD)"
+  git -C "$C/wt/a" push -q fork b-a
+  git -C "$C/wt/a" reset -q --hard HEAD~1
+  fadd b-a "$head"
+  run_s --apply --allow-fork
+  a_out '^reclaimed a '; a_wt a absent; a_local b-a absent; a_fremote b-a absent
+}
+c28_fork_extra_commit() {
+  mkenv c28; mkfork; mkwtf a; fadd b-a "$(tip a)"
+  echo more > "$C/wt/a/more.txt"; git -C "$C/wt/a" add more.txt; git -C "$C/wt/a" commit -q -m more
+  run_s --apply --allow-fork
+  a_out '^ask a .*not at a merged PR head'; a_wt a present; a_local b-a present; a_fremote b-a present
+}
+c29_fork_non_default_base() {
+  mkenv c29; mkfork; mkwtf a; fadd b-a "$(tip a)" release
+  run_s --apply --allow-fork
+  a_out '^ask a .*release'; a_wt a present; a_fremote b-a present
+}
+c30_fork_stash_blocks() {
+  mkenv c30; mkfork; mkwtf 'x+1'; mkwtf y
+  fadd 'b-x+1' "$(tip 'x+1')"; fadd b-y "$(tip y)"
+  echo d >> "$C/wt/x+1/x+1.txt"; git -C "$C/wt/x+1" stash push -q -m m
+  echo d >> "$C/wt/y/y.txt"; git -C "$C/wt/y" stash push -q
+  run_s --apply --allow-fork
+  a_out '^blocked x\+1 .*stash entry on b-x\+1'; a_out '^blocked y .*stash entry on b-y'
+  a_wt 'x+1' present; a_wt y present; a_fremote 'b-x+1' present; a_fremote b-y present
+}
+c30b_fork_stash_on_other_branch_does_not_block() {
+  mkenv c30b; mkfork; mkwtf x.1; mkwtf x.1-2; mkwtf xy1
+  fadd b-x.1 "$(tip x.1)"
+  echo d >> "$C/wt/x.1-2/x.1-2.txt"; git -C "$C/wt/x.1-2" stash push -q -m m
+  echo d >> "$C/wt/xy1/xy1.txt"; git -C "$C/wt/xy1" stash push -q -m m
+  run_s --apply --allow-fork
+  a_out '^reclaimed x\.1 '; a_wt x.1 absent
+}
+c31_fork_keeps_same_named_origin_branch() {
+  mkenv c31; mkfork; mkwtf a; git -C "$C/wt/a" push -q origin b-a; fadd b-a "$(tip a)"
+  run_s --apply --allow-fork
+  a_out '^reclaimed a .*origin b-a kept \(fork PR\)'; a_remote b-a present; a_fremote b-a absent; a_local b-a absent
+}
+c32_fork_third_party_owner() {
+  mkenv c32; mkfork; mkwtf a; fadd b-a "$(tip a)" main bob
+  mkdir -p "$C/forks/bob"; git init -q --bare -b main "$C/forks/bob/repo.git"
+  git -C "$C/main" remote add bobfork "$C/forks/bob/repo.git"
+  run_s --apply --allow-fork
+  a_out '^ask a .*from bob, not me'; a_wt a present; a_local b-a present; a_fremote b-a present
+}
+c33_fork_null_head_repository() {
+  mkenv c33; mkfork; mkwtf a; fadd b-a "$(tip a)" main me ""
+  run_s --apply --allow-fork
+  a_out '^ask a .*no head repository'; a_wt a present; a_fremote b-a present
+}
+c34_fork_without_local_remote() {
+  mkenv c34; mkfork; mkwtf a; fadd b-a "$(tip a)" main me other
+  run_s --apply --allow-fork
+  a_out '^ask a .*no local remote'; a_wt a present; a_fremote b-a present
+}
+c35_fork_remote_ahead() {
+  mkenv c35; mkfork; mkwtf a; fadd b-a "$(tip a)"
+  git clone -q "$C/forks/me/repo.git" "$C/other" 2>/dev/null
+  git -C "$C/other" checkout -q b-a
+  echo extra > "$C/other/extra.txt"; git -C "$C/other" add extra.txt; git -C "$C/other" commit -q -m extra
+  git -C "$C/other" push -q origin b-a
+  run_s --apply --allow-fork
+  a_out '^ask a .*fork branch ahead'; a_fremote b-a present
+}
+c36_fork_match_beside_same_repo_row() {
+  mkenv c36; mkfork; mkwtf a; git -C "$C/wt/a" push -q origin b-a; same="$(tip a)"
+  echo more > "$C/wt/a/more.txt"; git -C "$C/wt/a" add more.txt; git -C "$C/wt/a" commit -q -m more
+  git -C "$C/wt/a" push -q fork b-a
+  add_merged b-a "$same"; fadd b-a "$(tip a)"
+  run_s --apply --allow-fork
+  a_out '^reclaimed a .*origin b-a kept \(fork PR\)'; a_remote b-a present; a_fremote b-a absent; a_local b-a absent
+}
+c37_fork_https_remote_uppercase_owner() {
+  mkenv c37; mkwt a; fadd b-a "$(tip a)" main Me Repo
+  git -C "$C/main" config --unset-all "url.$C/origin.git.insteadOf"
+  git -C "$C/main" remote add fork https://github.com/Me/Repo.git
+  run_s --allow-fork
+  a_out '^reclaimable a '
+  git -C "$C/main" remote set-url fork https://evil.example/me/repo.git
+  run_s --allow-fork
+  a_out '^ask a .*no local remote'
+}
+c38_fork_local_branch_without_worktree() {
+  mkenv c38; mkfork; mkwtf a; git -C "$C/main" worktree remove "$C/wt/a"; fadd b-a "$(tip a)"
+  run_s --apply --allow-fork --branch b-a
+  a_out '^reclaimed b-a '; a_local b-a absent; a_fremote b-a absent
+  mkenv c38b; mkfork; mkwtf a; git -C "$C/main" worktree remove "$C/wt/a"; fadd b-a "$(tip a)"
+  run_s --apply --allow-fork
+  a_out '^reclaimed b-a '; a_local b-a absent; a_fremote b-a absent
+}
+c39_fork_open_pr_same_head_name() {
+  mkenv c39; mkfork; mkwtf a; fadd b-a "$(tip a)"; add_open b-a main
+  run_s --apply --allow-fork
+  a_out '^skip a '; a_wt a present; a_fremote b-a present
+}
+c40_fork_pr_head_not_fetchable() {
+  mkenv c40; mkfork; mkwtf a; fadd b-a 1111111111111111111111111111111111111111
+  run_s --apply --allow-fork
+  a_out '^ask a .*fetch'; a_wt a present; a_fremote b-a present
+}
+c41_unknown_flag() {
+  mkenv c41
+  run_s --allow-forks
+  a_rc 2
+}
+c42_gh_user_failure_aborts_only_with_flag() {
+  mkenv c42; mkfork; mkwtf a; fadd b-a "$(tip a)"
+  touch "$C/gh/api_fail"
+  run_s --apply --allow-fork
+  a_rc 3; a_out 'gh api user'; a_wt a present; a_local b-a present; a_fremote b-a present
+}
+
+c43_fork_remote_moves_before_push() {
+  mkenv c43; mkfork; mkwtf a; fadd b-a "$(tip a)"
+  git clone -q "$C/forks/me/repo.git" "$C/other" 2>/dev/null
+  git -C "$C/other" checkout -q b-a
+  echo late > "$C/other/late.txt"; git -C "$C/other" add late.txt; git -C "$C/other" commit -q -m late
+  gitwrap push "$(command -v git) -C \"$C/other\" push -q origin b-a"
+  run_s --apply --allow-fork
+  EXTRA_PATH=
+  a_out '^ask a .*fork branch delete failed'; a_fremote b-a present
+  [ "$(git -C "$C/forks/me/repo.git" rev-parse refs/heads/b-a)" = "$(git -C "$C/other" rev-parse HEAD)" ] || bad "fork branch not at the moved sha"
+}
+
+c44_fork_oids_bound_to_selected_repo() {
+  mkenv c44; mkfork; mkwtf a
+  git init -q --bare -b main "$C/forks/me/repo2.git"
+  git -C "$C/main" remote add fork2 "$C/forks/me/repo2.git"
+  fadd b-a "$(tip a)"
+  echo more > "$C/wt/a/more.txt"; git -C "$C/wt/a" add more.txt; git -C "$C/wt/a" commit -q -m more
+  git -C "$C/wt/a" push -q fork b-a
+  fadd b-a "$(git -C "$C/wt/a" rev-parse HEAD)" main me repo2
+  git -C "$C/wt/a" reset -q --hard HEAD~1
+  run_s --apply --allow-fork
+  a_out '^ask a .*fork branch ahead'; a_fremote b-a present
+}
+
+c45_fork_base_bound_to_selected_repo() {
+  mkenv c45; mkfork; mkwtf a
+  git init -q --bare -b main "$C/forks/me/repo2.git"
+  git -C "$C/main" remote add fork2 "$C/forks/me/repo2.git"
+  fadd b-a "$(tip a)" release
+  fadd b-a "$(tip a)" main me repo2
+  run_s --apply --allow-fork
+  a_out '^ask a .*release'; a_wt a present; a_local b-a present; a_fremote b-a present
+}
+
 CASES="c01_merged_clean c02_squash_tip_not_in_main c02b_tip_behind_merged_head c03_dirty c04_ignored_env
 c04b_nested_build_output_allowed_nested_env_blocked c04e_node_modules_fixtures_and_more_secret_names c03b_local_branch_moves_before_delete c03c_branch_held_by_second_worktree c04c_tracked_build_dir_and_secret_names_blocked c04d_tracked_build_dir_with_ignored_output_blocked c04f_spaced_path_secret_blocked c04g_spaced_path_secret_names_blocked c04h_non_ascii_path_secret_blocked c04i_spaced_build_dir_harmless_output_reclaimed c04j_tab_and_newline_paths_no_misparse c05_plan_symlink_only c05b_plan_md_not_a_plan_symlink c06_extra_commits c07_fork_pr_same_name
 c08_remote_ahead c08b_remote_moves_before_push c09_open_pr_head c10_stacked_open_base c11_live_cwd_prefix_and_symlink c12_plan_liveness
 c13_build_dirs_report_refusals c13b_build_dirs_apply c13c_build_dir_outside_allowed_roots c13d_build_dir_canonical_git_and_cwd c14_gh_failure_aborts c15_submodule_refused_and_c17_isolation
 c16_prunable c18_branch_mode_worktree_gone c19_report_mode_changes_nothing c20_locked c21_no_pr_and_detached
-c22_non_default_base c23_pr_head_not_fetchable c24_local_branch_pass"
+c22_non_default_base c23_pr_head_not_fetchable c24_local_branch_pass
+c25_fork_pr_without_flag c26_fork_tip_is_head c27_fork_tip_behind_head c28_fork_extra_commit c29_fork_non_default_base
+c30_fork_stash_blocks c30b_fork_stash_on_other_branch_does_not_block c31_fork_keeps_same_named_origin_branch
+c32_fork_third_party_owner c33_fork_null_head_repository c34_fork_without_local_remote c35_fork_remote_ahead
+c36_fork_match_beside_same_repo_row c37_fork_https_remote_uppercase_owner c38_fork_local_branch_without_worktree
+c39_fork_open_pr_same_head_name c40_fork_pr_head_not_fetchable c41_unknown_flag c42_gh_user_failure_aborts_only_with_flag c43_fork_remote_moves_before_push c44_fork_oids_bound_to_selected_repo c45_fork_base_bound_to_selected_repo"
 
 for t in $CASES; do
   if [ $# -gt 0 ]; then
