@@ -61,7 +61,8 @@ def main() -> int:
     dry_run = parser.parse_args().dry_run
     try:
         agents = json.loads(herdr("agent", "list"))["result"]["agents"]
-    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError) as e:
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError,
+            json.JSONDecodeError, KeyError, TypeError) as e:
         print(f"herdr-wait-for-limit-reset: herdr agent list failed: {e}", file=sys.stderr)
         return 1
     blocked = [
@@ -78,7 +79,10 @@ def main() -> int:
         try:
             handle(name, dry_run)
         except (subprocess.TimeoutExpired, subprocess.CalledProcessError, RuntimeError) as e:
-            detail = (getattr(e, "stderr", None) or "").strip().splitlines()
+            err = getattr(e, "stderr", None) or ""
+            if isinstance(err, bytes):
+                err = err.decode(errors="replace")
+            detail = err.strip().splitlines()
             print(f"FAIL  {name}: {e}{': ' + detail[-1] if detail else ''}", file=sys.stderr)
             failed += 1
     return 1 if failed else 0
