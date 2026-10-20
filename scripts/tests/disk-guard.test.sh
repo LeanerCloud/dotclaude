@@ -2,17 +2,19 @@
 # Fixture suite for scripts/disk-guard.sh. Run it with /bin/bash (3.2) and the PATH bash.
 #
 #   /bin/bash scripts/tests/disk-guard.test.sh
+#   TEST_BASH=bash bash scripts/tests/disk-guard.test.sh   # run the guard under another bash
 #
-# Each case uses a fake HOME under /private/tmp/claude-501/disk-guard-tests/ and a PATH of stubs
+# Each case uses a fake HOME in a mktemp dir under $TMPDIR (removed on exit) and a PATH of stubs
 # (df, go, rm) plus system dirs. The rm stub only deletes inside the scratch tree and logs anything
 # else as BLOCKED, so a regression cannot delete real files. SCRIPT may name a mutated copy.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="${SCRIPT:-$HERE/../disk-guard.sh}"
-BASE=/private/tmp/claude-501/disk-guard-tests
-mkdir -p "$BASE" || exit 1
-ROOT="$(cd -P "$(mktemp -d "$BASE/run.XXXXXX")" && pwd -P)" || exit 1
+PREFIX="${TMPDIR:-/tmp}/disk-guard-test."
+ROOT="$(mktemp -d "${PREFIX}XXXXXX")" || exit 1
+ROOT="$(cd -P "$ROOT" && pwd -P)" || exit 1
+trap '[ -d "$ROOT" ] && case $ROOT in *"/disk-guard-test."*) /bin/rm -rf -- "$ROOT" ;; esac' EXIT
 mkdir -p "$ROOT/bin"
 
 printf '#!/bin/sh\nprintf "Filesystem 1G-blocks Used Available Capacity\\n/dev/x 500 490 10 98%%%%\\n"\n' > "$ROOT/bin/df"
@@ -75,6 +77,16 @@ case_symlink_refused() {
   [ -f "$H/target/precious" ] || bad "symlink target was deleted"
   ! grep -q BLOCKED "$ROOT/rm.log" || bad "rm called outside the scratch tree"
 }
+case_intermediate_symlink_refused() {
+  setup parent
+  rm -rf "$H/Library"; mkdir -p "$ROOT/outside.lib/Caches/golangci-lint"
+  echo x > "$ROOT/outside.lib/Caches/golangci-lint/precious"
+  ln -s "$ROOT/outside.lib" "$H/Library"
+  run_guard
+  [ -f "$ROOT/outside.lib/Caches/golangci-lint/precious" ] || bad "cache behind a symlinked Library was deleted"
+  grep -q 'resolves elsewhere, refusing' "$ROOT/err" || bad "no refusal on stderr: $(cat "$ROOT/err")"
+  note | grep -q 'refused' || bad "note does not mention the refusal: $(note)"
+}
 case_failure_reported() {
   setup failure
   GO_RC=3 run_guard
@@ -107,7 +119,7 @@ case_lock_stale() {
   [ ! -e "$L" ] || bad "lock dir left behind"
 }
 
-for t in case_env_home case_env_root case_default_removed case_symlink_refused case_failure_reported case_lock_held case_lock_stale; do
+for t in case_env_home case_env_root case_default_removed case_symlink_refused case_intermediate_symlink_refused case_failure_reported case_lock_held case_lock_stale; do
   CASE_FAILS=0
   "$t"
   if [ "$CASE_FAILS" -eq 0 ]; then
