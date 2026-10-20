@@ -10,19 +10,25 @@ Default owners: `vibedarling`, `LeanerCloud`, `cristim`. Override from the reque
 ## Scope
 
 All open draft PRs authored by the user in the given owners:
-`gh search prs --owner <owner> --state open --draft --author @me --limit 1000` per owner; if an
-owner returns 1000, the inventory is truncated, so split with `--repo`. Search results lack head
-and base, so read each PR:
+`gh search prs --owner <owner> --state open --draft --author @me --limit 1000 --json number,repository`
+per owner (repo is `repository.nameWithOwner`); if an owner returns 1000, the inventory is
+truncated, so split with `--repo`. Search results lack head and base, so read each PR:
 `gh pr view <n> --repo <owner>/<repo> --json headRefName,headRefOid,baseRefName,headRepository,isCrossRepository`.
 Its `commits` field lists only the first 100, so read the head commit's author directly and require
 its `oid` to equal `headRefOid`:
 `gh api graphql -F owner=<owner> -F name=<repo> -F n=<n> -f query='query($owner:String!,$name:String!,$n:Int!){repository(owner:$owner,name:$name){pullRequest(number:$n){commits(last:1){nodes{commit{oid author{name user{login}}}}}}}}'`.
-Record the list in the plan file: PR number, head SHA, base, stack parent (the PR whose head branch
-is this one's base), local checkout path (`~/.claude/projects.md`, `local-paths.md`). Skip PRs the
-user did not author and report them. Defer, and report, a PR whose latest commit is by someone
-other than the user or a bot (stricter than the `pr-iterate` active-human guard); a null `user`
-(an email linked to no account) counts as someone else. Report any owner whose search
-errored (private repos or orgs the `gh` account cannot reach) instead of treating it as empty.
+Record the list in the plan file (single repo: `~/.claude/projects/<project>/plans/<slug>.md`; a
+multi-repo sweep: `~/.claude/projects/<owner>/plans/draft-pr-sweep.md`): PR number, head SHA, base,
+stack parent, local checkout path (`~/.claude/projects.md`, `local-paths.md`). Find the stack parent
+only when `<base>` is not the repo's default branch: the open PR, draft or not, whose head branch is
+this one's base (`gh pr list --repo <owner>/<repo> --head <base> --state open --json
+number,isDraft,author,isCrossRepository,headRepositoryOwner`; `--head` also matches fork branches, so
+keep only rows with `isCrossRepository` false). Two or more rows: ambiguous parent, the child ends
+"still draft with a posted blocker". A parent that is not the user's PR: the child ends "deferred"
+now, before step 1. Skip PRs the user did not author and report them. Defer, and report, a PR whose
+latest commit is by someone other than the user or a bot (stricter than the `pr-iterate`
+active-human guard); a null `user` or null `author` (an email linked to no account) counts as
+someone else. Report any owner whose search errored (private repos or orgs the `gh` account cannot reach) instead of treating it as empty.
 Confirm the list first only if it is over 15 PRs.
 
 ## Process
@@ -38,7 +44,9 @@ One PR at a time, finished before the next. Order: stack parents before children
 2. **Sync.** Worktree under `~/.claude/worktrees/` (`worktrees`). Rebase on the current base, never
    merge. After a parent changes, rebase each child onto it (`git rebase --onto`) and re-run steps
    3 to 6 for the child. A parent that was merged or closed: `gh pr edit --base <new-base>`, then
-   `git rebase --onto <new-base> <old-parent-tip>`; a closed-unmerged parent needs the user's call.
+   `git rebase --onto <new-base> <old-parent-tip>`; a closed-unmerged parent needs the user's call,
+   so the child ends "still draft with a posted blocker". An open parent that is the user's PR,
+   draft or not: rebase onto it.
 3. **Audit.** A fresh non-author agent (Sonnet 5.5 high, cold brief, no author transcript) reviews
    the diff on the six dimensions plus `blast-radius`. The PR body is a claim, not evidence. Check
    against the source of truth with `file:line`; run deletion and mutation probes in a scratch copy.
@@ -51,12 +59,17 @@ One PR at a time, finished before the next. Order: stack parents before children
    failures. Take the per-repo lock before shared builds (`multi-agent-comms`). Record exact
    commands and results.
 6. **Push and watch.** `--force-with-lease` only on the head branch of the user's own PR; never on
-   the base or `main`, never when the head is a fork or a branch others push to. Then `ci-watch` and
+   the base or `main`, never when the head is a fork or a branch others push to. Push under the
+   per-branch lock, as `pr-iterate` does (macOS: `lockf -t 600` instead of `flock -w 600`):
+   `flock -w 600 /tmp/agent-locks/<repo>-git-push-<branch-key>.lock git -C <worktree> push --force-with-lease`
+   (`mkdir -p /tmp/agent-locks` first; `<branch-key>` as defined in `pr-iterate`). Then `ci-watch` and
    `cr-loop` until CI is green and CodeRabbit is clean for the current HEAD.
 7. **Prepare.** Make the title and body accurate; post the verification evidence and reviewed SHA
    as a PR comment (redacted per the Git rules); apply `triage-labels` where the repo uses it. Mark
    ready for review only if steps 3 to 6 are clean for the current HEAD and the repo's
-   `CONTRIBUTING` does not say otherwise. Otherwise leave it draft with a comment naming the blocker.
+   `CONTRIBUTING` does not say otherwise; otherwise leave it draft with a comment naming the blocker.
+   Many repos skip CI or CodeRabbit on drafts, so after marking ready re-run `ci-watch` and `cr-loop`
+   for the current HEAD and do not report the PR merge-ready until both pass.
 
 ## Hard limits
 
@@ -70,6 +83,7 @@ One PR at a time, finished before the next. Order: stack parents before children
 ## Done when
 
 Every listed PR is in exactly one terminal state: ready for review with a clean current-HEAD review,
-CI green and CR clean; still draft with a posted blocker; or proposed for closing with the decision
-pending. Leave a summary table (PR, owner/repo, state, reviewed SHA, evidence, blocker), a decision
-log via `show-me-your-work`, and a session handoff.
+CI green and CR clean; still draft with a posted blocker; proposed for closing with the decision
+pending; deferred (human active or another owner's parent); or skipped (not yours). Leave a summary
+table (PR, owner/repo, state, reviewed SHA, evidence, blocker), a decision log via
+`show-me-your-work`, and a session handoff.
