@@ -762,6 +762,7 @@ parse_worktrees() {
           *"$tab"*|*"$nl"*)
             name="$(basename "$path")"
             printf '%s\n' "${name//[$tab$nl]/ }" >> "$TMP/badwt"
+            printf '%s\n' "$path" >> "$TMP/badpath"
             [ "$n" -ne 1 ] || printf '%s\t%s\t%s\n' /- "$br" "$fl" ;;
           *) printf '%s\t%s\t%s\n' "$path" "$br" "$fl" ;;
         esac
@@ -793,6 +794,12 @@ while IFS="$(printf '\t')" read -r p br fl; do
   printf '%s\n' "$c" >> "$TMP/wt_paths"
   [ "$br" = - ] || printf '%s\n' "$br" >> "$TMP/wt_branches"
 done < "$TMP/wts"
+if [ -f "$TMP/badpath" ]; then
+  while IFS= read -r p; do
+    c="$(canon_dir "$p")" || c="$p"
+    printf '%s\n' "$c" >> "$TMP/wt_paths"
+  done < "$TMP/badpath"
+fi
 
 first=1
 while IFS="$(printf '\t')" read -r p br fl; do
