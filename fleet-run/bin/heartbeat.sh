@@ -49,9 +49,13 @@ iso_epoch() {
   [[ $1 =~ $re ]] || return 1
   local y=$((10#${BASH_REMATCH[1]})) m=$((10#${BASH_REMATCH[2]})) d=$((10#${BASH_REMATCH[3]}))
   local hh=$((10#${BASH_REMATCH[4]})) mi=$((10#${BASH_REMATCH[5]})) ss=$((10#${BASH_REMATCH[6]}))
-  (( m >= 1 && m <= 12 && d >= 1 && d <= 31 && hh < 24 && mi < 60 && ss <= 60 )) || return 1
+  (( m >= 1 && m <= 12 && d >= 1 && hh < 24 && mi < 60 && ss <= 60 )) || return 1
+  local dim=(0 31 28 31 30 31 30 31 31 30 31 30 31)
+  (( m == 2 && (y % 4 == 0 && (y % 100 != 0 || y % 400 == 0)) )) && dim[2]=29
+  (( d <= dim[m] )) || return 1
   local off=0
   if [[ ${BASH_REMATCH[8]} != Z ]]; then
+    (( 10#${BASH_REMATCH[10]} <= 14 && 10#${BASH_REMATCH[11]} <= 59 )) || return 1
     off=$(( 10#${BASH_REMATCH[10]} * 3600 + 10#${BASH_REMATCH[11]} * 60 ))
     [[ ${BASH_REMATCH[9]} == - ]] && off=$(( -off ))
   fi
