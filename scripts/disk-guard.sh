@@ -58,12 +58,13 @@ clean_golangci_cache() {
 
 release_lock() { rm -f "$LOCK/pid"; rmdir "$LOCK"; }
 
+# A live pid only counts as the holder if its command line mentions disk-guard (pids get reused).
 # 0 when this process now owns the lock; 1 (after logging why) when it must skip this round.
 take_lock() {
   local pid
   if ! mkdir "$LOCK" 2>/dev/null; then
     pid=$(cat "$LOCK/pid" 2>/dev/null || true)
-    if [[ $pid =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
+    if [[ $pid =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null && ps -p "$pid" -o command= 2>/dev/null | grep -q disk-guard; then
       echo "$(ts) disk-guard: another instance (pid $pid) holds the lock, skipping" >&2
       return 1
     fi

@@ -115,10 +115,12 @@ case_failure_reported() {
 case_lock_held() {
   setup lock
   L="$H/.claude/fleet-run/state/disk-guard.lock"
-  mkdir -p "$L"; echo $$ > "$L/pid"
+  bash -c 'sleep 30; :' disk-guard-holder & holder=$!
+  mkdir -p "$L"; echo "$holder" > "$L/pid"
   run_guard
+  pkill -P "$holder" 2>/dev/null; kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
   [ -z "$(note)" ] || bad "acted while a live instance held the lock"
-  grep -q "another instance (pid $$) holds the lock, skipping" "$ROOT/err" || bad "no skip message: $(cat "$ROOT/err")"
+  grep -q "another instance (pid $holder) holds the lock, skipping" "$ROOT/err" || bad "no skip message: $(cat "$ROOT/err")"
   [ -f "$L/pid" ] || bad "live holder's lock was touched"
   rm -f "$L/pid"; rmdir "$L"
   run_guard
@@ -136,7 +138,18 @@ case_lock_stale() {
   [ ! -e "$L" ] || bad "lock dir left behind"
 }
 
-for t in case_env_home case_env_root case_default_removed case_symlink_refused case_intermediate_symlink_refused case_binary_ignores_env_cache case_failure_reported case_lock_held case_lock_stale; do
+case_lock_pid_reused() {
+  setup reused
+  L="$H/.claude/fleet-run/state/disk-guard.lock"
+  sleep 30 & other=$!
+  mkdir -p "$L"; echo "$other" > "$L/pid"
+  run_guard
+  kill "$other" 2>/dev/null; wait "$other" 2>/dev/null
+  grep -q "removing stale lock from pid $other" "$ROOT/err" || bad "unrelated live pid was treated as the holder: $(cat "$ROOT/err")"
+  [ -n "$(note)" ] || bad "did not clean despite the reused pid"
+}
+
+for t in case_env_home case_env_root case_default_removed case_symlink_refused case_intermediate_symlink_refused case_binary_ignores_env_cache case_failure_reported case_lock_held case_lock_stale case_lock_pid_reused; do
   CASE_FAILS=0
   "$t"
   if [ "$CASE_FAILS" -eq 0 ]; then
