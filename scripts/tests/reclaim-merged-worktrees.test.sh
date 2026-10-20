@@ -737,6 +737,176 @@ c45_fork_base_bound_to_selected_repo() {
   run_s --apply --allow-fork
   a_out '^ask a .*release'; a_wt a present; a_local b-a present; a_fremote b-a present
 }
+declare_on_main() { # content (printf format, no trailing newline added)
+  printf '%b' "$1" > "$C/main/.reclaim-build-outputs"
+  git -C "$C/main" add .reclaim-build-outputs
+  git -C "$C/main" commit -q -m declare
+  git -C "$C/main" push -q origin main
+}
+
+gen_wt() { # name path: merged worktree holding one ignored file at path
+  local d
+  mkwt "$1"
+  d="$(dirname "$2")"
+  if [ "$d" != . ]; then
+    mkdir -p "$C/wt/$1/$d"; echo k > "$C/wt/$1/$d/keep.txt"
+    git -C "$C/wt/$1" add -A; git -C "$C/wt/$1" commit -q -m keep; git -C "$C/wt/$1" push -q origin "b-$1"
+  fi
+  add_merged "b-$1" "$(tip "$1")"
+  printf '%s\n' "$2" | sed 's/[][*?]/\\&/g' >> "$C/main/.git/info/exclude"
+  echo gen > "$C/wt/$1/$2"
+}
+
+d01_declared_on_default_reclaims() {
+  mkenv d01; gen_wt a src/route.gen.ts
+  declare_on_main '# generated *.ts [x]\n\nsrc/route.gen.ts\n'
+  run_s --apply
+  a_out '^reclaimed a '; a_wt a absent; a_no_out 'warning'
+}
+d01b_last_line_without_newline() {
+  mkenv d01b; gen_wt a src/route.gen.ts
+  declare_on_main '# c\nsrc/route.gen.ts'
+  run_s --apply
+  a_out '^reclaimed a '; a_wt a absent
+}
+d02_declared_only_on_branch_blocked() {
+  mkenv d02; gen_wt a src/route.gen.ts
+  printf 'src/route.gen.ts\n' > "$C/wt/a/.reclaim-build-outputs"
+  git -C "$C/wt/a" add .reclaim-build-outputs; git -C "$C/wt/a" commit -q -m decl
+  git -C "$C/wt/a" push -q origin b-a; add_merged b-a "$(tip a)"
+  run_s --apply
+  a_out '^blocked a .*route.gen.ts'; a_wt a present
+}
+d03_no_declaration_file_unchanged() {
+  mkenv d03; gen_wt a src/route.gen.ts
+  run_s --apply
+  a_out '^blocked a .*route.gen.ts'; a_no_out 'warning'; a_wt a present
+}
+d04_stale_ref_refreshed() {
+  mkenv d04; gen_wt a src/route.gen.ts
+  declare_on_main 'src/route.gen.ts\n'
+  git clone -q "$C/origin.git" "$C/other" 2>/dev/null
+  git -C "$C/other" rm -q .reclaim-build-outputs; git -C "$C/other" commit -q -m undeclare
+  git -C "$C/other" push -q origin main
+  run_s --apply
+  a_out '^blocked a .*route.gen.ts'; a_wt a present
+}
+d05_fetch_fails_means_no_declarations() {
+  mkenv d05; gen_wt a src/route.gen.ts
+  declare_on_main 'src/route.gen.ts\n'
+  mkdir -p "$C/gitwrap"
+  # shellcheck disable=SC2016 # the wrapper body is literal shell text
+  printf '#!/bin/bash\nfor a in "$@"; do\n  [ "$a" = "+refs/heads/main:refs/remotes/origin/main" ] && exit 1\ndone\nexec %s "$@"\n' "$(command -v git)" > "$C/gitwrap/git"
+  chmod +x "$C/gitwrap/git"; EXTRA_PATH="$C/gitwrap"
+  run_s --apply
+  EXTRA_PATH=
+  a_out '^blocked a .*route.gen.ts'; a_out 'warning.*declared'; a_rc 0; a_wt a present
+}
+d05c_fetch_fails_and_ref_missing() {
+  mkenv d05c; gen_wt a src/route.gen.ts
+  declare_on_main 'src/route.gen.ts\n'
+  mkdir -p "$C/gitwrap"
+  # shellcheck disable=SC2016 # the wrapper body is literal shell text
+  printf '#!/bin/bash\nfor a in "$@"; do\n  [ "$a" = "+refs/heads/main:refs/remotes/origin/main" ] && exit 1\ndone\nexec %s "$@"\n' "$(command -v git)" > "$C/gitwrap/git"
+  chmod +x "$C/gitwrap/git"; EXTRA_PATH="$C/gitwrap"
+  git -C "$C/main" update-ref -d refs/remotes/origin/main
+  run_s --apply
+  EXTRA_PATH=
+  a_out '^blocked a .*route.gen.ts'; a_out 'warning.*declared'; a_rc 0; a_wt a present
+}
+d05b_narrow_refspec_clone() {
+  mkenv d05b; gen_wt a src/route.gen.ts
+  declare_on_main 'src/route.gen.ts\n'
+  git -C "$C/main" config remote.origin.fetch '+refs/heads/other:refs/remotes/origin/other'
+  git -C "$C/main" update-ref -d refs/remotes/origin/main
+  run_s --apply
+  a_out '^reclaimed a '; a_wt a absent
+}
+d06_symlink_blob_ignored() {
+  mkenv d06; gen_wt a src/route.gen.ts
+  ln -s elsewhere "$C/main/.reclaim-build-outputs"
+  git -C "$C/main" add .reclaim-build-outputs; git -C "$C/main" commit -q -m link; git -C "$C/main" push -q origin main
+  run_s --apply
+  a_out '^blocked a .*route.gen.ts'; a_out 'warning.*not a regular file'; a_wt a present
+}
+d07_invalid_lines_skipped_with_warning() {
+  mkenv d07; gen_wt a 'src/*.ts'; gen_wt b 'src/a[x].ts'
+  declare_on_main '*.ts\nsrc/*.ts\n.*\n[a-z]*\n?*\n./x\nx/\na//b\n.git/x\nsrc/../x\nsrc/a[x].ts\nsrc/y\r\n'
+  run_s --apply
+  a_out '^blocked a .*src/\*\.ts'; a_out '^blocked b .*a\[x\]\.ts'
+  a_out 'warning.*line 1[^0-9]'; a_out 'warning.*line 6[^0-9]'; a_out 'warning.*line 9[^0-9]'; a_out 'warning.*line 12'
+  a_wt a present; a_wt b present; a_rc 0
+}
+d08_secret_name_still_blocks() {
+  mkenv d08; gen_wt a src/.env
+  declare_on_main 'src/.env\n'
+  run_s --apply
+  a_out '^blocked a .*\.env'; a_wt a present
+}
+d09_declared_dir_blocks() {
+  mkenv d09; mkwt a; add_merged b-a "$(tip a)"
+  echo gen/ >> "$C/main/.git/info/exclude"; mkdir "$C/wt/a/gen"; echo x > "$C/wt/a/gen/o"
+  declare_on_main 'gen\ngen/o\n'
+  run_s --apply
+  a_out '^blocked a .*gen'; a_wt a present
+}
+d10_declared_file_in_ignored_dir_blocks() {
+  mkenv d10; mkwt a; add_merged b-a "$(tip a)"
+  echo out/ >> "$C/main/.git/info/exclude"; mkdir "$C/wt/a/out"; echo x > "$C/wt/a/out/route.gen.ts"
+  declare_on_main 'out/route.gen.ts\n'
+  run_s --apply
+  a_out '^blocked a .*out'; a_wt a present
+}
+d11_no_prefix_suffix_or_depth_match() {
+  mkenv d11; gen_wt a src/route.gen.ts; gen_wt b src/route.gen.ts.bak; gen_wt c route.gen.ts; gen_wt d x/y/z.gen.ts
+  declare_on_main 'src/route.gen\nsrc/route.gen.ts.b\nroute.gen.ts.bak\nz.gen.ts\nx/z.gen.ts\n'
+  run_s --apply
+  a_out '^blocked a '; a_out '^blocked b '; a_out '^blocked c '; a_out '^blocked d '
+  a_wt a present; a_wt b present; a_wt c present; a_wt d present
+}
+d12_bracket_entry_matched_literally() {
+  mkenv d12; gen_wt a 'src/ax.ts'; gen_wt b 'src/a[x].ts'
+  declare_on_main 'src/ax.ts\n'
+  run_s --apply
+  a_out '^reclaimed a '; a_out '^blocked b .*a\[x\]\.ts'; a_wt b present
+}
+d13_declared_symlink_entry_blocks() {
+  mkenv d13; mkwt a; add_merged b-a "$(tip a)"
+  echo link.gen >> "$C/main/.git/info/exclude"; ln -s a.txt "$C/wt/a/link.gen"
+  declare_on_main 'link.gen\n'
+  run_s --apply
+  a_out '^blocked a .*link.gen'; a_wt a present
+}
+
+x1_quoted_name_declaration_rejected() {
+  mkenv x1; mkwt a
+  mkdir "$C/wt/a/a b"; echo k > "$C/wt/a/a b/keep.txt"
+  git -C "$C/wt/a" add -A; git -C "$C/wt/a" commit -q -m keep; git -C "$C/wt/a" push -q origin b-a
+  add_merged b-a "$(tip a)"
+  echo prod.pem >> "$C/main/.git/info/exclude"; echo k > "$C/wt/a/a b/prod.pem"
+  declare_on_main '"a b/prod.pem"\n'
+  run_s --apply
+  a_out '^blocked a '; a_out 'warning.*line 1'; a_wt a present
+}
+x2_quoted_dir_declaration_rejected() {
+  mkenv x2; mkwt a; add_merged b-a "$(tip a)"
+  echo 'my dir/' >> "$C/main/.git/info/exclude"; mkdir "$C/wt/a/my dir"; echo x > "$C/wt/a/my dir/o"
+  declare_on_main '"my dir/"\n"my dir"\n'
+  run_s --apply
+  a_out '^blocked a '; a_wt a present
+}
+x3_git_component_case_insensitive() {
+  mkenv x3; mkwt a; add_merged b-a "$(tip a)"
+  declare_on_main '.GIT/x\nsrc/.Git/y\n'
+  run_s --apply
+  a_out 'warning.*line 1'; a_out 'warning.*line 2'
+}
+x4_plain_git_dir_declarable() {
+  mkenv x4; gen_wt a src/git/x.gen.ts
+  declare_on_main 'src/git/x.gen.ts\n'
+  run_s --apply
+  a_out '^reclaimed a '; a_wt a absent; a_no_out 'warning'
+}
 
 CASES="c01_merged_clean c02_squash_tip_not_in_main c02b_tip_behind_merged_head c03_dirty c04_ignored_env
 c04b_nested_build_output_allowed_nested_env_blocked c04e_node_modules_fixtures_and_more_secret_names c03b_local_branch_moves_before_delete c03c_branch_held_by_second_worktree c04c_tracked_build_dir_and_secret_names_blocked c04d_tracked_build_dir_with_ignored_output_blocked c04f_spaced_path_secret_blocked c04g_spaced_path_secret_names_blocked c04h_non_ascii_path_secret_blocked c04i_spaced_build_dir_harmless_output_reclaimed c04j_tab_and_newline_paths_no_misparse c05_plan_symlink_only c05b_plan_md_not_a_plan_symlink c06_extra_commits c07_fork_pr_same_name
@@ -748,7 +918,8 @@ c25_fork_pr_without_flag c26_fork_tip_is_head c27_fork_tip_behind_head c28_fork_
 c30_fork_stash_blocks c30b_fork_stash_on_other_branch_does_not_block c31_fork_keeps_same_named_origin_branch
 c32_fork_third_party_owner c33_fork_null_head_repository c34_fork_without_local_remote c35_fork_remote_ahead
 c36_fork_match_beside_same_repo_row c37_fork_https_remote_uppercase_owner c38_fork_local_branch_without_worktree
-c39_fork_open_pr_same_head_name c40_fork_pr_head_not_fetchable c41_unknown_flag c42_gh_user_failure_aborts_only_with_flag c43_fork_remote_moves_before_push c44_fork_oids_bound_to_selected_repo c45_fork_base_bound_to_selected_repo"
+c39_fork_open_pr_same_head_name c40_fork_pr_head_not_fetchable c41_unknown_flag c42_gh_user_failure_aborts_only_with_flag c43_fork_remote_moves_before_push c44_fork_oids_bound_to_selected_repo c45_fork_base_bound_to_selected_repo
+d01_declared_on_default_reclaims d01b_last_line_without_newline d02_declared_only_on_branch_blocked d03_no_declaration_file_unchanged d04_stale_ref_refreshed d05_fetch_fails_means_no_declarations d05c_fetch_fails_and_ref_missing d05b_narrow_refspec_clone d06_symlink_blob_ignored d07_invalid_lines_skipped_with_warning d08_secret_name_still_blocks d09_declared_dir_blocks d10_declared_file_in_ignored_dir_blocks d11_no_prefix_suffix_or_depth_match d12_bracket_entry_matched_literally d13_declared_symlink_entry_blocks x1_quoted_name_declaration_rejected x2_quoted_dir_declaration_rejected x3_git_component_case_insensitive x4_plain_git_dir_declarable"
 
 for t in $CASES; do
   if [ $# -gt 0 ]; then
