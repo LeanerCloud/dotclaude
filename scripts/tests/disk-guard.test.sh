@@ -85,16 +85,29 @@ case_failure_reported() {
 
 case_lock_held() {
   setup lock
-  mkdir -p "$H/.claude/fleet-run/state/disk-guard.lock"
+  L="$H/.claude/fleet-run/state/disk-guard.lock"
+  mkdir -p "$L"; echo $$ > "$L/pid"
   run_guard
-  [ -z "$(note)" ] || bad "acted while another instance held the lock"
-  rmdir "$H/.claude/fleet-run/state/disk-guard.lock"
+  [ -z "$(note)" ] || bad "acted while a live instance held the lock"
+  grep -q "another instance (pid $$) holds the lock, skipping" "$ROOT/err" || bad "no skip message: $(cat "$ROOT/err")"
+  [ -f "$L/pid" ] || bad "live holder's lock was touched"
+  rm -f "$L/pid"; rmdir "$L"
   run_guard
   [ -n "$(note)" ] || bad "did not act once the lock was free"
-  [ ! -e "$H/.claude/fleet-run/state/disk-guard.lock" ] || bad "lock dir left behind"
+  [ ! -e "$L" ] || bad "lock dir left behind"
+}
+case_lock_stale() {
+  setup stale
+  L="$H/.claude/fleet-run/state/disk-guard.lock"
+  sleep 0 & dead=$!; wait "$dead"
+  mkdir -p "$L"; echo "$dead" > "$L/pid"
+  run_guard
+  grep -q "removing stale lock from pid $dead" "$ROOT/err" || bad "no stale message: $(cat "$ROOT/err")"
+  [ -n "$(note)" ] || bad "did not clean after taking over a stale lock"
+  [ ! -e "$L" ] || bad "lock dir left behind"
 }
 
-for t in case_env_home case_env_root case_default_removed case_symlink_refused case_failure_reported case_lock_held; do
+for t in case_env_home case_env_root case_default_removed case_symlink_refused case_failure_reported case_lock_held case_lock_stale; do
   CASE_FAILS=0
   "$t"
   if [ "$CASE_FAILS" -eq 0 ]; then

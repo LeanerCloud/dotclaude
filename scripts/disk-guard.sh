@@ -56,6 +56,25 @@ clean_golangci_cache() {
   fi
 }
 
+release_lock() { rm -f "$LOCK/pid"; rmdir "$LOCK"; }
+
+# 0 when this process now owns the lock; 1 (after logging why) when it must skip this round.
+take_lock() {
+  local pid
+  if ! mkdir "$LOCK" 2>/dev/null; then
+    pid=$(cat "$LOCK/pid" 2>/dev/null || true)
+    if [[ $pid =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
+      echo "$(ts) disk-guard: another instance (pid $pid) holds the lock, skipping" >&2
+      return 1
+    fi
+    echo "$(ts) disk-guard: removing stale lock from pid ${pid:-unknown}" >&2
+    rm -f "$LOCK/pid"
+    rmdir "$LOCK" 2>/dev/null || true
+    mkdir "$LOCK" 2>/dev/null || { echo "$(ts) disk-guard: cannot take over the lock, skipping" >&2; return 1; }
+  fi
+  echo $$ >"$LOCK/pid"
+}
+
 check_once() {
   local free after t summary
   free=$(free_gb) || exit 1
@@ -65,9 +84,9 @@ check_once() {
   fi
   [[ -e $LOW_MARKER ]] && return 0
   mkdir -p "$BUS" "$(dirname "$LOW_MARKER")" || { echo "$(ts) disk-guard: cannot create state or bus dir" >&2; exit 1; }
-  mkdir "$LOCK" 2>/dev/null || return 0
-  trap 'rmdir "$LOCK"' EXIT
-  if [[ -e $LOW_MARKER ]]; then rmdir "$LOCK"; trap - EXIT; return 0; fi
+  take_lock || return 0
+  trap release_lock EXIT
+  if [[ -e $LOW_MARKER ]]; then release_lock; trap - EXIT; return 0; fi
   : >"$LOW_MARKER"
   t=$(ts)
   cleaned="" failed=""
@@ -81,7 +100,7 @@ check_once() {
   fi
   echo "result $t disk-guard: free space was ${free} GB (< ${THRESHOLD_GB} GB); $summary; free now ${after} GB. Re-run any build or test that failed with IO, cache or space errors." > "$BUS/result-$t-disk-guard.txt"
   echo "$t $summary: ${free} GB -> ${after} GB"
-  rmdir "$LOCK"
+  release_lock
   trap - EXIT
 }
 
