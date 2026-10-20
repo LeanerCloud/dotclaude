@@ -511,7 +511,7 @@ link_build_ok() {
       *) out+=("$c") ;;
     esac
   done
-  path="/${out[*]}"
+  path="/${out[*]-}"
   set +f
   case "$path" in "$1"/?*) rel="${path#"$1"/}" ;; *) return 1 ;; esac
   is_build_path "$1" "$rel"
