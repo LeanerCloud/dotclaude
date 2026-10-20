@@ -9,7 +9,7 @@
     {"name": "CUDly", "owner": "LeanerCloud", "checkout": "~/devel/CUDly", "slots": {"impl": 1, "merge": 1}}
   ],
   "roles": {
-    "coordinator": {"prefer": ["opencode", "kimi"], "min_tier": "low"},
+    "coordinator": {"prefer": ["claude", "kimi"], "min_tier": "low"},
     "impl": {"prefer": ["kimi", "codex", "claude"], "min_tier": "medium"},
     "merge": {"prefer": ["claude"], "min_tier": "high"},
     "reviewer": {"prefer": ["codex", "kimi"], "min_tier": "high"}
