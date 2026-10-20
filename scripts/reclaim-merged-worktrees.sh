@@ -490,6 +490,33 @@ secret_file_under() {
     -o -name 'id_rsa*' -o -name '.npmrc' -o -name 'secrets.*' \) -print -quit 2>/dev/null
 }
 
+# link_build_ok <dir> <entry>: true when an ignored symlink's target, normalized as a string and never followed,
+# lies strictly inside <dir> on a build path. Worktree removal unlinks the symlink, so the target need not exist.
+link_build_ok() {
+  local t path c rel d IFS=/
+  t="$(readlink "$1/$2")" || return 1
+  case "$t" in
+    /*) path="$t" ;;
+    *)
+      d="${2%/*}"
+      if [ "$d" = "$2" ]; then path="$1/$t"; else path="$1/$d/$t"; fi
+      ;;
+  esac
+  set -f
+  local -a out=()
+  for c in $path; do
+    case "$c" in
+      '' | .) ;;
+      ..) [ "${#out[@]}" -eq 0 ] || unset "out[$((${#out[@]} - 1))]" ;;
+      *) out+=("$c") ;;
+    esac
+  done
+  path="/${out[*]}"
+  set +f
+  case "$path" in "$1"/?*) rel="${path#"$1"/}" ;; *) return 1 ;; esac
+  is_build_path "$1" "$rel"
+}
+
 # gate <name> <canon> <locked 0|1> <plansfile>: emits blocked and returns 1 when not safe.
 gate() {
   local name="$1" dir="$2" locked="$3" found="$4" rec entry p why hit skip=0
@@ -517,6 +544,8 @@ gate() {
     elif [ "$entry" = plan.md ]; then
       plan_symlink_ok "$dir" && continue
     elif is_declared "$dir" "$entry"; then
+      continue
+    elif [ -L "$dir/$entry" ] && link_build_ok "$dir" "$entry"; then
       continue
     elif is_build_path "$dir" "$entry"; then
       hit="$(secret_file_under "$dir/$entry")"
