@@ -24,6 +24,13 @@ const rolloutTailBytes = 64 << 10
 // CodexMaxAge is how old a rate_limits reading may be and still describe the present.
 const CodexMaxAge = 30 * time.Minute
 
+// CodexMaxResetAhead bounds how far ahead a plausible resets_at lies; the longest window is weekly.
+// A later reset is corrupt and is treated as an unknown one, so it cannot throttle for years.
+const CodexMaxResetAhead = 8 * 24 * time.Hour
+
+// maxResetUnix is year 9999, the last second time.Unix converts without overflow into nonsense.
+const maxResetUnix = 253402300799
+
 // ErrNoRateLimits means no recent rollout file contained a rate_limits event.
 var ErrNoRateLimits = errors.New("no rate_limits event in the newest codex rollout files")
 
@@ -69,7 +76,11 @@ func (w *rawWindow) window() *CodexWindow {
 	if w == nil || w.UsedPercent == nil {
 		return nil
 	}
-	return &CodexWindow{UsedPercent: *w.UsedPercent, WindowMinutes: w.WindowMinutes, ResetsAt: time.Unix(w.ResetsAt, 0).UTC()}
+	cw := &CodexWindow{UsedPercent: *w.UsedPercent, WindowMinutes: w.WindowMinutes}
+	if w.ResetsAt > 0 && w.ResetsAt <= maxResetUnix { // absent (0) or corrupt means unknown, not 1970
+		cw.ResetsAt = time.Unix(w.ResetsAt, 0).UTC()
+	}
+	return cw
 }
 
 // ReadCodexRateLimits reads the newest rate_limits event from the newest rollout JSONL under
@@ -200,18 +211,26 @@ func lastRateLimits(path string) (*CodexLimits, error) {
 }
 
 // Entry converts the limits into an availability entry. A reading older than CodexMaxAge (or with
-// no timestamp) says nothing about now, so it is unknown. Otherwise a window at 100% throttles the
-// harness until the latest such reset still ahead of now; a window whose reset has passed no longer
-// counts. With no windows and no credits (the subscription is not metering and there is nothing to
-// spend) the harness is exhausted. Anything else is ok as of now.
+// no timestamp, or one in the future) says nothing about now, so it is unknown. Otherwise a window at
+// 100% throttles the harness until the latest such reset still ahead of now; a window whose reset has
+// passed no longer counts. A full window with no (or an implausibly distant) reset time throttles for
+// UnparsedWait. With no windows and no credits (the subscription is not metering and there is nothing
+// to spend) the harness is exhausted. Anything else is ok as of now.
 func (c *CodexLimits) Entry(now time.Time) Entry {
-	if c.ObservedAt.IsZero() || now.Sub(c.ObservedAt) > CodexMaxAge {
+	if c.ObservedAt.IsZero() || c.ObservedAt.After(now) || now.Sub(c.ObservedAt) > CodexMaxAge {
 		return Entry{Kind: Unknown, Reason: "codex rate_limits reading is stale"}
 	}
 	var until time.Time
 	for _, w := range []*CodexWindow{c.Primary, c.Secondary} {
-		if w != nil && w.UsedPercent >= 100 && w.ResetsAt.After(now) && w.ResetsAt.After(until) {
-			until = w.ResetsAt
+		if w == nil || w.UsedPercent < 100 {
+			continue
+		}
+		reset := w.ResetsAt
+		if reset.IsZero() || reset.After(now.Add(CodexMaxResetAhead)) {
+			reset = now.Add(UnparsedWait)
+		}
+		if reset.After(now) && reset.After(until) {
+			until = reset
 		}
 	}
 	switch {

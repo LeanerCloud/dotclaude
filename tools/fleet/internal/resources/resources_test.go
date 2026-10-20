@@ -42,7 +42,7 @@ const (
 	loadCrit = "{ 40,0 20,0 20,0 }\n"
 	swapOK   = "total = 16384,00M  used = 1024,00M  free = 15360,00M  (encrypted)\n"
 	swapWarn = "total = 16384.00M  used = 12500.00M  free = 3884.00M  (encrypted)\n"
-	swapCrit = "total = 16384,00M  used = 14793,62M  free = 1590,38M  (encrypted)\n"
+	swapCrit = "total = 20480,00M  used = 18793,62M  free = 1686,38M  (encrypted)\n"
 )
 
 func TestClassification(t *testing.T) {
@@ -88,8 +88,9 @@ func TestSwapClassification(t *testing.T) {
 		{"warn", swapWarn, Warn},
 		{"critical with comma decimals", swapCrit, Critical},
 		{"no swap configured", "total = 0,00M  used = 0,00M  free = 0,00M  (encrypted)\n", OK},
-		{"exactly 75% warns", "total = 100,00M  used = 75,00M  free = 25,00M\n", Warn},
-		{"exactly 90% is critical", "total = 100,00M  used = 90,00M  free = 10,00M\n", Critical},
+		{"a grown total at 94% used with little swapped is ok", "total = 2048,00M  used = 1920,00M  free = 128,00M  (encrypted)\n", OK},
+		{"exactly the warn threshold warns", "total = 20480,00M  used = 8192,00M  free = 12288,00M\n", Warn},
+		{"exactly the critical threshold is critical", "total = 20480,00M  used = 16384,00M  free = 4096,00M\n", Critical},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -106,7 +107,7 @@ func TestSwapClassification(t *testing.T) {
 	if _, err := swapSampler(100, loadOK, memOK, "nope").Sample(context.Background(), "/data", th); err == nil || !strings.Contains(err.Error(), "vm.swapusage") {
 		t.Fatalf("garbage swap must error, got %v", err)
 	}
-	if th.SwapWarnPct != 75 || th.SwapCriticalPct != 90 {
+	if th.SwapWarnMB != 8192 || th.SwapCriticalMB != 16384 {
 		t.Fatalf("defaults: %+v", th)
 	}
 }

@@ -29,7 +29,7 @@ func TestMain(m *testing.M) {
 		if err != nil {
 			os.Exit(1)
 		}
-		e.timeout, e.poll = 3*time.Second, 10*time.Millisecond
+		e.timeout, e.poll, e.killGrace = 3*time.Second, 10*time.Millisecond, 300*time.Millisecond
 		os.Exit(dispatch(e, os.Args[1:]))
 	}
 	os.Exit(m.Run())
@@ -453,9 +453,38 @@ func TestHeldAndLockedPathsBuildTheChildTheSameWay(t *testing.T) {
 			t.Errorf("%s: child must lead its own process group", name)
 		}
 	}
-	plain := newChild(env{environ: environ}, []string{"true"}, false)
-	if strings.Contains(strings.Join(plain.Env, ","), lock.HeldEnv) {
-		t.Fatal("a non-heavy child must not carry the held marker")
+	fresh := newChild(env{environ: []string{"A=1"}}, []string{"true"}, false)
+	if strings.Contains(strings.Join(fresh.Env, ","), lock.HeldEnv) {
+		t.Fatal("a non-heavy child must not gain the held marker")
+	}
+}
+
+// heavy -> lock -> heavy: the inner heavy must see the marker through the lock, or with one slot it
+// waits for the slot its own ancestor holds.
+func TestLockPassesInheritedHeldMarkerThrough(t *testing.T) {
+	t.Parallel()
+	got := childEnv([]string{"A=1", lock.HeldEnv + "=1"}, false)
+	if strings.Join(got, ",") != "A=1,"+lock.HeldEnv+"=1" {
+		t.Fatalf("fleet lock must keep an inherited marker, got %q", got)
+	}
+	e, _, _ := testEnv(t, 1)
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := exec.Command(self, "heavy", "--", self, "lock", "x", "--", self, "heavy", "--", "sh", "-c", "exit 3")
+	c.Env = append(e.environ, "FLEET_TEST_AS_FLEET=1", "HOME="+e.home)
+	done := make(chan error, 1)
+	go func() { done <- c.Run() }()
+	select {
+	case err := <-done:
+		var ee *exec.ExitError
+		if !errors.As(err, &ee) || ee.ExitCode() != 3 {
+			t.Fatalf("want exit 3, got %v", err)
+		}
+	case <-time.After(2 * time.Second): // the test fleet's lock wait is 3s, so a second slot request times out later
+		_ = c.Process.Kill()
+		t.Fatal("heavy -> lock -> heavy blocked on a second slot with heavy_slots=1")
 	}
 }
 
@@ -526,5 +555,74 @@ func TestNoTerminalGroupChangeOnPty(t *testing.T) {
 	case <-time.After(20 * time.Second):
 		_ = c.Process.Kill()
 		t.Fatal("pty session hung")
+	}
+}
+
+// A pty slave that is not the caller's controlling terminal is still a terminal: giving it Setpgid
+// risks SIGTTIN. The helper runs fleet in a new session with no controlling terminal and the slave
+// as stdin; the child must stay in fleet's process group.
+const noCttyHelper = `import os, pty, subprocess, sys
+master, slave = pty.openpty()
+p = subprocess.Popen([sys.argv[1], "heavy", "--", "sh", "-c", "ps -o pgid= -p $$"], stdin=slave,
+                     stdout=subprocess.PIPE, start_new_session=True)
+out = p.communicate()[0].decode().strip()
+print(p.pid, out)
+sys.exit(p.returncode)
+`
+
+func TestNonControllingTerminalStdinKeepsCallersGroup(t *testing.T) {
+	t.Parallel()
+	py, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 not found: the pty regression test needs it")
+	}
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, _, _ := testEnv(t, 1)
+	hp := filepath.Join(t.TempDir(), "noctty_helper.py")
+	if err := os.WriteFile(hp, []byte(noCttyHelper), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c := exec.Command(py, "-I", hp, self)
+	c.Env = append(append([]string(nil), e.environ...), "FLEET_TEST_AS_FLEET=1", "HOME="+e.home)
+	out, err := c.Output()
+	if err != nil {
+		t.Fatalf("helper: %v", err)
+	}
+	f := strings.Fields(string(out))
+	if len(f) != 2 || f[0] != f[1] {
+		t.Fatalf("fleet pid and child pgid differ, so the child was moved to its own group: %q", out)
+	}
+}
+
+// A child that traps INT and keeps running is not killed by the grace timer: only TERM and HUP arm it.
+func TestHandledInterruptDoesNotArmKill(t *testing.T) {
+	t.Parallel()
+	e, _, _ := testEnv(t, 1)
+	script := `trap 'echo got-int' INT; echo ready; i=0; while [ $i -lt 40 ]; do sleep 0.05; i=$((i+1)); done; exit 7`
+	c, out := startFleet(t, e, nil, "heavy", "--", "sh", "-c", script)
+	waitLine(t, out, "ready")
+	if err := c.Process.Signal(syscall.SIGINT); err != nil {
+		t.Fatal(err)
+	}
+	if got := exitOf(t, c); got != 7 {
+		t.Fatalf("exit %d, want 7 (the child outlived the grace period and exited on its own)", got)
+	}
+}
+
+// A child that ignores INT, TERM and HUP must not hold fleet and its slot forever.
+func TestSignalIgnoringChildIsKilledAfterGrace(t *testing.T) {
+	t.Parallel()
+	e, _, _ := testEnv(t, 1)
+	script := `trap "" INT TERM HUP; echo ready; sleep 30`
+	c, out := startFleet(t, e, nil, "heavy", "--", "sh", "-c", script)
+	waitLine(t, out, "ready")
+	if err := c.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	if got := exitOf(t, c); got != 128+int(syscall.SIGKILL) {
+		t.Fatalf("exit %d, want %d (killed after the grace period)", got, 128+int(syscall.SIGKILL))
 	}
 }

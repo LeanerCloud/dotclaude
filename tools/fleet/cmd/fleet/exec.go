@@ -35,6 +35,9 @@ type env struct {
 	stderr  io.Writer
 	// Zero values mean the lock package defaults.
 	timeout, poll time.Duration
+	// killGrace is how long a child gets to exit after a forwarded signal before its group is
+	// SIGKILLed; zero means defaultKillGrace.
+	killGrace time.Duration
 }
 
 func processEnv() (env, error) {
@@ -216,19 +219,25 @@ func signalExit(sig os.Signal) int {
 // pipeDrainGrace bounds how long Wait lingers on output pipes a stray grandchild still holds open.
 const pipeDrainGrace = 2 * time.Second
 
+// defaultKillGrace is how long a child may take to exit after fleet forwards INT, TERM or HUP. A
+// child that ignores all three would otherwise hold its slot, and fleet, forever.
+const defaultKillGrace = 10 * time.Second
+
 // childEnv is the child's environment. A heavy child (one that holds a slot, taken now or inherited)
 // gets exactly one FLEET_HEAVY_HELD=1 so nested `fleet heavy` calls run without taking another slot.
+// Any other child (`fleet lock`) gets the environment unchanged: an inherited marker must survive,
+// or heavy -> lock -> heavy would take a second slot and block on heavy_slots=1.
 func childEnv(environ []string, heavy bool) []string {
+	if !heavy {
+		return append([]string(nil), environ...)
+	}
 	out := make([]string, 0, len(environ)+1)
 	for _, kv := range environ {
 		if !strings.HasPrefix(kv, lock.HeldEnv+"=") {
 			out = append(out, kv)
 		}
 	}
-	if heavy {
-		out = append(out, lock.HeldEnv+"=1")
-	}
-	return out
+	return append(out, lock.HeldEnv+"=1")
 }
 
 // newChild builds the child for both the locked and the FLEET_HEAVY_HELD path, so any later
@@ -250,11 +259,24 @@ func newChild(e env, argv []string, heavy bool) *exec.Cmd {
 	return c
 }
 
-// isTTY reports whether f is a terminal, by asking for its foreground process group.
+// isTTY reports whether f is a terminal, by asking for its window size, which any terminal answers
+// and anything else refuses with ENOTTY. TIOCGPGRP would answer ENOTTY for a terminal that is not
+// this process's controlling one, and that stdin would then get Setpgid and a SIGTTIN risk. The
+// descriptor is borrowed through SyscallConn, which needs no extra file-mode handling.
 func isTTY(f *os.File) bool {
-	var pgrp int32
-	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), syscall.TIOCGPGRP, uintptr(unsafe.Pointer(&pgrp)))
-	return errno == 0
+	rc, err := f.SyscallConn()
+	if err != nil {
+		return false
+	}
+	isTerm := false
+	if err := rc.Control(func(fd uintptr) {
+		var ws [4]uint16 // struct winsize: rows, cols, xpixel, ypixel
+		_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, fd, syscall.TIOCGWINSZ, uintptr(unsafe.Pointer(&ws)))
+		isTerm = errno == 0
+	}); err != nil {
+		return false
+	}
+	return isTerm
 }
 
 // runChild runs cmd with the parent's stdio and returns its exit code. Termination signals from sigs
@@ -268,6 +290,11 @@ func runChild(e env, argv []string, heavy bool, sigs <-chan os.Signal) int {
 	}
 	grouped := c.SysProcAttr != nil && c.SysProcAttr.Setpgid
 	pgid := c.Process.Pid // Setpgid made the child its group's leader
+	grace := e.killGrace
+	if grace <= 0 {
+		grace = defaultKillGrace
+	}
+	var escalate *time.Timer
 	done, forwarded := make(chan struct{}), make(chan struct{})
 	go func() {
 		defer close(forwarded)
@@ -281,7 +308,21 @@ func runChild(e env, argv []string, heavy bool, sigs <-chan os.Signal) int {
 				case ok:
 					_ = c.Process.Signal(s)
 				}
+				// Only TERM and HUP ask the child to quit; a child that handles INT (a REPL, a shell,
+				// ssh) is expected to keep running, so INT never arms the SIGKILL.
+				if (sig == syscall.SIGTERM || sig == syscall.SIGHUP) && escalate == nil {
+					escalate = time.AfterFunc(grace, func() {
+						if grouped {
+							_ = syscall.Kill(-pgid, syscall.SIGKILL)
+						} else {
+							_ = c.Process.Kill()
+						}
+					})
+				}
 			case <-done:
+				if escalate != nil {
+					escalate.Stop()
+				}
 				return
 			}
 		}
