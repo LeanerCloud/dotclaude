@@ -3,9 +3,11 @@
 # with no dirty/untracked files, stashes, linked worktrees or live processes. Deletes nothing.
 # Output: state/pushed-clones-<date>.tsv (eligible) and stdout skip reasons.
 set -euo pipefail
+TILDE='~'
 
 ROOT="$HOME/.claude/worktrees"
 OUT="$HOME/.claude/fleet-run/state/pushed-clones-$(date +%Y%m%d).tsv"
+command -v lsof >/dev/null || { echo "list-pushed-clones: lsof not found on PATH" >&2; exit 1; }
 live_cwds=$(lsof -nP -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | sort -u)
 
 has_live_process() {
@@ -26,6 +28,7 @@ fully_pushed() {
   return 0
 }
 
+mkdir -p "${OUT%/*}" || { echo "list-pushed-clones: cannot create ${OUT%/*}" >&2; exit 1; }
 : >"$OUT"
 eligible=0 total_kb=0
 while IFS= read -r gitdir; do
@@ -40,7 +43,7 @@ while IFS= read -r gitdir; do
   elif ! fully_pushed "$dir"; then reason="unpushed"
   fi
   if [[ -n $reason ]]; then
-    printf 'skip\t%s\t%s\n' "$reason" "${dir/#$HOME/~}"
+    printf 'skip\t%s\t%s\n' "$reason" "${dir/#"$HOME"/$TILDE}"
     continue
   fi
   kb=$(du -sk "$dir" | cut -f1)
@@ -49,4 +52,4 @@ while IFS= read -r gitdir; do
   eligible=$((eligible + 1)) total_kb=$((total_kb + kb))
 done < <(find "$ROOT" -mindepth 2 -maxdepth 3 -type d -name .git 2>/dev/null)
 
-printf 'summary\teligible=%d size=%dMB list=%s\n' "$eligible" $((total_kb / 1024)) "${OUT/#$HOME/~}"
+printf 'summary\teligible=%d size=%dMB list=%s\n' "$eligible" $((total_kb / 1024)) "${OUT/#"$HOME"/$TILDE}"

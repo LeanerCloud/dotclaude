@@ -3,7 +3,9 @@
 # and HEAD is merged: an ancestor of the remote default branch, or the head of a MERGED PR.
 # Usage: filter-merged-clones.sh <pushed-clones.tsv>  ->  writes <same>.merged.tsv; deletes nothing.
 set -euo pipefail
+TILDE='~'
 
+[[ $# -eq 1 ]] || { echo "usage: filter-merged-clones.sh <pushed-clones.tsv>" >&2; exit 2; }
 IN=$1
 OUT=${IN%.tsv}.merged.tsv
 : >"$OUT"
@@ -31,9 +33,9 @@ while IFS=$'\t' read -r dir kb origin; do
     printf '%s\t%s\t%s\n' "$dir" "$kb" "$origin" >>"$OUT"
     kept=$((kept + 1)) kb_total=$((kb_total + kb))
   else
-    printf 'unmerged-branch\t%s\n' "${dir/#$HOME/~}"
+    printf 'unmerged-branch\t%s\n' "${dir/#"$HOME"/$TILDE}"
     dropped=$((dropped + 1))
   fi
 done <"$IN"
 
-printf 'summary\tmerged=%d dropped=%d size=%dMB list=%s\n' "$kept" "$dropped" $((kb_total / 1024)) "${OUT/#$HOME/~}"
+printf 'summary\tmerged=%d dropped=%d size=%dMB list=%s\n' "$kept" "$dropped" $((kb_total / 1024)) "${OUT/#"$HOME"/$TILDE}"

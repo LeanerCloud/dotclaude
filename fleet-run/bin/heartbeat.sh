@@ -42,11 +42,31 @@ status_of() {
 }
 wake() { herdr agent prompt "$1" "$2" >/dev/null 2>&1 && log "woke $1: $2" || { log "wake-failed $1"; return 1; }; }
 
+# ISO-8601 with Z or +HH:MM/-HH:MM offset and optional fraction -> UTC epoch seconds. Pure arithmetic
+# (days-from-civil) because BSD and GNU date disagree on parsing. Returns 1 on anything else.
+iso_epoch() {
+  local re='^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})(\.[0-9]+)?(Z|([+-])([0-9]{2}):([0-9]{2}))$'
+  [[ $1 =~ $re ]] || return 1
+  local y=$((10#${BASH_REMATCH[1]})) m=$((10#${BASH_REMATCH[2]})) d=$((10#${BASH_REMATCH[3]}))
+  local hh=$((10#${BASH_REMATCH[4]})) mi=$((10#${BASH_REMATCH[5]})) ss=$((10#${BASH_REMATCH[6]}))
+  (( m >= 1 && m <= 12 && d >= 1 && d <= 31 && hh < 24 && mi < 60 && ss <= 60 )) || return 1
+  local off=0
+  if [[ ${BASH_REMATCH[8]} != Z ]]; then
+    off=$(( 10#${BASH_REMATCH[10]} * 3600 + 10#${BASH_REMATCH[11]} * 60 ))
+    [[ ${BASH_REMATCH[9]} == - ]] && off=$(( -off ))
+  fi
+  (( m <= 2 )) && y=$((y - 1))
+  local era=$(( y / 400 )) yoe doy
+  yoe=$(( y - era * 400 ))
+  doy=$(( (153 * (m > 2 ? m - 3 : m + 9) + 2) / 5 + d - 1 ))
+  echo $(( (era * 146097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719468) * 86400 + hh * 3600 + mi * 60 + ss - off ))
+}
+
 holder="" age=$STALE_SECS lease_note="lease-missing"
 if [[ -f $STATE/lease.json ]]; then
   if holder=$(jq -er '.holder' "$STATE/lease.json" 2>/dev/null) \
-     && ts=$(jq -er '.renewed_at | sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z") | fromdateiso8601' "$STATE/lease.json" 2>/dev/null); then
-    age=$(( $(date -u +%s) - ${ts%.*} ))
+     && raw=$(jq -er '.renewed_at' "$STATE/lease.json" 2>/dev/null) && ts=$(iso_epoch "$raw"); then
+    age=$(( $(date -u +%s) - ts ))
     lease_note="lease_age=${age}s"
     if (( age < -300 )); then lease_note="lease-in-future(${age}s)"; age=$STALE_SECS; fi
   else
