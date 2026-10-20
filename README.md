@@ -43,6 +43,7 @@ portability contract and the per-tool discovery paths.
 | [`triage-labels`](skills/triage-labels/) | creating an issue or PR, or updating an untriaged one you own or were asked to work on, in a repo that uses the rubric |
 | [`triage-pass`](skills/triage-pass/) | "triage", "prioritize the backlog" |
 | [`work-selection`](skills/work-selection/) | "what should I work on next?" |
+| [`draft-pr-sweep`](skills/draft-pr-sweep/) | "audit and prepare all my draft PRs" |
 | [`infra-ops`](skills/infra-ops/) | infrastructure, deployments, cloud resources, ops |
 | [`project-docs`](skills/project-docs/) | project documentation, ADRs, `known-issues.md` |
 | [`ai-tax-preparation`](skills/ai-tax-preparation/) | tax preparation from websites or country; statement collection, purpose tagging, reconciliation, draft returns and audits |
