@@ -715,6 +715,9 @@ process_worktree() { # path branch flags
   name="$(basename "$path")"
   case ",$flags," in *,prunable,*) emit prunable "$name" "worktree directory is missing; run git worktree prune"; return ;; esac
   if [ "$br" = - ]; then emit skip "$name" "detached HEAD"; return; fi
+  if [ -f "$TMP/badbr" ] && grep -Fxq -- "$br" "$TMP/badbr"; then
+    emit blocked "$name" "branch $br is also checked out at a refused worktree path"; return
+  fi
   canon="$(canon_dir "$path")" || { emit blocked "$name" "cannot resolve $path"; return; }
   tip="$(G rev-parse "refs/heads/$br" 2>&1)" || { emit blocked "$name" "cannot resolve $br: $tip"; return; }
   case ",$flags," in *,locked,*) locked=1 ;; esac
