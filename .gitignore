@@ -94,3 +94,9 @@ RTK.md
 
 # Fleet runtime state (see skills/fleet-coordinator)
 /fleet/
+
+# Per-machine local state, handovers and session notes (never committed)
+/fleet-run/state/
+/HANDOVER-*.md
+/briefs/
+/cr-waiver-*.md
