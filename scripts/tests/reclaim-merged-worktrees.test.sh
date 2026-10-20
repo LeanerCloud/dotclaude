@@ -1049,6 +1049,8 @@ c51_branch_also_at_refused_path_blocked() {
   mkenv c51; mkfork; merged_wt a; git -C "$C/wt/a" push -q fork b-a; local d="$C/wt/x"$'\t'"y"
   git -C "$C/main" worktree add -q -f "$d" b-a
   local f
+  run_s
+  a_out '^blocked a .*also checked out at a refused worktree path'; a_no_out 'reclaimable a'
   for f in "--apply" "--branch b-a --apply" "--allow-fork --apply"; do
     case "$f" in *allow-fork*) fadd b-a "$(tip a)" ;; esac
     # shellcheck disable=SC2086
@@ -1057,6 +1059,14 @@ c51_branch_also_at_refused_path_blocked() {
     a_local b-a present; a_remote b-a present; a_fremote b-a present
     [ -d "$d" ] || bad "tab worktree was removed ($f)"
   done
+}
+c52_refused_path_branch_match_is_exact() {
+  mkenv c52; merged_wt a; local d="$C/wt/x"$'\t'"y"
+  git -C "$C/main" worktree add -q "$d" -b b-ab main
+  run_s
+  a_out '^reclaimable a '; a_no_out 'also checked out at a refused'
+  run_s --apply
+  a_out '^reclaimed a '; a_wt a absent; [ -d "$d" ] || bad "tab worktree was removed"
 }
 
 CASES="c01_merged_clean c02_squash_tip_not_in_main c02b_tip_behind_merged_head c03_dirty c04_ignored_env
@@ -1070,7 +1080,7 @@ c30_fork_stash_blocks c30b_fork_stash_on_other_branch_does_not_block c31_fork_ke
 c32_fork_third_party_owner c33_fork_null_head_repository c34_fork_without_local_remote c35_fork_remote_ahead
 c36_fork_match_beside_same_repo_row c37_fork_https_remote_uppercase_owner c38_fork_local_branch_without_worktree
 c39_fork_open_pr_same_head_name c40_fork_pr_head_not_fetchable c41_unknown_flag c42_gh_user_failure_aborts_only_with_flag c43_fork_remote_moves_before_push c44_fork_oids_bound_to_selected_repo c45_fork_base_bound_to_selected_repo
-d01_declared_on_default_reclaims d01b_last_line_without_newline d02_declared_only_on_branch_blocked d03_no_declaration_file_unchanged d04_stale_ref_refreshed d05_fetch_fails_means_no_declarations d05c_fetch_fails_and_ref_missing d05b_narrow_refspec_clone d06_symlink_blob_ignored d07_invalid_lines_skipped_with_warning d08_secret_name_still_blocks d09_declared_dir_blocks d10_declared_file_in_ignored_dir_blocks d11_no_prefix_suffix_or_depth_match d12_bracket_entry_matched_literally d13_declared_symlink_entry_blocks x1_quoted_name_declaration_rejected x2_quoted_dir_declaration_rejected x3_git_component_case_insensitive x4_plain_git_dir_declarable c46_path_with_tab_or_newline_blocked c47_build_dir_inside_bad_path_worktree_refused c48_main_path_with_tab_keeps_main_skip c49_locked_with_reason c50_bad_path_worktree_branch_not_local c51_branch_also_at_refused_path_blocked"
+d01_declared_on_default_reclaims d01b_last_line_without_newline d02_declared_only_on_branch_blocked d03_no_declaration_file_unchanged d04_stale_ref_refreshed d05_fetch_fails_means_no_declarations d05c_fetch_fails_and_ref_missing d05b_narrow_refspec_clone d06_symlink_blob_ignored d07_invalid_lines_skipped_with_warning d08_secret_name_still_blocks d09_declared_dir_blocks d10_declared_file_in_ignored_dir_blocks d11_no_prefix_suffix_or_depth_match d12_bracket_entry_matched_literally d13_declared_symlink_entry_blocks x1_quoted_name_declaration_rejected x2_quoted_dir_declaration_rejected x3_git_component_case_insensitive x4_plain_git_dir_declarable c46_path_with_tab_or_newline_blocked c47_build_dir_inside_bad_path_worktree_refused c48_main_path_with_tab_keeps_main_skip c49_locked_with_reason c50_bad_path_worktree_branch_not_local c51_branch_also_at_refused_path_blocked c52_refused_path_branch_match_is_exact"
 
 for t in $CASES; do
   if [ $# -gt 0 ]; then
