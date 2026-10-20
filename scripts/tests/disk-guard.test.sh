@@ -22,19 +22,30 @@ printf '#!/bin/sh\nprintf "Filesystem 1G-blocks Used Available Capacity\\n/dev/x
 printf '#!/bin/sh\n[ -n "${GO_RC:-}" ] && { echo "go: locked" >&2; exit "$GO_RC"; }\nexit 0\n' > "$ROOT/bin/go"
 cat > "$ROOT/bin/rm" <<EOS
 #!/bin/bash
+# Deletes only paths whose canonical parent plus basename is inside the scratch tree.
 for a in "\$@"; do
-  case \$a in
-    -*) ;;
-    "$ROOT"/*) /bin/rm -rf -- "\$a" ;;
+  case \$a in -*) continue ;; esac
+  base=\$(basename "\$a")
+  parent=\$(cd -P "\$(dirname "\$a")" 2>/dev/null && pwd -P) || parent=""
+  case \$base in .|..) parent="" ;; esac
+  case "\$parent/\$base" in
+    "$ROOT"/*) /bin/rm -rf -- "\$parent/\$base" ;;
     *) echo "BLOCKED \$a" >> "$ROOT/rm.log" ;;
   esac
 done
 EOS
-chmod +x "$ROOT/bin/"*
+mkdir -p "$ROOT/gl"
+cat > "$ROOT/gl/golangci-lint" <<EOS
+#!/bin/sh
+env > "$ROOT/gl.env"
+echo "\$*" > "$ROOT/gl.args"
+EOS
+chmod +x "$ROOT/bin/"* "$ROOT/gl/golangci-lint"
 
 PATH="$ROOT/bin:/usr/bin:/bin:/usr/sbin"
 if command -v golangci-lint >/dev/null; then echo "golangci-lint is reachable on PATH; test setup is wrong" >&2; exit 1; fi
-SYSBASH=${TEST_BASH:-bash}
+SYSBASH=${TEST_BASH:-$BASH}
+printf 'guard runs under: %s (%s)\n' "$SYSBASH" "$("$SYSBASH" --version | head -1)"
 
 PASSED=0 TOTAL_FAILS=0 FAILED_NAMES="" CASE_FAILS=0
 bad() { printf '     %s\n' "$*"; CASE_FAILS=$((CASE_FAILS + 1)); }
@@ -87,6 +98,12 @@ case_intermediate_symlink_refused() {
   grep -q 'resolves elsewhere, refusing' "$ROOT/err" || bad "no refusal on stderr: $(cat "$ROOT/err")"
   note | grep -q 'refused' || bad "note does not mention the refusal: $(note)"
 }
+case_binary_ignores_env_cache() {
+  setup binary
+  PATH="$ROOT/gl:$PATH" GOLANGCI_LINT_CACHE="$H" run_guard
+  grep -qx 'cache clean' "$ROOT/gl.args" 2>/dev/null || bad "golangci-lint cache clean was not run: $(cat "$ROOT/gl.args" 2>/dev/null)"
+  ! grep -q '^GOLANGCI_LINT_CACHE=' "$ROOT/gl.env" || bad "GOLANGCI_LINT_CACHE leaked into golangci-lint: $(grep '^GOLANGCI_LINT_CACHE=' "$ROOT/gl.env")"
+}
 case_failure_reported() {
   setup failure
   GO_RC=3 run_guard
@@ -119,7 +136,7 @@ case_lock_stale() {
   [ ! -e "$L" ] || bad "lock dir left behind"
 }
 
-for t in case_env_home case_env_root case_default_removed case_symlink_refused case_intermediate_symlink_refused case_failure_reported case_lock_held case_lock_stale; do
+for t in case_env_home case_env_root case_default_removed case_symlink_refused case_intermediate_symlink_refused case_binary_ignores_env_cache case_failure_reported case_lock_held case_lock_stale; do
   CASE_FAILS=0
   "$t"
   if [ "$CASE_FAILS" -eq 0 ]; then
