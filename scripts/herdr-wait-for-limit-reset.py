@@ -59,7 +59,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dry-run", action="store_true")
     dry_run = parser.parse_args().dry_run
-    agents = json.loads(herdr("agent", "list"))["result"]["agents"]
+    try:
+        agents = json.loads(herdr("agent", "list"))["result"]["agents"]
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError) as e:
+        print(f"herdr-wait-for-limit-reset: herdr agent list failed: {e}", file=sys.stderr)
+        return 1
     blocked = [
         a["name"]
         for a in agents
