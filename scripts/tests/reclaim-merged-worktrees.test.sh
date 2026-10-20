@@ -407,6 +407,19 @@ c04l_ignored_link_secret_name() {
   run_s --apply
   a_out '^blocked a .*\.env\.link'; a_wt a present
 }
+c04m_link_to_root_blocked() {
+  mkenv c04m
+  mkdir -p "$C/main/.claude/skills"; echo 'pnpm-*' > "$C/main/.claude/skills/.gitignore"
+  git -C "$C/main" add -A; git -C "$C/main" commit -q -m skills; git -C "$C/main" push -q origin main
+  merged_wt a; merged_wt b
+  echo pnpm-top >> "$C/main/.git/info/exclude"
+  ln -s / "$C/wt/a/pnpm-top"
+  mkdir -p "$C/wt/b/.claude/skills"
+  ln -s ../../../../../../../../.. "$C/wt/b/.claude/skills/pnpm-x"
+  run_s --apply
+  a_out '^blocked a .*ignored file not on the build allowlist: pnpm-top'; a_wt a present
+  a_out '^blocked b .*ignored file not on the build allowlist: .*pnpm-x'; a_wt b present
+}
 c05b_plan_md_not_a_plan_symlink() {
   mkenv c05b; merged_wt a; merged_wt b
   echo plan.md >> "$C/main/.git/info/exclude"
@@ -1016,7 +1029,7 @@ c49_locked_with_reason() {
 }
 
 CASES="c01_merged_clean c02_squash_tip_not_in_main c02b_tip_behind_merged_head c03_dirty c04_ignored_env
-c04b_nested_build_output_allowed_nested_env_blocked c04e_node_modules_fixtures_and_more_secret_names c03b_local_branch_moves_before_delete c03c_branch_held_by_second_worktree c04c_tracked_build_dir_and_secret_names_blocked c04d_tracked_build_dir_with_ignored_output_blocked c04f_spaced_path_secret_blocked c04g_spaced_path_secret_names_blocked c04h_non_ascii_path_secret_blocked c04i_spaced_build_dir_harmless_output_reclaimed c04j_tab_and_newline_paths_no_misparse c04k_ignored_links_into_build_dirs c04l_ignored_link_secret_name c05_plan_symlink_only c05b_plan_md_not_a_plan_symlink c06_extra_commits c07_fork_pr_same_name
+c04b_nested_build_output_allowed_nested_env_blocked c04e_node_modules_fixtures_and_more_secret_names c03b_local_branch_moves_before_delete c03c_branch_held_by_second_worktree c04c_tracked_build_dir_and_secret_names_blocked c04d_tracked_build_dir_with_ignored_output_blocked c04f_spaced_path_secret_blocked c04g_spaced_path_secret_names_blocked c04h_non_ascii_path_secret_blocked c04i_spaced_build_dir_harmless_output_reclaimed c04j_tab_and_newline_paths_no_misparse c04k_ignored_links_into_build_dirs c04l_ignored_link_secret_name c04m_link_to_root_blocked c05_plan_symlink_only c05b_plan_md_not_a_plan_symlink c06_extra_commits c07_fork_pr_same_name
 c08_remote_ahead c08b_remote_moves_before_push c09_open_pr_head c10_stacked_open_base c11_live_cwd_prefix_and_symlink c12_plan_liveness
 c13_build_dirs_report_refusals c13b_build_dirs_apply c13c_build_dir_outside_allowed_roots c13d_build_dir_canonical_git_and_cwd c14_gh_failure_aborts c15_submodule_refused_and_c17_isolation
 c16_prunable c18_branch_mode_worktree_gone c19_report_mode_changes_nothing c20_locked c21_no_pr_and_detached
