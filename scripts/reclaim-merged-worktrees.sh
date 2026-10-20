@@ -749,15 +749,43 @@ list_plans
 load_pr_data
 load_declared_outputs
 
-G worktree list --porcelain | awk -v RS= -v FS='\n' '
-  { path = ""; br = "-"; fl = ""
-    for (i = 1; i <= NF; i++) {
-      if ($i ~ /^worktree /) path = substr($i, 10)
-      else if ($i ~ /^branch refs\/heads\//) br = substr($i, 19)
-      else if ($i ~ /^locked/) fl = fl ",locked"
-      else if ($i ~ /^prunable/) fl = fl ",prunable"
-    }
-    printf "%s\t%s\t%s\n", path, br, fl }' > "$TMP/wts" || die "cannot list worktrees"
+# -z keeps tab and newline in a path intact; such a path cannot ride the TSV, so it is only reported.
+# A bad main path keeps a '/-' row so the first-row main skip stays positional.
+parse_worktrees() {
+  local f path='' br=- fl='' have=0 n=0 tab nl name
+  tab="$(printf '\t')"; nl="$(printf '\n_')"; nl="${nl%_}"
+  while IFS= read -r -d '' f; do
+    if [ -z "$f" ]; then
+      if [ "$have" -eq 1 ]; then
+        n=$((n + 1))
+        case "$path" in
+          *"$tab"*|*"$nl"*)
+            name="$(basename "$path")"
+            printf '%s\n' "${name//[$tab$nl]/ }" >> "$TMP/badwt"
+            printf '%s\n' "$path" >> "$TMP/badpath"
+            [ "$n" -ne 1 ] || printf '%s\t%s\t%s\n' /- "$br" "$fl" ;;
+          *) printf '%s\t%s\t%s\n' "$path" "$br" "$fl" ;;
+        esac
+      fi
+      path=; br=-; fl=; have=0
+      continue
+    fi
+    have=1
+    case "$f" in
+      "worktree "*) path="${f#worktree }" ;;
+      "branch refs/heads/"*) br="${f#branch refs/heads/}" ;;
+      locked*) fl="$fl,locked" ;;
+      prunable*) fl="$fl,prunable" ;;
+    esac
+  done
+}
+
+G worktree list --porcelain -z | parse_worktrees > "$TMP/wts" || die "cannot list worktrees"
+if [ -f "$TMP/badwt" ]; then
+  while IFS= read -r bad; do
+    emit blocked "$bad" "unsupported worktree path (tab or newline)"
+  done < "$TMP/badwt"
+fi
 
 : > "$TMP/wt_paths"
 : > "$TMP/wt_branches"
@@ -766,6 +794,12 @@ while IFS="$(printf '\t')" read -r p br fl; do
   printf '%s\n' "$c" >> "$TMP/wt_paths"
   [ "$br" = - ] || printf '%s\n' "$br" >> "$TMP/wt_branches"
 done < "$TMP/wts"
+if [ -f "$TMP/badpath" ]; then
+  while IFS= read -r p; do
+    c="$(canon_dir "$p")" || c="$p"
+    printf '%s\n' "$c" >> "$TMP/wt_paths"
+  done < "$TMP/badpath"
+fi
 
 first=1
 while IFS="$(printf '\t')" read -r p br fl; do
