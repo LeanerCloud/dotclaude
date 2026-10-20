@@ -22,6 +22,8 @@ func main() {
 func dispatch(e env, args []string) int {
 	if len(args) > 0 {
 		switch args[0] {
+		case "tick":
+			return runTick(e, args[1:])
 		case "heavy":
 			return runHeavy(e, args[1:])
 		case "lock":
