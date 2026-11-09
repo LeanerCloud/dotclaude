@@ -1069,6 +1069,114 @@ c52_refused_path_branch_match_is_exact() {
   a_out '^reclaimed a '; a_wt a absent; [ -d "$d" ] || bad "tab worktree was removed"
 }
 
+land_direct() { # name: fast-forward origin main to the branch tip, as a direct-commit landing
+  git -C "$C/wt/$1" push -q origin "HEAD:main"
+}
+c53_direct_commit_landing_reclaimed() {
+  mkenv c53; mkwt a; land_direct a
+  run_s
+  a_out '^reclaimable a '
+  run_s --apply
+  a_out '^reclaimed a '; a_wt a absent; a_local b-a absent; a_remote b-a absent
+}
+c54_fresh_branch_inside_base_not_reclaimed() {
+  mkenv c54
+  git -C "$C/main" worktree add -q "$C/wt/a" -b b-a main
+  run_s --apply
+  a_out '^skip a .*no merged PR'; a_wt a present; a_local b-a present
+}
+c55_direct_landing_with_extra_commit_kept() {
+  mkenv c55; mkwt a; land_direct a
+  echo more > "$C/wt/a/more.txt"; git -C "$C/wt/a" add more.txt; git -C "$C/wt/a" commit -q -m more
+  run_s --apply
+  a_out '^skip a .*no merged PR'; a_wt a present; a_local b-a present
+}
+c56_direct_landing_dirty_blocked() {
+  mkenv c56; mkwt a; land_direct a; echo x >> "$C/wt/a/a.txt"
+  run_s --apply
+  a_out '^blocked a '; a_wt a present; a_local b-a present
+}
+c57_direct_landing_remote_ahead_kept() {
+  mkenv c57; mkwt a; land_direct a
+  git -C "$C/main" worktree add -q "$C/wt/x" -b b-x-tmp main
+  git -C "$C/wt/a" checkout -q -b scratch-a
+  echo r > "$C/wt/a/r.txt"; git -C "$C/wt/a" add r.txt; git -C "$C/wt/a" commit -q -m remote-only
+  git -C "$C/wt/a" push -q -f origin scratch-a:b-a 2>/dev/null
+  git -C "$C/wt/a" checkout -q b-a
+  run_s --apply
+  a_remote b-a present
+}
+c58_direct_landing_open_pr_protected() {
+  mkenv c58; mkwt a; land_direct a; add_open b-a main
+  run_s --apply
+  a_out '^skip a .*open PR'; a_wt a present
+}
+
+advance_main() { # commit on main in the primary clone and push it, so origin main moves on
+  echo adv >> "$C/main/adv.txt"; git -C "$C/main" add adv.txt; git -C "$C/main" commit -q -m advance
+  git -C "$C/main" push -q origin main
+}
+c59_fresh_branch_fast_forwarded_not_reclaimed() {
+  mkenv c59; git -C "$C/main" worktree add -q "$C/wt/a" -b b-a main
+  advance_main; git -C "$C/wt/a" merge -q --ff-only main
+  run_s --apply
+  a_out '^skip a .*no merged PR'; a_wt a present; a_local b-a present
+}
+c60_fresh_branch_rebased_not_reclaimed() {
+  mkenv c60; git -C "$C/main" worktree add -q "$C/wt/a" -b b-a main
+  advance_main; git -C "$C/wt/a" rebase -q main
+  run_s --apply
+  a_out '^skip a .*no merged PR'; a_wt a present; a_local b-a present
+}
+c61_reset_dropped_unlanded_commit_kept() {
+  mkenv c61; git -C "$C/main" worktree add -q "$C/wt/a" -b b-a main
+  echo w > "$C/wt/a/w.txt"; git -C "$C/wt/a" add w.txt; git -C "$C/wt/a" commit -q -m unlanded
+  git -C "$C/wt/a" reset -q --hard main
+  run_s --apply
+  a_out '^skip a .*no merged PR'; a_wt a present; a_local b-a present
+}
+c62_empty_reflog_not_reclaimed() {
+  mkenv c62; git -C "$C/main" config core.logAllRefUpdates false
+  git -C "$C/main" worktree add -q "$C/wt/a" -b b-a main
+  run_s --apply
+  a_out '^skip a .*no merged PR'; a_wt a present; a_local b-a present
+}
+c63_direct_landing_after_rebase_reclaimed() {
+  mkenv c63; git -C "$C/main" worktree add -q "$C/wt/a" -b b-a main
+  echo w > "$C/wt/a/w.txt"; git -C "$C/wt/a" add w.txt; git -C "$C/wt/a" commit -q -m work
+  advance_main; git -C "$C/wt/a" rebase -q main; land_direct a
+  run_s --apply
+  a_out '^reclaimed a '; a_wt a absent; a_local b-a absent
+}
+c64_direct_landing_fetch_failure_skips() {
+  mkenv c64; mkwt a; land_direct a
+  mkdir -p "$C/gitwrap"
+  # shellcheck disable=SC2016 # the wrapper body is literal shell text
+  printf '#!/bin/bash\nfor a in "$@"; do\n  case "$a" in +refs/heads/main:*) exit 1 ;; esac\ndone\nexec %s "$@"\n' "$(command -v git)" > "$C/gitwrap/git"
+  chmod +x "$C/gitwrap/git"; EXTRA_PATH="$C/gitwrap"
+  run_s --apply
+  a_out '^skip a .*no merged PR'; a_wt a present
+}
+
+c65_reset_dropped_unlanded_merge_kept() {
+  mkenv c65; git -C "$C/main" worktree add -q "$C/wt/a" -b b-a main
+  advance_main
+  git -C "$C/wt/a" merge -q --no-ff --no-commit main
+  echo evil > "$C/wt/a/evil.txt"; git -C "$C/wt/a" add evil.txt; git -C "$C/wt/a" commit -q -m evil-merge
+  git -C "$C/wt/a" reset -q --hard main
+  run_s --apply
+  a_out '^skip a .*no merged PR'; a_wt a present; a_local b-a present
+}
+c66_whitespace_only_difference_kept() {
+  mkenv c66; git -C "$C/main" worktree add -q "$C/wt/a" -b b-a main
+  printf 'if x:\n    y\n' > "$C/wt/a/f.py"; git -C "$C/wt/a" add f.py; git -C "$C/wt/a" commit -q -m spaces
+  git -C "$C/wt/a" reset -q --hard main
+  printf 'if x:\n\ty\n' > "$C/main/f.py"; git -C "$C/main" add f.py; git -C "$C/main" commit -q -m tabs
+  git -C "$C/main" push -q origin main; git -C "$C/wt/a" merge -q --ff-only main
+  run_s --apply
+  a_out '^skip a .*no merged PR'; a_wt a present; a_local b-a present
+}
+
 CASES="c01_merged_clean c02_squash_tip_not_in_main c02b_tip_behind_merged_head c03_dirty c04_ignored_env
 c04b_nested_build_output_allowed_nested_env_blocked c04e_node_modules_fixtures_and_more_secret_names c03b_local_branch_moves_before_delete c03c_branch_held_by_second_worktree c04c_tracked_build_dir_and_secret_names_blocked c04d_tracked_build_dir_with_ignored_output_blocked c04f_spaced_path_secret_blocked c04g_spaced_path_secret_names_blocked c04h_non_ascii_path_secret_blocked c04i_spaced_build_dir_harmless_output_reclaimed c04j_tab_and_newline_paths_no_misparse c04k_ignored_links_into_build_dirs c04l_ignored_link_secret_name c04m_link_to_root_blocked c05_plan_symlink_only c05b_plan_md_not_a_plan_symlink c06_extra_commits c07_fork_pr_same_name
 c08_remote_ahead c08b_remote_moves_before_push c09_open_pr_head c10_stacked_open_base c11_live_cwd_prefix_and_symlink c12_plan_liveness
@@ -1080,7 +1188,8 @@ c30_fork_stash_blocks c30b_fork_stash_on_other_branch_does_not_block c31_fork_ke
 c32_fork_third_party_owner c33_fork_null_head_repository c34_fork_without_local_remote c35_fork_remote_ahead
 c36_fork_match_beside_same_repo_row c37_fork_https_remote_uppercase_owner c38_fork_local_branch_without_worktree
 c39_fork_open_pr_same_head_name c40_fork_pr_head_not_fetchable c41_unknown_flag c42_gh_user_failure_aborts_only_with_flag c43_fork_remote_moves_before_push c44_fork_oids_bound_to_selected_repo c45_fork_base_bound_to_selected_repo
-d01_declared_on_default_reclaims d01b_last_line_without_newline d02_declared_only_on_branch_blocked d03_no_declaration_file_unchanged d04_stale_ref_refreshed d05_fetch_fails_means_no_declarations d05c_fetch_fails_and_ref_missing d05b_narrow_refspec_clone d06_symlink_blob_ignored d07_invalid_lines_skipped_with_warning d08_secret_name_still_blocks d09_declared_dir_blocks d10_declared_file_in_ignored_dir_blocks d11_no_prefix_suffix_or_depth_match d12_bracket_entry_matched_literally d13_declared_symlink_entry_blocks x1_quoted_name_declaration_rejected x2_quoted_dir_declaration_rejected x3_git_component_case_insensitive x4_plain_git_dir_declarable c46_path_with_tab_or_newline_blocked c47_build_dir_inside_bad_path_worktree_refused c48_main_path_with_tab_keeps_main_skip c49_locked_with_reason c50_bad_path_worktree_branch_not_local c51_branch_also_at_refused_path_blocked c52_refused_path_branch_match_is_exact"
+d01_declared_on_default_reclaims d01b_last_line_without_newline d02_declared_only_on_branch_blocked d03_no_declaration_file_unchanged d04_stale_ref_refreshed d05_fetch_fails_means_no_declarations d05c_fetch_fails_and_ref_missing d05b_narrow_refspec_clone d06_symlink_blob_ignored d07_invalid_lines_skipped_with_warning d08_secret_name_still_blocks d09_declared_dir_blocks d10_declared_file_in_ignored_dir_blocks d11_no_prefix_suffix_or_depth_match d12_bracket_entry_matched_literally d13_declared_symlink_entry_blocks x1_quoted_name_declaration_rejected x2_quoted_dir_declaration_rejected x3_git_component_case_insensitive x4_plain_git_dir_declarable c46_path_with_tab_or_newline_blocked c47_build_dir_inside_bad_path_worktree_refused c48_main_path_with_tab_keeps_main_skip c49_locked_with_reason c50_bad_path_worktree_branch_not_local c51_branch_also_at_refused_path_blocked c52_refused_path_branch_match_is_exact
+c53_direct_commit_landing_reclaimed c54_fresh_branch_inside_base_not_reclaimed c55_direct_landing_with_extra_commit_kept c56_direct_landing_dirty_blocked c57_direct_landing_remote_ahead_kept c58_direct_landing_open_pr_protected c59_fresh_branch_fast_forwarded_not_reclaimed c60_fresh_branch_rebased_not_reclaimed c61_reset_dropped_unlanded_commit_kept c62_empty_reflog_not_reclaimed c63_direct_landing_after_rebase_reclaimed c64_direct_landing_fetch_failure_skips c65_reset_dropped_unlanded_merge_kept c66_whitespace_only_difference_kept"
 
 for t in $CASES; do
   if [ $# -gt 0 ]; then

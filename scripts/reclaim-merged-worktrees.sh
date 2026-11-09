@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Report (default) or reclaim worktrees, branches and build dirs whose PRs have merged.
+# Report (default) or reclaim worktrees, branches and build dirs whose PRs have merged, or whose
+# tip is already in origin's default branch (direct-commit landing).
 # This is the implementation of the AGENTS.md tenet 9 post-merge exception; the
 # `worktrees` skill describes when to run it.
 #
@@ -190,6 +191,42 @@ EOF
   return 1
 }
 
+# upstream_equivalent <sha> <base>: true for a single-parent commit whose exact patch (whitespace
+# included, `patch-id --verbatim`) appears among the last 2000 non-merge commits of <base> not
+# reachable from <sha>. Merges, empty commits and any git failure are false. `git cherry` is not
+# used: it skips merges and ignores whitespace, which would let unlanded content be deleted.
+upstream_equivalent() {
+  local sha="$1" base="$2" pid parents
+  parents="$(G rev-list --parents -n 1 "$sha" 2>/dev/null)" || return 1
+  [ "$(printf '%s\n' "$parents" | wc -w | tr -d ' ')" -eq 2 ] || return 1
+  G diff-tree -p "$sha" 2>/dev/null | G patch-id --verbatim > "$TMP/pid_sha" 2>/dev/null || return 1
+  pid="$(cut -d' ' -f1 "$TMP/pid_sha")"
+  [ -n "$pid" ] || return 1
+  G log -p --no-merges -n 2000 "$base" --not "$sha" 2>/dev/null | G patch-id --verbatim > "$TMP/pid_base" 2>/dev/null || return 1
+  cut -d' ' -f1 "$TMP/pid_base" | grep -Fxq -- "$pid"
+}
+
+# direct_landed <branch> <tip>: true when the branch has no PR but its tip is an ancestor of the
+# fetched origin default branch (landed by a direct commit, AGENTS.md tenet 9). Evidence of work is
+# a reflog "commit" entry, and every commit the branch ever pointed at must be upstream (an ancestor
+# of the base, or an exact-patch match of a non-merge commit upstream), so a reset that dropped unlanded work, or a
+# fast-forward of a fresh branch, never counts. Sets DIRECT_BASE to the default branch tip.
+direct_landed() {
+  local br="$1" tip="$2" ref="refs/remotes/origin/$DEFAULT_BRANCH" sha subj commits=0
+  G fetch -q origin "+refs/heads/$DEFAULT_BRANCH:$ref" 2>/dev/null || return 1
+  DIRECT_BASE="$(G rev-parse -q --verify "$ref^{commit}" 2>/dev/null)" || return 1
+  G merge-base --is-ancestor "$tip" "$DIRECT_BASE" 2>/dev/null || return 1
+  while read -r sha subj; do
+    [ -n "$sha" ] || continue
+    case "$subj" in commit*) commits=1 ;; esac
+    G merge-base --is-ancestor "$sha" "$DIRECT_BASE" 2>/dev/null && continue
+    upstream_equivalent "$sha" "$DIRECT_BASE" || return 1
+  done <<EOF
+$(G reflog show --format='%H %gs' "refs/heads/$br" 2>/dev/null)
+EOF
+  [ "$commits" -eq 1 ]
+}
+
 # classify <name> <branch> <tip>: 0 when merged and safe, else emits skip/ask and returns 1.
 # Sets MATCH_OIDS (same-repo heads); with --allow-fork also IS_FORK, FORK_OIDS, FORK_REMOTE.
 classify() {
@@ -240,6 +277,10 @@ classify() {
     fi
   done < "$TMP/merged.tsv"
   if [ "$any" -eq 0 ]; then
+    if direct_landed "$br" "$tip"; then
+      MATCH_OIDS=" $DIRECT_BASE"
+      return 0
+    fi
     emit skip "$name" "no merged PR for $br"
     return 1
   fi
