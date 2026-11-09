@@ -1098,13 +1098,12 @@ c56_direct_landing_dirty_blocked() {
 }
 c57_direct_landing_remote_ahead_kept() {
   mkenv c57; mkwt a; land_direct a
-  git -C "$C/main" worktree add -q "$C/wt/x" -b b-x-tmp main
-  git -C "$C/wt/a" checkout -q -b scratch-a
-  echo r > "$C/wt/a/r.txt"; git -C "$C/wt/a" add r.txt; git -C "$C/wt/a" commit -q -m remote-only
-  git -C "$C/wt/a" push -q -f origin scratch-a:b-a 2>/dev/null
-  git -C "$C/wt/a" checkout -q b-a
+  git clone -q "$C/origin.git" "$C/other" 2>/dev/null
+  git -C "$C/other" checkout -q b-a
+  echo extra > "$C/other/extra.txt"; git -C "$C/other" add extra.txt; git -C "$C/other" commit -q -m extra
+  git -C "$C/other" push -q origin b-a
   run_s --apply
-  a_remote b-a present
+  a_out '^ask a .*remote ahead'; a_remote b-a present
 }
 c58_direct_landing_open_pr_protected() {
   mkenv c58; mkwt a; land_direct a; add_open b-a main
