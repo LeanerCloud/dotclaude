@@ -2,7 +2,8 @@
 
 Global rules for every repository and every agent host (Claude Code, Codex, Gemini). Detail lives in
 skills (`skills/<name>/SKILL.md`), which load when their trigger fires; "invoke the `<name>` skill"
-means that host's skill mechanism. A project's own `AGENTS.md`/`CLAUDE.md` overrides this file; read
+means that host's skill mechanism. A project's own `AGENTS.md`/`CLAUDE.md` overrides this file, except
+§1d (landing changes), which always wins in the owner's repos; read
 it, its `known-issues.md`, `~/.claude/projects.md` (add the project if missing: Project, Path, Stack,
 Description) and `~/.claude/local-paths.md` at session start.
 
@@ -32,7 +33,7 @@ into a memory** (§3). 6. **No "done" without proof** (§4). 7. **Simpler beats 
 
 Other skills are found from their descriptions; these fire on events, so they are listed here:
 `tool-usage` before any shell command or script; `git-commit` before staging a commit;
-`ci-watch` after every `git push`; `pr-lifecycle` when opening or driving a PR; `cr-loop` when a
+`ci-watch` after every `git push`; `pr-lifecycle` when driving an existing PR (§1d: no new PRs); `cr-loop` when a
 CodeRabbit review is pending; `multi-agent-comms` in a checkout another session may use;
 `systematic-debugging` before proposing a bug fix; `verification-before-completion` before saying
 done; `playwright-verify` after any web-app change; `rate-limit-retry` on any throttle;
@@ -43,8 +44,8 @@ TypeScript, Python, Shell, Docker, Terraform, databases; `infra-ops` for infrast
 cloud ops; `project-docs` for project documentation.
 
 Typical chains. Change: `how` → `architect` → plan + `review-and-implement` → `worktrees` → `tdd` →
-`blast-radius` → `review-staged-diff` → `deslop` → `git-commit` → `ci-watch` → `pr-lifecycle` →
-`cr-loop`. Bug: `systematic-debugging` → `tdd` → `blast-radius` → `verification-before-completion`.
+`blast-radius` → `review-staged-diff` → `deslop` → `git-commit` → rebase and push to the default
+branch → `ci-watch`. Bug: `systematic-debugging` → `tdd` → `blast-radius` → `verification-before-completion`.
 Money/auth/tenant paths add `interrogate`; input/auth/secrets add `owasp-security`.
 
 ## Core Principles
@@ -132,10 +133,10 @@ Never silently copy-paste; unavoidable cross-language mirrors reference each oth
 
 Multi-commit or long work, or any checkout another session may use, goes in a worktree under
 `~/.claude/worktrees/` (never `/tmp`), created only after the plan review, with the plan saved at
-`~/.claude/projects/<project>/plans/<slug>.md`. Fetch and branch from `origin/<base-branch>`; for
-issue work, check that it is still open and no other owner has claimed or already opened a PR for it.
-Repeat the checkpoint before pushing. Never commit in-progress work on the branch you started from.
-Rebase, don't merge.
+`~/.claude/projects/<project>/plans/<slug>.md`. Fetch and branch from `origin/<default-branch>`; for
+issue work, check that it is still open and no other owner has claimed it. Repeat the checkpoint
+before landing. Land per §1d: rebase onto `origin/<default-branch>` and fast-forward push. Rebase,
+don't merge.
 `git submodule update` inside a worktree moves the main clone's submodule HEADs for every worktree.
 Details: `worktrees`.
 
@@ -148,18 +149,26 @@ findings". Implementer fixes; design calls go to the reviewer; second pass; done
 alive across passes; log findings in the plan file. Review each task as it lands; if it needs
 machinery the plan lacks, re-plan.
 
-### 1d. Cross-agent PR review
+### 1d. Landing changes (no PRs)
 
-A pushed PR is not mergeable until a fresh agent with a cold brief and no author transcript has
-reviewed it; obtain that review yourself, never stop at "needs review". Brief it cold: project and
-what correct means, PR number, head SHA, base and stack, build/test commands, applicable rules,
-output format, and that the PR body is a claim, not evidence. Make it compare against the source of
-truth (upstream code, spec, vendor source) with a `file:line` per field checked, and reproduce
-evidence (rebuild the parent with the new tests; mutate a scratch copy of the implementation and
-confirm the probe fails). Verify each finding before acting; close unreproducible ones with a note.
-Fixes go back through the same reviewer. Reviewers never merge; a finding fixed after a clean review
-lands as a follow-up PR, not an amend. Then merge per `pr-lifecycle` (human merge by default; never
-self-merge `LeanerCloud/dotclaude`).
+In the owner's own repos (owner `cristim` or the `LeanerCloud` org), this rule applies even when the
+repo's `CLAUDE.md`/`AGENTS.md` says otherwise (PR requirements, approval counts, maintainer sign-off
+or merge rules there are superseded for work done by the owner's agents). Third-party repos follow
+their own rules.
+
+Do not open PRs. Commit straight to the default branch: after the staged-diff review (2 adversarial
+passes, same reviewer, §1 gates) and the local tests pass, rebase onto `origin/<default-branch>`,
+re-run the affected tests if the base moved, and fast-forward push. Never force-push. Each commit
+that resolves issues names them in its message (`Closes #n`, one line per issue) so they close on
+push. Every commit stays ≤400 additions+deletions; split larger changes into several commits.
+Brief the reviewer cold: what correct means, the exact tree or diff, build/test commands, and that
+the author's claims are not evidence; it compares against the source of truth with `file:line` and
+reproduces evidence (mutation probes must fail). After pushing, watch CI on the default branch
+(`ci-watch`); a red main is fixed at once with a follow-up commit. PRs from outside contributors
+are still reviewed and merged through their PR. PRs are only for other people's repos (follow their
+rules). In the owner's repos, always push commits directly; if a GitHub ruleset still rejects a direct
+push, report it to the owner (who adds the bypass), and until then open one PR per change with
+`Closes #n` and self-merge it on green required checks (`--match-head-commit`), no approval gate.
 
 ### 2. Subagents
 
@@ -195,8 +204,8 @@ or `/tmp/claude/`, reviewed (2 passes) before running. Details: `tool-usage`.
 After any correction, save a memory: the rule, a **Why:** line, a **How to apply:** line. Search
 first, update rather than duplicate, prune stale ones. Before writing code in a project, read its
 `~/.claude/projects/<project>/memory/feedback_*.md` (`git-commit` has the rest). For gaps in this config, propose the change to
-the user; once agreed, open an issue plus a focused PR against `LeanerCloud/dotclaude` (branch off
-`origin/main`, `Closes #n`, never push to `main` or self-merge, restore the original branch).
+the user; once agreed, open an issue and land the fix on `LeanerCloud/dotclaude` main per §1d
+(`Closes #n` in the commit).
 
 ### 4. Verification before done
 
@@ -223,10 +232,9 @@ Escalate decisions, not investigations.
 
 ### 7. Triage and work selection
 
-Before starting work on a new PR, invoke `work-selection` and actively advance at least one
-eligible open PR toward merge; aim for two. This applies to explicitly requested new work too,
-unless the user explicitly overrides it. If no open PR has an authorized next action, record why
-and proceed. Existing queue ordering, ownership, review and merge gates still apply.
+Before starting new work, invoke `work-selection`; finish or land in-flight work first, and drive
+any remaining open PRs (contributor PRs, or ones opened before §1d) to merge or close. Existing
+queue ordering, ownership and review gates still apply.
 
 "Triage"/"prioritize the backlog" → `triage-pass`. "What next?" → `work-selection` (or `triage-pass`
 first if >10 items lack a clear order). Offer, don't run, a pass when a session start shows >30
@@ -244,9 +252,9 @@ untriaged items, >5 PRs idle 7 days, or a stale P0. Label only items you create,
   placeholders (`<account-id>`, `123456789012`) and redact pasted logs and output.
 - Conventional, atomic commits; never heredoc `git commit -m`; never `--no-verify`; never
   `gh pr merge --admin` past failing or pending checks.
-- PRs: one coherent concern at any size, every commit ≤400 additions+deletions, conventional title,
-  branch `type/short-description`. Before ending PR work, every PR you authored has a live CR watch,
-  a clean terminal CR state, or is closed.
+- No PRs (§1d): commit to the default branch after the local review, every commit ≤400
+  additions+deletions, conventional message, `Closes #n` for each issue it resolves, fast-forward
+  push only.
 - Track multi-step work in the task tools.
 
 ## Session handoff
