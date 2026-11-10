@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Report (default) or reclaim worktrees, branches and build dirs whose PRs have merged, or whose
-# tip is already in origin's default branch (direct-commit landing).
+# tip is already in the origin branch it lands on (direct-commit landing): the branch it was created
+# from, else the default branch.
 # This is the implementation of the AGENTS.md tenet 9 post-merge exception; the
 # `worktrees` skill describes when to run it.
 #
@@ -206,14 +207,59 @@ upstream_equivalent() {
   cut -d' ' -f1 "$TMP/pid_base" | grep -Fxq -- "$pid"
 }
 
-# direct_landed <branch> <tip>: true when the branch has no PR but its tip is an ancestor of the
-# fetched origin default branch (landed by a direct commit, AGENTS.md tenet 9). Evidence of work is
+# landing_base <branch>: the origin branch work on <branch> lands on. A repo may land on a branch
+# other than GitHub's default (AutoSpotting: default master, work lands on stable-1.4.x), so this is
+# the origin branch the local branch was created from (its first reflog entry, "Created from
+# origin/<x>") when <x> exists on origin and is not the head of any PR; any other creation (HEAD, a
+# tag, a commit, a local-only branch) gives the default branch.
+# A branch that is the head of any PR (open, merged or closed) is somebody's feature branch, not a
+# landing branch: work pushed only there is not landed, so it never counts (a gh failure counts too).
+# A pushed feature branch that never had a PR cannot be told apart from a landing branch.
+is_pr_head() {
+  local x="$1" f out n
+  f="$TMP/prhead.$(printf '%s' "$x" | cksum | cut -d' ' -f1)"
+  if [ -f "$f" ]; then [ "$(cat "$f")" = 1 ]; return; fi
+  out="$(gh pr list -R "$GH_REPO" --head "$x" --state all --limit 1 --json number 2>/dev/null)" || { echo 1 > "$f"; return 0; }
+  n="$(printf '%s' "$out" | jq 'length' 2>/dev/null)" || { echo 1 > "$f"; return 0; }
+  [ "$n" -eq 0 ] || { echo 1 > "$f"; return 0; }
+  echo 0 > "$f"
+  return 1
+}
+
+# created_from <branch>: the ref name from the branch's first reflog entry "Created from <ref>", with
+# refs/remotes/, origin/ and refs/heads/ stripped; empty when it was created any other way.
+created_from() {
+  local subj x
+  subj="$(G reflog show --format=%gs "refs/heads/$1" 2>/dev/null | tail -n 1)"
+  case "$subj" in
+    "branch: Created from "*) x="${subj#branch: Created from }" ;;
+    *) return 0 ;;
+  esac
+  x="${x#refs/remotes/}"
+  x="${x#origin/}"
+  x="${x#refs/heads/}"
+  printf '%s\n' "$x"
+}
+
+landing_base() {
+  local x
+  x="$(created_from "$1")"
+  if [ -n "$x" ] && [ "$x" != "$DEFAULT_BRANCH" ] && G rev-parse -q --verify "refs/remotes/origin/$x^{commit}" >/dev/null 2>&1 && ! is_pr_head "$x"; then
+    printf '%s\n' "$x"
+  else
+    printf '%s\n' "$DEFAULT_BRANCH"
+  fi
+}
+
+# direct_landed <branch> <tip> <landing branch>: true when the branch has no PR but its tip is an ancestor of the
+# fetched origin landing branch (landed by a direct commit, AGENTS.md tenet 9). Evidence of work is
 # a reflog "commit" entry, and every commit the branch ever pointed at must be upstream (an ancestor
 # of the base, or an exact-patch match of a non-merge commit upstream), so a reset that dropped unlanded work, or a
-# fast-forward of a fresh branch, never counts. Sets DIRECT_BASE to the default branch tip.
+# fast-forward of a fresh branch, never counts. Sets DIRECT_BASE to the landing branch tip.
 direct_landed() {
-  local br="$1" tip="$2" ref="refs/remotes/origin/$DEFAULT_BRANCH" sha subj commits=0
-  G fetch -q origin "+refs/heads/$DEFAULT_BRANCH:$ref" 2>/dev/null || return 1
+  local br="$1" tip="$2" lb="$3" ref sha subj commits=0
+  ref="refs/remotes/origin/$lb"
+  G fetch -q origin "+refs/heads/$lb:$ref" 2>/dev/null || return 1
   DIRECT_BASE="$(G rev-parse -q --verify "$ref^{commit}" 2>/dev/null)" || return 1
   G merge-base --is-ancestor "$tip" "$DIRECT_BASE" 2>/dev/null || return 1
   while read -r sha subj; do
@@ -231,13 +277,14 @@ EOF
 # Sets MATCH_OIDS (same-repo heads); with --allow-fork also IS_FORK, FORK_OIDS, FORK_REMOTE.
 classify() {
   local name="$1" br="$2" tip="$3" head oid base num cross fowner fname matched=0 fetch_failed=0
-  local any=0 same=0 base_ok=0 fork_cand=0 fork_matched=0 fork_base_ok=0
+  local any=0 same=0 base_ok=0 fork_cand=0 fork_matched=0 fork_base_ok=0 lb
   local frem='' fork_why='' fork_other_base='' other_base='' fork_rows='' fork_hits='' fork_slug='' fs fo fb
   MATCH_OIDS=
   FORK_OIDS=
   FORK_REMOTE=
   IS_FORK=0
-  if is_protected "$br"; then
+  lb="$(landing_base "$br")"
+  if is_protected "$br" || [ "$br" = "$(created_from "$br")" ]; then
     emit skip "$name" "branch $br has an open PR or is protected"
     return 1
   fi
@@ -273,11 +320,11 @@ classify() {
     MATCH_OIDS="$MATCH_OIDS $oid"
     if [ "$tip" = "$oid" ] || G merge-base --is-ancestor "$tip" "$oid" 2>/dev/null; then
       matched=1
-      if [ "$base" = "$DEFAULT_BRANCH" ]; then base_ok=1; else other_base="$base"; fi
+      if [ "$base" = "$lb" ] || [ "$base" = "$DEFAULT_BRANCH" ]; then base_ok=1; else other_base="$base"; fi
     fi
   done < "$TMP/merged.tsv"
   if [ "$any" -eq 0 ]; then
-    if direct_landed "$br" "$tip"; then
+    if direct_landed "$br" "$tip" "$lb"; then
       MATCH_OIDS=" $DIRECT_BASE"
       return 0
     fi
@@ -301,7 +348,7 @@ $fork_rows
 EOF
     while read -r fs fb; do
       [ "$fs" = "$fork_slug" ] || continue
-      if [ "$fb" = "$DEFAULT_BRANCH" ]; then fork_base_ok=1; else fork_other_base="$fb"; fi
+      if [ "$fb" = "$lb" ] || [ "$fb" = "$DEFAULT_BRANCH" ]; then fork_base_ok=1; else fork_other_base="$fb"; fi
     done <<EOF
 $fork_hits
 EOF
@@ -318,7 +365,7 @@ EOF
     return 1
   fi
   if [ "$base_ok" -eq 0 ]; then
-    emit ask "$name" "PR for $br merged into $other_base, not $DEFAULT_BRANCH"
+    emit ask "$name" "PR for $br merged into $other_base, not $lb"
     return 1
   fi
   if [ "$IS_FORK" -eq 1 ] && stash_on "$br"; then

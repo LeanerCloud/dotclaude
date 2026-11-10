@@ -25,6 +25,7 @@ cat > "$ROOT/bin/gh" <<'EOF'
 #!/bin/bash
 d="${FAKE_GH_DIR:?}"
 echo "$*" >> "$d/calls.log"
+all_args=" $* "
 [ -f "$d/fail" ] && { echo "gh: simulated failure" >&2; exit 1; }
 if [ "$1" = api ]; then
   [ -f "$d/api_fail" ] && { echo "gh: simulated api failure" >&2; exit 1; }
@@ -46,9 +47,10 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
-case "$state" in merged) src=merged.json ;; open) src=open.json ;; *) exit 1 ;; esac
-jq --arg h "$head" --arg b "$base" \
-  '[.[] | select(($h == "" or .headRefName == $h) and ($b == "" or .baseRefName == $b))]' "$d/$src"
+case "$state" in merged) files="merged.json" ;; open) files="open.json" ;; all) files="merged.json open.json closed.json" ;; *) exit 1 ;; esac
+case "$all_args" in *" --limit 1 "*) [ -f "$d/head_fail" ] && { echo "gh: simulated head query failure" >&2; exit 1; } ;; esac
+for f in $files; do [ -f "$d/$f" ] && cat "$d/$f"; done | jq -s --arg h "$head" --arg b "$base" \
+  '[.[][] | select(($h == "" or .headRefName == $h) and ($b == "" or .baseRefName == $b))]'
 EOF
 chmod +x "$ROOT/bin/gh"
 
@@ -76,6 +78,7 @@ mkenv() { # name
   printf '[]\n' > "$C/gh/merged.json"
   printf '[]\n' > "$C/gh/open.json"
   CASE_FAILS=0
+  EXTRA_PATH=
 }
 
 mkwt() { # name -> branch b-<name>, one commit, pushed
@@ -1176,6 +1179,124 @@ c66_whitespace_only_difference_kept() {
   a_out '^skip a .*no merged PR'; a_wt a present; a_local b-a present
 }
 
+mkstable() { # origin gets a stable branch at main's tip, as AutoSpotting's stable-1.4.x beside its default branch
+  git -C "$C/main" push -q origin main:refs/heads/stable
+  git -C "$C/main" fetch -q origin
+}
+mkwts() { # name: worktree on branch b-<name> created from origin/stable with one commit, not pushed
+  git -C "$C/main" worktree add -q "$C/wt/$1" -b "b-$1" origin/stable
+  echo "$1" > "$C/wt/$1/$1.txt"
+  git -C "$C/wt/$1" add "$1.txt"
+  git -C "$C/wt/$1" commit -q -m "work $1"
+}
+c67_landing_on_the_branch_it_was_created_from_reclaimed() {
+  mkenv c67; mkstable; mkwts a
+  git -C "$C/wt/a" push -q origin HEAD:stable
+  run_s --apply
+  a_out '^reclaimed a '; a_wt a absent; a_local b-a absent
+}
+c68_created_from_stable_but_not_landed_kept() {
+  mkenv c68; mkstable; mkwts a
+  run_s --apply
+  a_out '^skip a .*no merged PR'; a_wt a present; a_local b-a present
+}
+c69_created_from_stable_landed_only_on_default_kept() {
+  mkenv c69; mkstable; mkwts a
+  git -C "$C/wt/a" push -q origin HEAD:main
+  run_s --apply
+  a_out '^skip a .*no merged PR'; a_wt a present; a_local b-a present
+}
+c70_created_from_head_landed_on_stable_kept() {
+  mkenv c70; mkstable
+  git -C "$C/main" worktree add -q --detach "$C/wt/a" origin/stable
+  git -C "$C/wt/a" checkout -q -b b-a
+  echo a > "$C/wt/a/a.txt"; git -C "$C/wt/a" add a.txt; git -C "$C/wt/a" commit -q -m "work a"
+  git -C "$C/wt/a" push -q origin HEAD:stable
+  run_s --apply
+  a_out '^skip a .*no merged PR'; a_wt a present; a_local b-a present
+}
+c71_pr_merged_into_the_branch_it_was_created_from_reclaimed() {
+  mkenv c71; mkstable; mkwts a
+  git -C "$C/wt/a" push -q origin "b-a"
+  add_merged b-a "$(tip a)" stable
+  run_s --apply
+  a_out '^reclaimed a '; a_wt a absent; a_local b-a absent
+}
+c72_the_landing_branch_itself_is_protected() {
+  mkenv c72; mkstable
+  git -C "$C/main" worktree add -q "$C/wt/s" -b stable origin/stable
+  echo s > "$C/wt/s/s.txt"; git -C "$C/wt/s" add s.txt; git -C "$C/wt/s" commit -q -m "work s"
+  git -C "$C/wt/s" push -q origin HEAD:stable
+  run_s --apply
+  a_out '^skip s .*protected'; a_wt s present; a_local stable present
+}
+c73_landing_branch_made_from_a_remote_ref_is_protected() {
+  mkenv c73; mkstable
+  git -C "$C/main" branch stable refs/remotes/origin/stable
+  git -C "$C/main" worktree add -q "$C/wt/s" stable
+  echo s > "$C/wt/s/s.txt"; git -C "$C/wt/s" add s.txt; git -C "$C/wt/s" commit -q -m "work s"
+  git -C "$C/wt/s" push -q origin HEAD:stable
+  run_s --apply
+  a_out '^skip s .*protected'; a_wt s present; a_local stable present
+}
+c74_created_from_a_local_only_branch_uses_the_default_branch() {
+  mkenv c74; mkstable
+  git -C "$C/main" branch local-x main
+  git -C "$C/main" worktree add -q "$C/wt/a" -b b-a local-x
+  echo a > "$C/wt/a/a.txt"; git -C "$C/wt/a" add a.txt; git -C "$C/wt/a" commit -q -m "work a"
+  git -C "$C/wt/a" push -q origin HEAD:main
+  run_s --apply
+  a_out '^reclaimed a '; a_wt a absent; a_local b-a absent
+}
+c75_created_from_an_open_pr_head_is_not_reclaimed() {
+  mkenv c75; mkstable
+  add_open stable main
+  mkwts a
+  git -C "$C/wt/a" push -q origin HEAD:stable
+  run_s --apply
+  a_out '^skip a .*no merged PR'; a_wt a present; a_local b-a present
+}
+c76_created_from_a_merged_pr_head_is_not_reclaimed() {
+  mkenv c76; mkstable
+  add_merged stable "$(git -C "$C/main" rev-parse origin/stable)" main
+  mkwts a
+  git -C "$C/wt/a" push -q origin HEAD:stable
+  run_s --apply
+  a_out '^skip a .*no merged PR'; a_wt a present; a_local b-a present
+}
+c77_pr_retargeted_to_the_default_branch_is_reclaimed() {
+  mkenv c77; mkstable; mkwts a
+  git -C "$C/wt/a" push -q origin "b-a"
+  add_merged b-a "$(tip a)" main
+  run_s --apply
+  a_out '^reclaimed a '; a_wt a absent; a_local b-a absent
+}
+c78_a_failed_pr_head_query_means_no_landing_branch() {
+  mkenv c78; mkstable; mkwts a
+  git -C "$C/wt/a" push -q origin HEAD:stable
+  : > "$C/gh/head_fail"
+  run_s --apply
+  a_out '^skip a .*no merged PR'; a_wt a present; a_local b-a present
+}
+c79_created_from_a_closed_unmerged_pr_head_is_not_reclaimed() {
+  mkenv c79; mkstable
+  printf '[{"headRefName":"stable","baseRefName":"main","number":7}]\n' > "$C/gh/closed.json"
+  mkwts a
+  git -C "$C/wt/a" push -q origin HEAD:stable
+  run_s --apply
+  a_out '^skip a .*no merged PR'; a_wt a present; a_local b-a present
+}
+c80_the_landing_branch_stays_protected_after_a_back_merge_pr() {
+  mkenv c80; mkstable
+  git -C "$C/main" worktree add -q "$C/wt/s" -b stable origin/stable
+  echo s > "$C/wt/s/s.txt"; git -C "$C/wt/s" add s.txt; git -C "$C/wt/s" commit -q -m "work s"
+  git -C "$C/wt/s" push -q origin HEAD:stable
+  add_merged stable "$(git -C "$C/wt/s" rev-parse HEAD)" main
+  run_s --apply
+  a_out '^skip s .*protected'; a_wt s present; a_local stable present
+  [ -n "$(git -C "$C/origin.git" rev-parse -q --verify refs/heads/stable)" ] || bad "the remote landing branch was deleted"
+}
+
 CASES="c01_merged_clean c02_squash_tip_not_in_main c02b_tip_behind_merged_head c03_dirty c04_ignored_env
 c04b_nested_build_output_allowed_nested_env_blocked c04e_node_modules_fixtures_and_more_secret_names c03b_local_branch_moves_before_delete c03c_branch_held_by_second_worktree c04c_tracked_build_dir_and_secret_names_blocked c04d_tracked_build_dir_with_ignored_output_blocked c04f_spaced_path_secret_blocked c04g_spaced_path_secret_names_blocked c04h_non_ascii_path_secret_blocked c04i_spaced_build_dir_harmless_output_reclaimed c04j_tab_and_newline_paths_no_misparse c04k_ignored_links_into_build_dirs c04l_ignored_link_secret_name c04m_link_to_root_blocked c05_plan_symlink_only c05b_plan_md_not_a_plan_symlink c06_extra_commits c07_fork_pr_same_name
 c08_remote_ahead c08b_remote_moves_before_push c09_open_pr_head c10_stacked_open_base c11_live_cwd_prefix_and_symlink c12_plan_liveness
@@ -1188,7 +1309,7 @@ c32_fork_third_party_owner c33_fork_null_head_repository c34_fork_without_local_
 c36_fork_match_beside_same_repo_row c37_fork_https_remote_uppercase_owner c38_fork_local_branch_without_worktree
 c39_fork_open_pr_same_head_name c40_fork_pr_head_not_fetchable c41_unknown_flag c42_gh_user_failure_aborts_only_with_flag c43_fork_remote_moves_before_push c44_fork_oids_bound_to_selected_repo c45_fork_base_bound_to_selected_repo
 d01_declared_on_default_reclaims d01b_last_line_without_newline d02_declared_only_on_branch_blocked d03_no_declaration_file_unchanged d04_stale_ref_refreshed d05_fetch_fails_means_no_declarations d05c_fetch_fails_and_ref_missing d05b_narrow_refspec_clone d06_symlink_blob_ignored d07_invalid_lines_skipped_with_warning d08_secret_name_still_blocks d09_declared_dir_blocks d10_declared_file_in_ignored_dir_blocks d11_no_prefix_suffix_or_depth_match d12_bracket_entry_matched_literally d13_declared_symlink_entry_blocks x1_quoted_name_declaration_rejected x2_quoted_dir_declaration_rejected x3_git_component_case_insensitive x4_plain_git_dir_declarable c46_path_with_tab_or_newline_blocked c47_build_dir_inside_bad_path_worktree_refused c48_main_path_with_tab_keeps_main_skip c49_locked_with_reason c50_bad_path_worktree_branch_not_local c51_branch_also_at_refused_path_blocked c52_refused_path_branch_match_is_exact
-c53_direct_commit_landing_reclaimed c54_fresh_branch_inside_base_not_reclaimed c55_direct_landing_with_extra_commit_kept c56_direct_landing_dirty_blocked c57_direct_landing_remote_ahead_kept c58_direct_landing_open_pr_protected c59_fresh_branch_fast_forwarded_not_reclaimed c60_fresh_branch_rebased_not_reclaimed c61_reset_dropped_unlanded_commit_kept c62_empty_reflog_not_reclaimed c63_direct_landing_after_rebase_reclaimed c64_direct_landing_fetch_failure_skips c65_reset_dropped_unlanded_merge_kept c66_whitespace_only_difference_kept"
+c53_direct_commit_landing_reclaimed c54_fresh_branch_inside_base_not_reclaimed c55_direct_landing_with_extra_commit_kept c56_direct_landing_dirty_blocked c57_direct_landing_remote_ahead_kept c58_direct_landing_open_pr_protected c59_fresh_branch_fast_forwarded_not_reclaimed c60_fresh_branch_rebased_not_reclaimed c61_reset_dropped_unlanded_commit_kept c62_empty_reflog_not_reclaimed c63_direct_landing_after_rebase_reclaimed c64_direct_landing_fetch_failure_skips c65_reset_dropped_unlanded_merge_kept c66_whitespace_only_difference_kept c67_landing_on_the_branch_it_was_created_from_reclaimed c68_created_from_stable_but_not_landed_kept c69_created_from_stable_landed_only_on_default_kept c70_created_from_head_landed_on_stable_kept c71_pr_merged_into_the_branch_it_was_created_from_reclaimed c72_the_landing_branch_itself_is_protected c73_landing_branch_made_from_a_remote_ref_is_protected c74_created_from_a_local_only_branch_uses_the_default_branch c75_created_from_an_open_pr_head_is_not_reclaimed c76_created_from_a_merged_pr_head_is_not_reclaimed c77_pr_retargeted_to_the_default_branch_is_reclaimed c78_a_failed_pr_head_query_means_no_landing_branch c79_created_from_a_closed_unmerged_pr_head_is_not_reclaimed c80_the_landing_branch_stays_protected_after_a_back_merge_pr"
 
 for t in $CASES; do
   if [ $# -gt 0 ]; then
