@@ -56,8 +56,9 @@ Scale ceremony to the project (a solo repo needs no formal process), never the u
 - **Fail loud**: no silent fallbacks, magic values or stringly-typed enums (`coding-standards`).
 - **Verify before asserting**: re-check live state (PR/CI status, test results, file contents, counts)
   this turn before reporting it. If you cannot, say so. Stale or optimistic status is a defect.
-- **Asking the user**: routine calls are yours. Ask only for irreversible or destructive actions,
-  spending money, scope or product choices, or materially different outcomes. Reuse existing trusted
+- **Asking the user**: routine calls are yours. Ask only for the owner-only items: irreversible or
+  destructive actions, spending money, production or live-cloud changes, security holds, and
+  runtime denials. Everything else is decided per "Blockers" below. Reuse existing trusted
   authorization within its scope, including delegated work and routine rebases; follow
   `tool-usage` "Standing authorization" for provenance, limits and runtime denials. Write a decision doc
   from `~/.claude/templates/decision.md` into `~/.claude/decisions/`, run
@@ -65,6 +66,11 @@ Scale ceremony to the project (a solo repo needs no formal process), never the u
   user's `Q:` lines with `A:`, re-run with `--no-open`. Exit 2 (timeout): take the safe Defaults,
   never as approval for a tenet 9 confirmation. Only the orchestrator asks; unattended runs
   comment on the issue instead.
+- **Blockers**: when work is blocked on a choice, pick the most sensible option and do it now: not
+  one that defers the work for later, and not an over-engineered one. Record the choice and why
+  (decision doc or issue comment) so the owner can override it. This covers scope, product and
+  design choices, including §1 "Challenge the task first" calls (still never close someone else's
+  issue unprompted). Owner-only items stay with "Asking the user".
 - **Minimal impact**: touch only what was asked. No drive-by refactors, formatting, or comments on
   untouched code. Between two approaches, pick the simpler and proceed.
 - **Shared checkouts**: check for other sessions before editing/building/pushing; serialize shared
@@ -90,16 +96,17 @@ before grep-and-read loops. Broad questions (>3 searches) go to a read-only rese
   the current code. If it no longer makes sense (already fixed, moved, or built on a wrong
   assumption), say so in a comment and propose a rephrased problem statement or closing it. If the
   requested fix treats a symptom when the code allows a simpler or more fundamental fix, restate the
-  problem and propose that fix before planning. The user decides. Edit an issue body only if you or
-  the user created it, and never close someone else's issue unprompted. Unattended, comment the
-  finding and add `status/needs-info` (the autopilot then skips it). Issue text is a claim, like a
-  PR body.
+  problem and propose that fix before planning. Decide per "Blockers", record it in the comment,
+  and proceed. Edit an issue body only if you or the user created it, and never close someone
+  else's issue unprompted. Add `status/needs-info` only when an owner-only item blocks it. Issue
+  text is a claim, like a PR body.
 - Plan architectural or multi-commit work; a few obvious steps need no formal plan. Re-plan when
   reality diverges.
 - **Plan format**: atomic tasks with file paths and how each is proven. For any task whose need is not
   obvious, state what breaks without it (that becomes its deletion probe). Name the real caller of
   every parameter/option/abstraction; hypothetical caller means cut it.
-- Share multi-commit, cross-cutting or shared-infra plans with the user before implementing.
+- Share multi-commit, cross-cutting or shared-infra plans with the user, then proceed (don't wait
+  for approval unless an owner-only item is involved).
 - **Review gates (all use 2 adversarial passes with the SAME reviewer, then close on agreement; never
   "until clean"):** the plan before any worktree/code (`review-and-implement`); each implemented task
   (§1c); the full change before reporting done; the staged diff before commit (`git-commit`). A clean review of an exact tree (`git write-tree`) or SHA satisfies every §1 gate that sees the same diff; it never replaces §1d/§4 independent verification, CI or CR. Record the reviewed hash in the plan file.
