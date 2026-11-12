@@ -170,5 +170,5 @@ The gate is the "Merge gate" block in the embedded checklist above (all plan ite
 
 ## When to use one
 
-- **Use a worktree when the work is multi-commit or long-running, or another session may be using the checkout.** A small single-commit change can stay on a feature branch in the main checkout if no other session uses it.
+- **Use a worktree for every change**, one item per worktree under `~/.claude/worktrees/`; never edit in the main checkout. Reclaim it right after it lands (AGENTS.md §1b).
 - **If a plan needs multiple independent changes**, one worktree per change, landed one at a time in dependency order, re-verifying each.

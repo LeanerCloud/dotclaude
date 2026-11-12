@@ -131,12 +131,18 @@ Never silently copy-paste; unavoidable cross-language mirrors reference each oth
 
 ### 1b. Worktrees
 
-Multi-commit or long work, or any checkout another session may use, goes in a worktree under
-`~/.claude/worktrees/` (never `/tmp`), created only after the plan review, with the plan saved at
-`~/.claude/projects/<project>/plans/<slug>.md`. Fetch and branch from `origin/<default-branch>`; for
-issue work, check that it is still open and no other owner has claimed it. Repeat the checkpoint
-before landing. Land per §1d: rebase onto `origin/<default-branch>` and fast-forward push. Rebase,
-don't merge.
+Every change goes in its own worktree under `~/.claude/worktrees/` (never the main checkout, never
+`/tmp`), one item per worktree, created after the plan review (if any), with a plan saved at
+`~/.claude/projects/<project>/plans/<slug>.md` when the work is multi-commit. Fetch and branch from
+`origin/<default-branch>`; for issue work, check that it is still open and no other owner has claimed
+it. Repeat the checkpoint before landing. Land per §1d: rebase onto `origin/<default-branch>` and
+fast-forward push. Rebase, don't merge.
+**Clean up right after landing**, without asking: once the branch is merged per tenet 9, run
+`~/.claude/scripts/reclaim-merged-worktrees.sh --apply --branch <b>` from the main checkout (or with
+`--repo <main>`); it removes the worktree, branch refs and recorded build dirs, gated per tenet 9,
+never `--force`. On `blocked`, recover the stranded work; on `ask`, ask the user. Long-running
+sessions also run it as a dry run about hourly, per repo with worktrees, and reclaim the items it
+reports as `reclaimable`.
 `git submodule update` inside a worktree moves the main clone's submodule HEADs for every worktree.
 Details: `worktrees`.
 
