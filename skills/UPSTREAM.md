@@ -19,8 +19,9 @@ idempotent, and it never clobbers a fork (see "Forking an imported skill" for wh
 | `upstreams/anthropic-skills` | [anthropics/skills](https://github.com/anthropics/skills) | - | 1 skill |
 | `upstreams/terraform-skill` | [antonbabenko/terraform-skill](https://github.com/antonbabenko/terraform-skill) | Apache-2.0 | 1 skill |
 | `upstreams/owasp-security` | [agamm/claude-code-owasp](https://github.com/agamm/claude-code-owasp) | MIT | 1 skill |
+| `upstreams/darling-skills` | [darlinghq/darling-skills](https://github.com/darlinghq/darling-skills) | none stated | 2 skills |
 
-All six are the upstream projects, not forks. pstack's canonical home is the `pstack/` directory of
+All seven are the upstream projects, not forks. pstack's canonical home is the `pstack/` directory of
 the `cursor/plugins` monorepo; the several standalone "pstack for Claude Code" repos are ports of it.
 
 ## Symlink or trampoline
@@ -62,6 +63,7 @@ across is [`../pstack-models.md`](../pstack-models.md). Where an upstream instru
 | `terraform-skill` | antonbabenko | Depth under `conventions` and `infra-ops`, from the Terraform community's reference author. |
 | `owasp-security` | agamm | Top 10:2025 / ASVS 5.0 detail behind `coding-standards`' pre-launch checklist. |
 | `health`, `retro` | gstack | Code-quality dashboard and weekly retrospective. No local equivalent. |
+| `darling-guest-testing`, `darling-app-compat-scan` | darling-skills | The Darling maintainers' own runtime-verification and app-triage playbooks (rebuild one target, restart the container, cross-compile guest tests; static import scan plus a first-blocker run). Both symlinks, Darling-gated descriptions. See "Darling skills: where they yield" below. |
 | `git-commit/lenses/*.md` (not a skill) | claude-plugins-official pr-review-toolkit, Apache-2.0 | Condensed and modified copies of `silent-failure-hunter` and `type-design-analyzer`, kept as review briefs so the plugin and its per-turn agent listing can be disabled. |
 
 ## What was deliberately not imported
@@ -104,6 +106,22 @@ auto-invocation.
 `claude-in-chrome` tools already configured in `settings.json`. For the same reason
 `anthropics/skills`' `webapp-testing` stays out: `playwright-verify` already owns browser
 verification here.
+
+## Darling skills: where they yield
+
+`darling-skills` states no licence; it is linked as a submodule, never copied. Its scripts and prose
+assume one agent on a shared checkout and install, so where they disagree with a Darling repo's own
+`AGENTS.md`, its session rules or the clean-room rules, those win (AGENTS.md wins over every imported
+skill). Known disagreements, to apply on sight rather than patch upstream:
+
+- `scripts/leftovers.sh -k` and `timeout -s KILL` kill by `mldr|darlingserver` name or signal, which
+  also hits other agents' containers. Bound runs with `timeout` and end with `darling shutdown`.
+- `scripts/rebuild.sh` installs into the shared Darling prefix through `sudo -n`; guest runs go
+  through the repo's slot launcher and its build lock where one exists.
+- `darling-app-compat-scan` allows inspecting an app's own code, `llvm-objdump --universal-headers`
+  and a guest `lldb` backtrace. Under the clean-room rules use names only (`llvm-nm -u -m`,
+  `otool -L`, `lipo -info`) and no frame walks.
+- Its `AGENTS.md section N` references mean the Darling repo's file, not this one.
 
 ## Forking an imported skill
 
