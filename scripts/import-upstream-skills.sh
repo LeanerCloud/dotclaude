@@ -29,6 +29,7 @@ UPSTREAMS=(
   "anthropic-skills|https://github.com/anthropics/skills.git"
   "terraform-skill|https://github.com/antonbabenko/terraform-skill.git"
   "owasp-security|https://github.com/agamm/claude-code-owasp.git"
+  "darling-skills|https://github.com/darlinghq/darling-skills.git"
 )
 
 PSTACK=upstreams/cursor-plugins/pstack/skills
@@ -51,6 +52,8 @@ SYMLINKS=(
   "retro|upstreams/gstack/retro"
   "terraform-skill|upstreams/terraform-skill/skills/terraform-skill"
   "owasp-security|upstreams/owasp-security/.claude/skills/owasp-security"
+  "darling-guest-testing|upstreams/darling-skills/darling-guest-testing"
+  "darling-app-compat-scan|upstreams/darling-skills/darling-app-compat-scan"
 )
 
 # Upstream carries `disable-model-invocation: true`; re-export it so CLAUDE.md can route to it.

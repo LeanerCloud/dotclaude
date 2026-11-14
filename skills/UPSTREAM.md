@@ -19,8 +19,9 @@ idempotent, and it never clobbers a fork (see "Forking an imported skill" for wh
 | `upstreams/anthropic-skills` | [anthropics/skills](https://github.com/anthropics/skills) | - | 1 skill |
 | `upstreams/terraform-skill` | [antonbabenko/terraform-skill](https://github.com/antonbabenko/terraform-skill) | Apache-2.0 | 1 skill |
 | `upstreams/owasp-security` | [agamm/claude-code-owasp](https://github.com/agamm/claude-code-owasp) | MIT | 1 skill |
+| `upstreams/darling-skills` | [darlinghq/darling-skills](https://github.com/darlinghq/darling-skills) | none stated | 2 skills |
 
-All six are the upstream projects, not forks. pstack's canonical home is the `pstack/` directory of
+All seven are the upstream projects, not forks. pstack's canonical home is the `pstack/` directory of
 the `cursor/plugins` monorepo; the several standalone "pstack for Claude Code" repos are ports of it.
 
 ## Symlink or trampoline
@@ -62,6 +63,7 @@ across is [`../pstack-models.md`](../pstack-models.md). Where an upstream instru
 | `terraform-skill` | antonbabenko | Depth under `conventions` and `infra-ops`, from the Terraform community's reference author. |
 | `owasp-security` | agamm | Top 10:2025 / ASVS 5.0 detail behind `coding-standards`' pre-launch checklist. |
 | `health`, `retro` | gstack | Code-quality dashboard and weekly retrospective. No local equivalent. |
+| `darling-guest-testing`, `darling-app-compat-scan` | darling-skills | The Darling maintainers' own runtime-verification and app-triage playbooks (rebuild one target, restart the container, cross-compile guest tests; static import scan plus a first-blocker run). Both symlinks, Darling-gated descriptions. See "Darling skills: where they yield" below. |
 | `git-commit/lenses/*.md` (not a skill) | claude-plugins-official pr-review-toolkit, Apache-2.0 | Condensed and modified copies of `silent-failure-hunter` and `type-design-analyzer`, kept as review briefs so the plugin and its per-turn agent listing can be disabled. |
 
 ## What was deliberately not imported
@@ -104,6 +106,48 @@ auto-invocation.
 `claude-in-chrome` tools already configured in `settings.json`. For the same reason
 `anthropics/skills`' `webapp-testing` stays out: `playwright-verify` already owns browser
 verification here.
+
+## Darling skills: where they yield
+
+`darling-skills` states no licence; it is linked as a submodule, never copied. Its scripts and prose
+assume one agent on a shared checkout and install, so where they disagree with a Darling repo's own
+`AGENTS.md`, its session rules or the clean-room rules, those win (AGENTS.md wins over every imported
+skill). Known disagreements, to apply on sight rather than patch upstream:
+
+- `scripts/leftovers.sh -k` greps the full command line (`ps -eo pid=,args=`, line 8) for `mldr` or
+  `darlingserver` and runs `kill -9` on every match, machine-wide. It can hit any shell whose
+  arguments contain those words, and it misses mldr guests, which rewrite their command line (per
+  the Darling repo's AGENTS.md: identify guests by `comm` or `/proc/<pid>/exe`, never by cmdline).
+  `timeout -s KILL` kills only its own child, which can orphan a root container. Bound runs with
+  `timeout` and stop them with `darling shutdown` on your own `DPREFIX` (private runtime recipe):
+  on the default prefix, `darling shutdown` (run by `restart.sh` and `rebuild.sh` every time) stops
+  other agents' containers too.
+- `scripts/rebuild.sh` installs into the shared install root through `sudo -n`, and
+  `SKILL.md:36` allows `sudo make install`; `SKILL.md:124` tells the agent to revert
+  patches in the shared checkout. Use your own build tree and runtime instead.
+- `scripts/wayland.sh stop` runs `rm -rf "$RUN"` (line 19) where `RUN` comes from
+  `DARLING_WAYLAND_RUNTIME` or `TMPDIR`, and kills a PID read from a pidfile that may be stale
+  (line 18). `SKILL.md:102` runs `eval "export $(scripts/wayland.sh ...)"`. Do not run `stop` with an
+  overridden runtime path.
+- `darling-app-compat-scan` downloads an untrusted app and runs it in a guest that sees the host
+  filesystem under `/Volumes/SystemRoot` and inherits the launcher environment, so no secret may be
+  in it. It also allows inspecting the app's own code, `llvm-objdump --universal-headers` and a guest
+  `lldb` backtrace. Under the clean-room rules use names only (`llvm-nm -u -m`, `otool -L`,
+  `lipo -info`) and no frame walks.
+- `scan_app.py:133` runs `llvm-objdump --private-headers` (the `otool -l` equivalent) on every library
+  under `--root`. Point `--root` only at a Darling-built tree, never at one holding imported macOS
+  assets. `run()` (line 35) ignores exit codes, so missing llvm tools print "0 system libraries"
+  instead of failing.
+- Its `AGENTS.md section N` references name the upstream `darlinghq/darling` file, whose numbering
+  differs from the local VibeDarling `AGENTS.md`; neither is this repo's.
+
+Trust rule for this submodule: the repository was created on 2026-11-14, has 3 unsigned commits by
+one author made within minutes, no licence and no visible branch protection. The skills are symlinks,
+so whatever the submodule's tip holds is loaded into every session, including scripts that call
+`sudo -n`. Never bump `upstreams/darling-skills` with `git submodule update --remote` unseen: read
+`git -C upstreams/darling-skills diff <old>..<new>` first, then pin the reviewed SHA. (Setting
+`update = none` for it in `.gitmodules` makes `submodule update --init` and `--remote` skip it, and
+`git submodule update --init --checkout upstreams/darling-skills` still populates it; not applied.)
 
 ## Forking an imported skill
 
