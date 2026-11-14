@@ -114,14 +114,39 @@ assume one agent on a shared checkout and install, so where they disagree with a
 `AGENTS.md`, its session rules or the clean-room rules, those win (AGENTS.md wins over every imported
 skill). Known disagreements, to apply on sight rather than patch upstream:
 
-- `scripts/leftovers.sh -k` and `timeout -s KILL` kill by `mldr|darlingserver` name or signal, which
-  also hits other agents' containers. Bound runs with `timeout` and end with `darling shutdown`.
-- `scripts/rebuild.sh` installs into the shared Darling prefix through `sudo -n`; guest runs go
-  through the repo's slot launcher and its build lock where one exists.
-- `darling-app-compat-scan` allows inspecting an app's own code, `llvm-objdump --universal-headers`
-  and a guest `lldb` backtrace. Under the clean-room rules use names only (`llvm-nm -u -m`,
-  `otool -L`, `lipo -info`) and no frame walks.
-- Its `AGENTS.md section N` references mean the Darling repo's file, not this one.
+- `scripts/leftovers.sh -k` greps the full command line (`ps -eo args=`, line 8) for `mldr` or
+  `darlingserver` and runs `kill -9` on every match, machine-wide. It can hit any shell whose
+  arguments contain those words, and it misses mldr guests, which rewrite their command line.
+  `timeout -s KILL` kills only its own child, which can orphan a root container. Bound runs with
+  `timeout` and stop them with `darling shutdown` on your own `DPREFIX` (private runtime recipe):
+  on the default prefix, `darling shutdown` (run by `restart.sh` and `rebuild.sh` every time) stops
+  other agents' containers too.
+- `scripts/rebuild.sh` installs into the shared install root through `sudo -n`, and
+  `SKILL.md:36` allows `sudo make install`; `SKILL.md:124` tells the agent to revert
+  patches in the shared checkout. Use your own build tree and runtime instead.
+- `scripts/wayland.sh stop` runs `rm -rf "$RUN"` (line 19) where `RUN` comes from
+  `DARLING_WAYLAND_RUNTIME` or `TMPDIR`, and kills a PID read from a pidfile that may be stale
+  (line 18). `SKILL.md:102` runs `eval "export $(scripts/wayland.sh ...)"`. Do not run `stop` with an
+  overridden runtime path.
+- `darling-app-compat-scan` downloads an untrusted app and runs it in a guest that sees the host
+  filesystem under `/Volumes/SystemRoot` and inherits the launcher environment, so no secret may be
+  in it. It also allows inspecting the app's own code, `llvm-objdump --universal-headers` and a guest
+  `lldb` backtrace. Under the clean-room rules use names only (`llvm-nm -u -m`, `otool -L`,
+  `lipo -info`) and no frame walks.
+- `scan_app.py:133` runs `llvm-objdump --private-headers` (the `otool -l` equivalent) on every library
+  under `--root`. Point `--root` only at a Darling-built tree, never at one holding imported macOS
+  assets. `run()` (line 35) ignores exit codes, so missing llvm tools print "0 system libraries"
+  instead of failing.
+- Its `AGENTS.md section N` references name the upstream `darlinghq/darling` file, whose numbering
+  differs from the local VibeDarling `AGENTS.md`; neither is this repo's.
+
+Trust rule for this submodule: the repository was created on 2026-11-14, has 3 unsigned commits by
+one author made within minutes, no licence and no visible branch protection. The skills are symlinks,
+so whatever the submodule's tip holds is loaded into every session, including scripts that call
+`sudo -n`. Never bump `upstreams/darling-skills` with `git submodule update --remote` unseen: read
+`git -C upstreams/darling-skills diff <old>..<new>` first, then pin the reviewed SHA. (Setting
+`update = none` for it in `.gitmodules` makes `submodule update --init` and `--remote` skip it, and
+`git submodule update --init --checkout upstreams/darling-skills` still populates it; not applied.)
 
 ## Forking an imported skill
 
