@@ -25,3 +25,7 @@
 	path = upstreams/gstack
 	url = https://github.com/garrytan/gstack.git
 	shallow = true
+[submodule "upstreams/darling-skills"]
+	path = upstreams/darling-skills
+	url = https://github.com/darlinghq/darling-skills.git
+	shallow = true
