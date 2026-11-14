@@ -114,9 +114,10 @@ assume one agent on a shared checkout and install, so where they disagree with a
 `AGENTS.md`, its session rules or the clean-room rules, those win (AGENTS.md wins over every imported
 skill). Known disagreements, to apply on sight rather than patch upstream:
 
-- `scripts/leftovers.sh -k` greps the full command line (`ps -eo args=`, line 8) for `mldr` or
+- `scripts/leftovers.sh -k` greps the full command line (`ps -eo pid=,args=`, line 8) for `mldr` or
   `darlingserver` and runs `kill -9` on every match, machine-wide. It can hit any shell whose
-  arguments contain those words, and it misses mldr guests, which rewrite their command line.
+  arguments contain those words, and it misses mldr guests, which rewrite their command line (per
+  the Darling repo's AGENTS.md: identify guests by `comm` or `/proc/<pid>/exe`, never by cmdline).
   `timeout -s KILL` kills only its own child, which can orphan a root container. Bound runs with
   `timeout` and stop them with `darling shutdown` on your own `DPREFIX` (private runtime recipe):
   on the default prefix, `darling shutdown` (run by `restart.sh` and `rebuild.sh` every time) stops
