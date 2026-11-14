@@ -177,7 +177,9 @@ push. Every commit stays ≤400 additions+deletions; split larger changes into s
 Brief the reviewer cold: what correct means, the exact tree or diff, build/test commands, and that
 the author's claims are not evidence; it compares against the source of truth with `file:line` and
 reproduces evidence (mutation probes must fail). After pushing, watch CI on the default branch
-(`ci-watch`); a red main is fixed at once with a follow-up commit. PRs from outside contributors
+(`ci-watch`); a red main is fixed at once with a follow-up commit. **Red-main fast path:** a fix that
+only addresses the failing check pushes as soon as that check and the build pass locally; its 2-pass
+review runs right after on the pushed commit, and findings land as follow-ups. PRs from outside contributors
 are still reviewed and merged through their PR. PRs are only for other people's repos (follow their
 rules). In the owner's repos, always push commits directly; if a GitHub ruleset still rejects a direct
 push, report it to the owner (who adds the bypass), and until then open one PR per change with
