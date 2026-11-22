@@ -17,6 +17,8 @@ find "$BASE" -maxdepth 1 -name 'run.*' -mmin +120 -exec rm -rf {} + 2>/dev/null 
 T="$(mktemp -d "$BASE/run.XXXXXX")" || exit 1
 trap 'pkill -P $$ sleep 2>/dev/null; chmod -R u+rwx "$T" 2>/dev/null; rm -rf "$T"' EXIT
 
+# a caller with GIT_DIR/GIT_WORK_TREE set must not have the fixtures committing into its checkout
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_CEILING_DIRECTORIES GIT_NAMESPACE
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid
 export STORAGE_CLEANUP_ROOT="$T/home" STORAGE_CLEANUP_LOGDIR="$T/home/log" STORAGE_CLEANUP_INDEX_TTL=0
@@ -50,6 +52,11 @@ expect "plain directory passes" 0 S gates "$T/home/plain"
 mkdir -p "$T/home/pr/.claude/memory" "$T/home/pr/.claude/projects/p/memory"
 expect "ancestor of a protected path is refused" 1 S gates "$T/home/pr/.claude"
 expect "memory under projects is protected" 1 S gates "$T/home/pr/.claude/projects/p/memory"
+
+mkdir -p "$T/home/pr/.claude/plans" "$T/home/Downloads/x"; touch "$T/home/pr/.claude/CLAUDE.md"
+expect "plans under .claude are protected" 1 S gates "$T/home/pr/.claude/plans"
+expect "a config file under .claude is protected" 1 S gates "$T/home/pr/.claude/CLAUDE.md"
+expect "Downloads is protected" 1 S gates "$T/home/Downloads"
 
 # --- a large tree: grep -q under pipefail would read find's SIGPIPE as "no protected path"
 mkdir -p "$T/home/big/.ssh" "$T/home/big/d"; touch "$T/home/big/.ssh/k"
@@ -111,6 +118,18 @@ expect "a checkout git cannot read refuses its subdirectories" 1 S gates "$T/hom
 mkrepo "$T/home/netfail"; git -C "$T/home/netfail" remote set-url origin ssh://127.0.0.1:9/none.git
 expect "--network fails closed when the fetch fails" 1 env -u STORAGE_CLEANUP_TRUST_LOCAL_REMOTES bash "$SCRIPT" gates "$T/home/netfail" --network
 
+mkrepo "$T/home/quiet"; git -C "$T/home/quiet" config status.showUntrackedFiles no; echo draft > "$T/home/quiet/draft.c"
+expect "status.showUntrackedFiles=no does not hide untracked work" 1 S gates "$T/home/quiet"
+mkrepo "$T/home/ci"; printf 'build/\n' > "$T/home/ci/.gitignore"; git -C "$T/home/ci" add .gitignore; git -C "$T/home/ci" commit -q -m i; git -C "$T/home/ci" push -q origin main 2>/dev/null
+mkdir -p "$T/home/ci/build"; echo o > "$T/home/ci/build/a.o"; printf 'garbage' > "$T/home/ci/.git/index"
+expect "a corrupt index refuses instead of looking clean" 1 S gates "$T/home/ci/build"
+mkdir -p "$T/home/elsewhere/sealed"; chmod 000 "$T/home/elsewhere/sealed"
+if [ "$(id -u)" != 0 ]; then
+  expect "an unreadable directory elsewhere makes the dependency scan incomplete" 1 S gates "$T/home/plain"
+  expect "a listed unreadable directory is accepted" 0 env STORAGE_CLEANUP_ALLOW_UNREADABLE='/sealed$' bash "$SCRIPT" gates "$T/home/plain"
+fi
+chmod 755 "$T/home/elsewhere/sealed"
+
 # --- filters are neutralised, not executed (direct config and include.path)
 mkrepo "$T/home/filt"; echo data > "$T/home/filt/f"; git -C "$T/home/filt" add f; git -C "$T/home/filt" commit -q -m f
 git -C "$T/home/filt" push -q origin main 2>/dev/null
@@ -141,6 +160,8 @@ printf '%s\n' "$T/home/objlink" > "$T/home/r4/.git/objects/info/alternates"
 expect "an alternates line through a symlink refuses" 1 S gates "$T/home/r3"
 mkrepo "$T/home/e"; STORAGE_CLEANUP_INDEX_TTL=600 bash "$SCRIPT" gates "$T/home/e" >/dev/null 2>&1; git clone -q --shared "$T/home/e" "$T/home/edep" 2>/dev/null
 expect "delete rebuilds a stale alternates index" 1 env STORAGE_CLEANUP_INDEX_TTL=600 bash "$SCRIPT" delete "$T/home/e" --class t --evidence e --offline --apply
+mkrepo "$T/home/rbase"; mkdir -p "$T/home/rcli"; git init -q "$T/home/rcli"; git -C "$T/home/rcli" remote add origin ../rbase
+expect "a relative local remote counts as a dependency" 1 S gates "$T/home/rbase"
 mkdir -p "$T/home/pair"; git init -q --bare "$T/home/pair/o.git"; git clone -q "$T/home/pair/o.git" "$T/home/pair/c" 2>/dev/null
 expect "a local remote pointing into the target refuses its dependents" 1 S gates "$T/home/pair/o.git"
 
@@ -155,6 +176,11 @@ expect "delete --apply succeeds" 0 S delete "$T/home/victim" --class test --evid
 expect "delete refuses a dirty repo even with --apply" 1 S delete "$T/home/dirty" --class test --evidence fixture --offline --apply
 [ -d "$T/home/dirty" ] && ok "refused delete kept the repo" || no "dirty repo was deleted"
 
+mkrepo "$T/home/victim2"; mkdir -p "$T/home/log/ACTIONS.tsv.d"; mv "$T/home/log/ACTIONS.tsv" "$T/home/log/ACTIONS.saved"; mkdir "$T/home/log/ACTIONS.tsv"
+expect "an unwritable journal refuses before anything is deleted" 1 S delete "$T/home/victim2" --class test --evidence fixture --offline --apply
+[ -d "$T/home/victim2" ] && ok "nothing was deleted without a journal" || no "deleted without a journal"
+rmdir "$T/home/log/ACTIONS.tsv" "$T/home/log/ACTIONS.tsv.d"; mv "$T/home/log/ACTIONS.saved" "$T/home/log/ACTIONS.tsv"
+
 # --- audit and dedupe argument handling
 mkdir -p "$T/home/dir with space/child"; head -c 100000 /dev/zero > "$T/home/dir with space/child/f"
 out="$(S audit "$T/home/dir with space" 2>&1)"; case "$out" in *"child"*) ok "audit handles a path with spaces and prints sizes";; *) no "audit lost the child: $out";; esac
@@ -167,7 +193,7 @@ git -C "$T/home/child" rev-list --objects --all >/dev/null 2>&1 && no "child sho
 before="$(cat "$T/home/child/.git/objects/info/alternates")"
 expect "repair refuses when no store has the objects" 1 S repair-alternates "$T/home/child" "$T/home/plain"
 [ "$(cat "$T/home/child/.git/objects/info/alternates")" = "$before" ] && ok "failed repair restored the alternates file" || no "alternates file changed by a failed repair"
-expect "repair-alternates restores a self-contained repo" 0 S repair-alternates "$T/home/child" "$T/gone-src"
+expect "repair-alternates restores a self-contained repo (store given as a relative path)" 0 bash -c "cd '$T' && bash '$SCRIPT' repair-alternates home/child gone-src"
 git -C "$T/home/child" rev-list --objects --all >/dev/null 2>&1 && ok "child complete after repair" || no "child still broken"
 [ ! -f "$T/home/child/.git/objects/info/alternates" ] && ok "alternates file removed after the proof" || no "alternates file left behind"
 

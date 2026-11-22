@@ -42,7 +42,10 @@ def digest(path, limit=None):
 def scan(args):
     protected = re.compile(args.protected)
     by_size, seen = {}, set()
-    for root in args.roots:
+    roots = [os.path.realpath(r) for r in args.roots]   # absolute and alias-free, so protection sees real locations
+    if len({os.stat(r).st_dev for r in roots}) > 1:
+        sys.exit("scan roots must be on one filesystem (the kernel cannot share extents across filesystems)")
+    for root in roots:
         dev = os.stat(root).st_dev
         for cur, dirs, files in os.walk(root, followlinks=False):
             try:
@@ -104,35 +107,38 @@ def free_bytes(path):
 
 
 def metadata_use(path):
-    """Fraction of allocated metadata chunks in use (any profile), 0.0 when it cannot be read."""
+    """Fraction of allocated metadata chunks in use (any profile); None when it cannot be measured."""
     try:
-        out = subprocess.run(["btrfs", "filesystem", "usage", "-b", path], capture_output=True, text=True).stdout
+        r = subprocess.run(["btrfs", "filesystem", "usage", "-b", path], capture_output=True, text=True)
     except OSError:
-        return 0.0
-    m = re.search(r"Metadata,\w+: Size:(\d+), Used:(\d+)", out)
-    return int(m.group(2)) / int(m.group(1)) if m else 0.0
+        return None
+    m = re.search(r"Metadata,\w+: Size:(\d+), Used:(\d+)", r.stdout) if r.returncode == 0 else None
+    return int(m.group(2)) / int(m.group(1)) if m else None
 
 
 def dedupe_pair(src, dst, size):
-    sfd, dfd = os.open(src, os.O_RDONLY), os.open(dst, os.O_RDONLY)
+    sfd = os.open(src, os.O_RDONLY)
     try:
-        off = 0
-        while off < size:
-            ln = min(CHUNK, size - off)
-            buf = bytearray(struct.pack("=QQHHI", off, ln, 1, 0, 0) + struct.pack("=qQQiI", dfd, off, 0, 0, 0))
-            fcntl.ioctl(sfd, FIDEDUPERANGE, buf, True)
-            _, _, done, status, _ = struct.unpack_from("=qQQiI", buf, 24)
-            if status == 1:
-                return "differs"
-            if status < 0:
-                return "errno%d" % -status
-            if done == 0:
-                return "zero"
-            off += done
-        return "ok"
+        dfd = os.open(dst, os.O_RDONLY)
+        try:
+            off = 0
+            while off < size:
+                ln = min(CHUNK, size - off)
+                buf = bytearray(struct.pack("=QQHHI", off, ln, 1, 0, 0) + struct.pack("=qQQiI", dfd, off, 0, 0, 0))
+                fcntl.ioctl(sfd, FIDEDUPERANGE, buf, True)
+                _, _, done, status, _ = struct.unpack_from("=qQQiI", buf, 24)
+                if status == 1:
+                    return "differs"
+                if status < 0:
+                    return "errno%d" % -status
+                if done == 0:
+                    return "zero"
+                off += done
+            return "ok"
+        finally:
+            os.close(dfd)
     finally:
         os.close(sfd)
-        os.close(dfd)
 
 
 def apply(args):
@@ -142,15 +148,26 @@ def apply(args):
     now, stats = time.time(), {"groups": 0, "ok": 0, "differs": 0, "err": 0, "skipped": 0}
     groups = [json.loads(l) for l in open(args.groups)]
     groups.sort(key=lambda g: -g["size"] * (len(g["files"]) - 1))
-    meta = 0.0
+    state = {"meta": metadata_use(fs), "n": 0}
+
+    def limits_ok():
+        """Free space every call, metadata every 50 calls; an unmeasurable metadata use stops the run."""
+        state["n"] += 1
+        if state["n"] % 50 == 0:
+            state["meta"] = metadata_use(fs)
+        if state["meta"] is None:
+            log.write("STOP: metadata use cannot be measured\n")
+            return False
+        if free_bytes(fs) < args.min_free_gib * 2**30 or state["meta"] * 100 > args.max_meta_pct:
+            log.write("STOP: free-space or metadata limit reached\n")
+            return False
+        return True
+
+    stopped = False
     for i, g in enumerate(groups):
         if i % 25 == 0:
-            meta = metadata_use(fs)
-            log.write("progress %d/%d free=%.1fG meta=%.1f%% %s\n" % (i, len(groups), free_bytes(fs) / 2**30, meta * 100, stats))
+            log.write("progress %d/%d free=%.1fG %s\n" % (i, len(groups), free_bytes(fs) / 2**30, stats))
             log.flush()
-        if free_bytes(fs) < args.min_free_gib * 2**30 or meta * 100 > args.max_meta_pct:
-            log.write("STOP: free-space or metadata limit reached\n")
-            break
         usable = []
         for p in g["files"]:
             try:
@@ -166,6 +183,9 @@ def apply(args):
             continue
         stats["groups"] += 1
         for dst in usable[1:]:
+            if not limits_ok():
+                stopped = True
+                break
             try:
                 a, b = os.lstat(usable[0]), os.lstat(dst)
                 if (a.st_dev, a.st_ino) == (b.st_dev, b.st_ino):
@@ -180,7 +200,10 @@ def apply(args):
             else:
                 stats["err"] += 1
                 log.write("%s %s\n" % (r, dst))
-    log.write("DONE %s free=%.1fG meta=%.1f%%\n" % (stats, free_bytes(fs) / 2**30, metadata_use(fs) * 100))
+        if stopped:
+            break
+    meta = metadata_use(fs)
+    log.write("DONE %s free=%.1fG meta=%s\n" % (stats, free_bytes(fs) / 2**30, "n/a" if meta is None else "%.1f%%" % (meta * 100)))
     print(json.dumps(stats))
 
 
