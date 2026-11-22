@@ -144,6 +144,8 @@ Every change goes in its own worktree under `~/.claude/worktrees/` (never the ma
 `origin/<default-branch>`; for issue work, check that it is still open and no other owner has claimed
 it. Repeat the checkpoint before landing. Land per §1d: rebase onto `origin/<default-branch>` and
 fast-forward push. Rebase, don't merge.
+Keep one standalone clone per upstream (the existing main checkout, by default `~/src/<repo>`) and
+add worktrees to it; look for an existing clone of the same origin before cloning. Details: `worktrees`.
 **Clean up right after landing**, without asking: once the branch is merged per tenet 9, run
 `~/.claude/scripts/reclaim-merged-worktrees.sh --apply --branch <b>` from the main checkout (or with
 `--repo <main>`); it removes the worktree, branch refs and recorded build dirs, gated per tenet 9,
