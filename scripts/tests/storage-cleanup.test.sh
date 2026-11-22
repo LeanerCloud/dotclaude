@@ -130,6 +130,10 @@ if [ "$(id -u)" != 0 ]; then
 fi
 chmod 755 "$T/home/elsewhere/sealed"
 
+mkrepo "$T/home/cwt"; echo wip > "$T/home/cwt/draft.c"; mkdir -p "$T/outside/emptywt"
+git -C "$T/home/cwt" config core.worktree "$T/outside/emptywt"
+expect "core.worktree pointing elsewhere cannot hide a dirty checkout" 1 S gates "$T/home/cwt"
+
 # --- filters are neutralised, not executed (direct config and include.path)
 mkrepo "$T/home/filt"; echo data > "$T/home/filt/f"; git -C "$T/home/filt" add f; git -C "$T/home/filt" commit -q -m f
 git -C "$T/home/filt" push -q origin main 2>/dev/null
@@ -162,6 +166,9 @@ mkrepo "$T/home/e"; STORAGE_CLEANUP_INDEX_TTL=600 bash "$SCRIPT" gates "$T/home/
 expect "delete rebuilds a stale alternates index" 1 env STORAGE_CLEANUP_INDEX_TTL=600 bash "$SCRIPT" delete "$T/home/e" --class t --evidence e --offline --apply
 mkrepo "$T/home/rbase"; mkdir -p "$T/home/rcli"; git init -q "$T/home/rcli"; git -C "$T/home/rcli" remote add origin ../rbase
 expect "a relative local remote counts as a dependency" 1 S gates "$T/home/rbase"
+mkrepo "$T/home/ibase"; mkdir -p "$T/home/icli"; git init -q "$T/home/icli"
+printf '[remote "origin"]\n\turl = ../ibase\n' > "$T/home/icli/.git/remote.inc"; git -C "$T/home/icli" config include.path remote.inc
+expect "a local remote defined in an included config file counts as a dependency" 1 S gates "$T/home/ibase"
 mkdir -p "$T/home/pair"; git init -q --bare "$T/home/pair/o.git"; git clone -q "$T/home/pair/o.git" "$T/home/pair/c" 2>/dev/null
 expect "a local remote pointing into the target refuses its dependents" 1 S gates "$T/home/pair/o.git"
 
@@ -180,6 +187,12 @@ mkrepo "$T/home/victim2"; mkdir -p "$T/home/log/ACTIONS.tsv.d"; mv "$T/home/log/
 expect "an unwritable journal refuses before anything is deleted" 1 S delete "$T/home/victim2" --class test --evidence fixture --offline --apply
 [ -d "$T/home/victim2" ] && ok "nothing was deleted without a journal" || no "deleted without a journal"
 rmdir "$T/home/log/ACTIONS.tsv" "$T/home/log/ACTIONS.tsv.d"; mv "$T/home/log/ACTIONS.saved" "$T/home/log/ACTIONS.tsv"
+
+# --- concurrent deletions share one journal without losing rows
+mkdir -p "$T/home/c1" "$T/home/c2" "$T/home/c3" "$T/home/c4"; rm -f "$T/home/log2"/ACTIONS.tsv* 2>/dev/null
+for i in 1 2 3 4; do STORAGE_CLEANUP_LOGDIR="$T/home/log2" bash "$SCRIPT" delete "$T/home/c$i" --class t --evidence "c$i" --offline --apply >/dev/null 2>&1 & done; wait
+[ "$(grep -c "$(printf '\tok$')" "$T/home/log2/ACTIONS.tsv" 2>/dev/null)" = 4 ] && [ "$(grep -c '^time' "$T/home/log2/ACTIONS.tsv")" = 1 ] \
+  && ok "four concurrent deletions: one header and four ok rows" || no "journal lost or duplicated rows: $(cat "$T/home/log2/ACTIONS.tsv" 2>&1 | head -12)"
 
 # --- audit and dedupe argument handling
 mkdir -p "$T/home/dir with space/child"; head -c 100000 /dev/zero > "$T/home/dir with space/child/f"
@@ -203,6 +216,14 @@ if [ -n "${STORAGE_TEST_BTRFS_DIR:-}" ]; then
   STORAGE_CLEANUP_ROOT="$STORAGE_TEST_BTRFS_DIR" S dedupe --apply "$D" >/dev/null 2>&1; sync
   [ "$(btrfs filesystem du "$D/b" | tail -1 | awk '{print $2}')" = "0.00B" ] && ok "dedupe shared identical files" || no "dedupe did not share the copy"
   rm -rf "$D"
+  SV="$STORAGE_TEST_BTRFS_DIR/dsv.$$"; mkdir -p "$SV"
+  if btrfs subvolume create "$SV/sub1" >/dev/null 2>&1 && btrfs subvolume create "$SV/sub2" >/dev/null 2>&1; then
+    head -c 2097152 /dev/urandom > "$SV/sub1/a"; cp --reflink=never "$SV/sub1/a" "$SV/sub2/b"; touch -d '2 hours ago' "$SV/sub1/a" "$SV/sub2/b"
+    python3 -I "$HERE/../lib/btrfs_dedupe.py" scan "$SV/sub1" "$SV/sub2" --out "$T/sv.jsonl" >/dev/null 2>&1 \
+      && ok "two subvolumes of one btrfs filesystem are accepted as one filesystem" || no "subvolumes rejected as different filesystems"
+    rm -f "$SV/sub1/a" "$SV/sub2/b"; rmdir "$SV/sub1" "$SV/sub2" 2>/dev/null   # rmdir(2) removes an empty subvolume without root
+  else printf 'skip subvolume case (cannot create subvolumes here)\n'; fi
+  rmdir "$SV" 2>/dev/null
 else printf 'skip dedupe case (set STORAGE_TEST_BTRFS_DIR)\n'; fi
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"; [ "$FAIL" -eq 0 ]

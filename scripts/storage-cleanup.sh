@@ -94,7 +94,7 @@ fresh_index() { # kind<TAB>file<TAB>resolved target: alternates lines, gitfiles 
         done < "$f" ;;
       */.git/config)
         base="$(dirname "$(dirname "$f")")"             # a relative local url is relative to the checkout
-        git config --file "$f" --get-regexp '^remote\..*\.url$' 2>/dev/null | while IFS= read -r line; do
+        git config --file "$f" --includes --get-regexp '^remote\..*\.url$' 2>/dev/null | while IFS= read -r line; do
           line="${line#* }"; line="${line#file://}"
           case "$line" in /*) ;; ./*|../*) line="$base/$line" ;; *) continue ;; esac
           printf 'remote\t%s\t%s\n' "$f" "$(readlink -m "$line")" >> "$tmp"
@@ -105,8 +105,9 @@ fresh_index() { # kind<TAB>file<TAB>resolved target: alternates lines, gitfiles 
         [ -n "$line" ] && printf 'gitfile\t%s\t%s\n' "$f" "$(readlink -m "$line")" >> "$tmp" ;;
     esac
   done < <(LC_ALL=C find "$ROOT" \( ${prune[@]+"${prune[@]}"} -false \) -prune -o -type f \( -path '*/objects/info/alternates' -o -path '*/.git/config' -o -name .git \) -print0 2>"$tmp.err")
-  sed -nE "s/^find: '(.*)': Permission denied$/\1/p" "$tmp.err" | { if [ -n "${STORAGE_CLEANUP_ALLOW_UNREADABLE:-}" ]; then grep -Ev "$STORAGE_CLEANUP_ALLOW_UNREADABLE" || true; else cat; fi; } > "$INDEX.unreadable"
-  rm -f "$tmp.err"; mv "$tmp" "$INDEX"
+  sed -nE "s/^find: '(.*)': Permission denied$/\1/p" "$tmp.err" | { if [ -n "${STORAGE_CLEANUP_ALLOW_UNREADABLE:-}" ]; then grep -Ev "$STORAGE_CLEANUP_ALLOW_UNREADABLE" || true; else cat; fi; } \
+    | while IFS= read -r line; do printf 'unreadable\t%s\t-\n' "$line" >> "$tmp"; done
+  rm -f "$tmp.err"; mv "$tmp" "$INDEX"   # one file, one rename: the gate never sees an index and a sidecar that disagree
 }
 
 FAILS=0
@@ -146,9 +147,11 @@ gate_live() { # cwd, exe, fds and mappings only (command lines are not evidence:
 gate_dependents() { # other repos that need objects, gitdirs or a local remote inside the target
   local p="$1" kind file tgt n=0
   fresh_index
-  if [ -s "$INDEX.unreadable" ]; then
-    fail "dependency scan incomplete: $(wc -l < "$INDEX.unreadable" | tr -d ' ') unreadable director(ies), e.g. $(head -1 "$INDEX.unreadable"); set STORAGE_CLEANUP_ALLOW_UNREADABLE for known-safe ones"; return
+  n="$(awk -F'\t' '$1=="unreadable"' "$INDEX" | wc -l | tr -d ' ')"
+  if [ "$n" -gt 0 ]; then
+    fail "dependency scan incomplete: $n unreadable director(ies), e.g. $(awk -F'\t' '$1=="unreadable"{print $2; exit}' "$INDEX"); set STORAGE_CLEANUP_ALLOW_UNREADABLE for known-safe ones"; return
   fi
+  n=0
   while IFS=$'\t' read -r kind file tgt; do
     case "$file" in "$p"/*) continue;; esac
     case "$tgt" in "$p"|"$p"/*) fail "$kind: $file points into the target ($tgt)"; n=$((n+1));; esac
@@ -157,8 +160,10 @@ gate_dependents() { # other repos that need objects, gitdirs or a local remote i
 }
 
 gate_repo() { # one checkout: clean, no stash, no linked worktrees, every commit on a remote ref
-  local r="$1" out rc n remote url risky tips="" safe=0
+  local r="$1" out rc n remote url risky wt tips="" safe=0
   if [ -d "$r/.git/worktrees" ] && [ -n "$(ls -A "$r/.git/worktrees" 2>/dev/null)" ]; then fail "repo $r: hosts linked worktrees"; return; fi
+  wt="$(rgit "$r" rev-parse --show-toplevel 2>/dev/null)"
+  [ -n "$wt" ] && [ "$(readlink -f "$wt")" = "$(readlink -f "$r")" ] || { fail "repo $r: its work tree resolves to '${wt:-nothing}' (core.worktree or a broken .git), status would check the wrong directory"; return; }
   out="$(rgit "$r" status --porcelain --untracked-files=all --ignore-submodules=all 2>&1)"; rc=$?
   [ $rc -eq 0 ] || { fail "repo $r: git status failed (rc=$rc)"; return; }
   [ -z "$out" ] || { fail "repo $r: $(printf '%s\n' "$out" | wc -l | tr -d ' ') dirty or untracked paths"; return; }
@@ -239,9 +244,13 @@ cmd_delete() {
   b="$(size_of "$p")"
   [ -n "$apply" ] || { echo "DRY RUN: would delete $p (${b:-?} bytes); pass --apply"; return 0; }
   mkdir -p "$LOGDIR"; ev="$(printf '%s' "$ev" | tr '\t\n' '  ')"
-  journal() { printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -Is)" "$(shown "$p")" "${b:-0}" "$cls" "$ev" "$1" >> "$ACTIONS"; }
-  { [ -s "$ACTIONS" ] || printf 'time\tpath\tbytes\tclass\tevidence\tresult\n' > "$ACTIONS"; } 2>/dev/null && journal pending 2>/dev/null \
-    || die "cannot write the action journal $ACTIONS; nothing deleted"
+  # one lock covers the header check and every append, so concurrent deletions cannot truncate each other's rows
+  journal() {
+    ( flock 9 || exit 1
+      [ -s "$ACTIONS" ] || printf 'time\tpath\tbytes\tclass\tevidence\tresult\n' >> "$ACTIONS" || exit 1
+      printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -Is)" "$(shown "$p")" "${b:-0}" "$cls" "$ev" "$1" >> "$ACTIONS" ) 9>>"$ACTIONS.lock"
+  }
+  journal pending 2>/dev/null || die "cannot write the action journal $ACTIONS; nothing deleted"
   # the network fetch and the size measurement took time: re-check the local state right before removing
   local keep="$NETWORK"; NETWORK=""
   REFRESH=1 run_gates "$p" "$orig" >/dev/null; rc=$?; NETWORK="$keep"

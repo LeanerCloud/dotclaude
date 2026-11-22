@@ -39,11 +39,23 @@ def digest(path, limit=None):
     return h.digest()
 
 
+def fs_identity(path):
+    """Filesystem UUID from findmnt. st_dev and f_fsid both differ between btrfs subvolumes of one
+    filesystem, so they cannot decide whether two roots share extents; st_dev is the fallback."""
+    try:
+        out = subprocess.run(["findmnt", "-n", "-o", "UUID", "-T", path], capture_output=True, text=True)
+        if out.returncode == 0 and out.stdout.strip():
+            return out.stdout.strip()
+    except OSError:
+        pass
+    return "dev:%d" % os.stat(path).st_dev
+
+
 def scan(args):
     protected = re.compile(args.protected)
     by_size, seen = {}, set()
     roots = [os.path.realpath(r) for r in args.roots]   # absolute and alias-free, so protection sees real locations
-    if len({os.stat(r).st_dev for r in roots}) > 1:
+    if len({fs_identity(r) for r in roots}) > 1:
         sys.exit("scan roots must be on one filesystem (the kernel cannot share extents across filesystems)")
     for root in roots:
         dev = os.stat(root).st_dev
