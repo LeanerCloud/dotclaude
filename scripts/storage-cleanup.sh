@@ -14,7 +14,9 @@
 # gates passed, 1 refused or failed, 2 usage error. Env: STORAGE_CLEANUP_ROOT (default $HOME; targets must
 # be inside it), STORAGE_CLEANUP_PROTECTED (extra ERE of protected paths), STORAGE_CLEANUP_LOGDIR
 # (default ~/.claude/reports/disk-cleanup), STORAGE_CLEANUP_INDEX_TTL (seconds `gates` may reuse its
-# alternates index, default 300; `delete` always rebuilds it), STORAGE_CLEANUP_TRUST_LOCAL_REMOTES=1
+# alternates index, default 300; `delete` always rebuilds it), STORAGE_CLEANUP_ALLOW_UNREADABLE (ERE of
+# directories the dependency scan may skip because they are unreadable, e.g. root-owned run dirs; any other
+# unreadable directory refuses), STORAGE_CLEANUP_TRUST_LOCAL_REMOTES=1
 # (fixtures only: counts a local-path remote as upstream; real runs must not, a mirror in the same
 # home is not a backup).
 # Unlike disk-audit.sh (apparent sizes, report only) this tool measures Exclusive size and deletes, so it
@@ -25,7 +27,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 die() { printf 'storage-cleanup: %s\n' "$*" >&2; exit 1; }
-usage() { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 [ -d /proc/self ] || die "needs /proc (Linux only)"
 # the caller's git environment must not redirect or limit repository discovery
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_CEILING_DIRECTORIES GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
@@ -36,7 +38,7 @@ LOGDIR="${STORAGE_CLEANUP_LOGDIR:-$HOME/.claude/reports/disk-cleanup}"
 ACTIONS="$LOGDIR/ACTIONS.tsv"
 INDEX="$LOGDIR/.alternates-index.$(printf '%s' "$ROOT" | cksum | cut -d' ' -f1).tsv"
 TTL="${STORAGE_CLEANUP_INDEX_TTL:-300}"
-PROTECTED_RE='(^|/)\.ssh(/|$)|(^|/)\.gnupg(/|$)|^/swap(/|$)|\.swapfile|/\.claude/(backups|reports|skills|memory)(/|$)|/\.claude/projects/[^/]+/memory(/|$)'
+PROTECTED_RE='(^|/)\.ssh(/|$)|(^|/)\.gnupg(/|$)|^/swap(/|$)|\.swapfile|/\.claude/(backups|reports|skills|memory|plans|decisions|agents|hooks|commands|templates|rules)(/|$)|/\.claude/(projects\.md|local-paths\.md|settings(\.local)?\.json|CLAUDE\.md|AGENTS\.md)$|/\.claude/projects/[^/]+/memory(/|$)|/(Downloads|Documents|Pictures|Videos|Music|Desktop)(/|$)|/\.password-store(/|$)|/\.local/share/keyrings(/|$)|/\.mozilla(/|$)|/\.config/(chromium|google-chrome|BraveSoftware|vivaldi|microsoft-edge)(/|$)'
 [ -n "${STORAGE_CLEANUP_PROTECTED:-}" ] && PROTECTED_RE="$PROTECTED_RE|$STORAGE_CLEANUP_PROTECTED"
 BUILD_DIRS=" target build dist out node_modules .next .cache __pycache__ .venv venv .gradle .terraform coverage ${STORAGE_CLEANUP_BUILD_DIRS:-} "
 SAFE_URL_RE='^(https://|ssh://|git@[^/:]+:)'
@@ -91,15 +93,20 @@ fresh_index() { # kind<TAB>file<TAB>resolved target: alternates lines, gitfiles 
           printf 'alternates\t%s\t%s\n' "$f" "$(readlink -m "$line")" >> "$tmp"
         done < "$f" ;;
       */.git/config)
-        sed -n -E 's/^[[:space:]]*url[[:space:]]*=[[:space:]]*(file:\/\/)?(\/.*)$/\2/p' "$f" | while IFS= read -r line; do
-          printf 'remote\t%s\t%s\n' "$f" "$(readlink -m "$line")" >> "$tmp"; done ;;
+        base="$(dirname "$(dirname "$f")")"             # a relative local url is relative to the checkout
+        git config --file "$f" --get-regexp '^remote\..*\.url$' 2>/dev/null | while IFS= read -r line; do
+          line="${line#* }"; line="${line#file://}"
+          case "$line" in /*) ;; ./*|../*) line="$base/$line" ;; *) continue ;; esac
+          printf 'remote\t%s\t%s\n' "$f" "$(readlink -m "$line")" >> "$tmp"
+        done ;;
       */.git)
         line="$(sed -n 's/^gitdir: //p' "$f" | head -1)"
         case "$line" in /*|"") ;; *) line="$(dirname "$f")/$line" ;; esac
         [ -n "$line" ] && printf 'gitfile\t%s\t%s\n' "$f" "$(readlink -m "$line")" >> "$tmp" ;;
     esac
-  done < <(find "$ROOT" \( ${prune[@]+"${prune[@]}"} -false \) -prune -o -type f \( -path '*/objects/info/alternates' -o -path '*/.git/config' -o -name .git \) -print0 2>/dev/null)
-  mv "$tmp" "$INDEX"
+  done < <(LC_ALL=C find "$ROOT" \( ${prune[@]+"${prune[@]}"} -false \) -prune -o -type f \( -path '*/objects/info/alternates' -o -path '*/.git/config' -o -name .git \) -print0 2>"$tmp.err")
+  sed -nE "s/^find: '(.*)': Permission denied$/\1/p" "$tmp.err" | { if [ -n "${STORAGE_CLEANUP_ALLOW_UNREADABLE:-}" ]; then grep -Ev "$STORAGE_CLEANUP_ALLOW_UNREADABLE" || true; else cat; fi; } > "$INDEX.unreadable"
+  rm -f "$tmp.err"; mv "$tmp" "$INDEX"
 }
 
 FAILS=0
@@ -139,6 +146,9 @@ gate_live() { # cwd, exe, fds and mappings only (command lines are not evidence:
 gate_dependents() { # other repos that need objects, gitdirs or a local remote inside the target
   local p="$1" kind file tgt n=0
   fresh_index
+  if [ -s "$INDEX.unreadable" ]; then
+    fail "dependency scan incomplete: $(wc -l < "$INDEX.unreadable" | tr -d ' ') unreadable director(ies), e.g. $(head -1 "$INDEX.unreadable"); set STORAGE_CLEANUP_ALLOW_UNREADABLE for known-safe ones"; return
+  fi
   while IFS=$'\t' read -r kind file tgt; do
     case "$file" in "$p"/*) continue;; esac
     case "$tgt" in "$p"|"$p"/*) fail "$kind: $file points into the target ($tgt)"; n=$((n+1));; esac
@@ -149,7 +159,7 @@ gate_dependents() { # other repos that need objects, gitdirs or a local remote i
 gate_repo() { # one checkout: clean, no stash, no linked worktrees, every commit on a remote ref
   local r="$1" out rc n remote url risky tips="" safe=0
   if [ -d "$r/.git/worktrees" ] && [ -n "$(ls -A "$r/.git/worktrees" 2>/dev/null)" ]; then fail "repo $r: hosts linked worktrees"; return; fi
-  out="$(rgit "$r" status --porcelain --ignore-submodules=all 2>&1)"; rc=$?
+  out="$(rgit "$r" status --porcelain --untracked-files=all --ignore-submodules=all 2>&1)"; rc=$?
   [ $rc -eq 0 ] || { fail "repo $r: git status failed (rc=$rc)"; return; }
   [ -z "$out" ] || { fail "repo $r: $(printf '%s\n' "$out" | wc -l | tr -d ' ') dirty or untracked paths"; return; }
   for remote in $(rgit "$r" remote 2>/dev/null); do
@@ -157,7 +167,7 @@ gate_repo() { # one checkout: clean, no stash, no linked worktrees, every commit
     [[ "$url" =~ $SAFE_URL_RE ]] || continue
     safe=$((safe+1))
     if [ -n "${NETWORK:-}" ]; then
-      risky="$(GIT_CONFIG_NOSYSTEM=1 git -C "$r" config --local --includes --name-only --get-regexp '.*' 2>/dev/null | grep -Eic "$RISK_RE")"
+      risky="$( { for sc in --local --worktree; do GIT_CONFIG_NOSYSTEM=1 git -C "$r" config "$sc" --includes --name-only --get-regexp '.*' 2>/dev/null; done; } | grep -Eic "$RISK_RE")"
       if [ "${risky:-0}" -gt 0 ]; then fail "repo $r: risky config, network check refused"; return; fi
       ngit "$r" fetch -q --no-tags --prune "$remote" "+refs/heads/*:refs/remotes/$remote/*" 2>/dev/null \
         || { fail "repo $r: fetch from $remote failed"; return; }
@@ -171,7 +181,7 @@ gate_repo() { # one checkout: clean, no stash, no linked worktrees, every commit
 }
 
 gate_git() {
-  local p="$1" g top dir anc found=0 rc d="$1" base
+  local p="$1" g top dir anc found=0 rc rc2 lsf sts d="$1" base
   [ -d "$p" ] || d="$(dirname "$p")"
   anc="$d"; while [ "$anc" != "$ROOT" ] && [ "$anc" != / ] && [ ! -e "$anc/.git" ]; do anc="$(dirname "$anc")"; done
   top="$(rgit "$d" rev-parse --show-toplevel 2>/dev/null)"
@@ -180,7 +190,11 @@ gate_git() {
     fail "enclosing checkout $anc is unreadable by git (broken .git or config): its work cannot be checked"
   elif [ -n "$top" ] && [ "$top" != "$p" ]; then # inside a checkout: only a known build directory of ignored output may go
     base="$(basename "$p")"
-    if [ -n "$(rgit "$top" ls-files -- "$p" 2>/dev/null)" ] || [ -n "$(rgit "$top" status --porcelain --ignore-submodules=all -- "$p" 2>/dev/null)" ]; then
+    lsf="$(rgit "$top" ls-files -- "$p" 2>&1)"; rc=$?
+    sts="$(rgit "$top" status --porcelain --untracked-files=all --ignore-submodules=all -- "$p" 2>&1)"; rc2=$?
+    if [ "$rc" -ne 0 ] || [ "$rc2" -ne 0 ]; then
+      fail "inside checkout $top: git could not list or status the target (corrupt index?)"
+    elif [ -n "$lsf$sts" ]; then
       fail "inside checkout $top: tracked or untracked non-ignored files under the target"
     elif [[ "$BUILD_DIRS" != *" $base "* ]]; then
       fail "inside checkout $top: ignored files may be the only copy of notes or config; only build dirs (${BUILD_DIRS# }) may go"
@@ -211,7 +225,7 @@ cmd_gates() {
 }
 
 cmd_delete() {
-  local p="" orig="" cls="" ev="" NETWORK="" offline="" apply="" b res
+  local p="" orig="" cls="" ev="" NETWORK="" offline="" apply="" b res rc
   while [ $# -gt 0 ]; do
     case "$1" in
       --class) cls="${2:-}"; shift;; --evidence) ev="${2:-}"; shift;;
@@ -224,11 +238,17 @@ cmd_delete() {
   REFRESH=1 run_gates "$p" "$orig" || { echo "REFUSED ($FAILS failed); nothing deleted"; return 1; }
   b="$(size_of "$p")"
   [ -n "$apply" ] || { echo "DRY RUN: would delete $p (${b:-?} bytes); pass --apply"; return 0; }
+  mkdir -p "$LOGDIR"; ev="$(printf '%s' "$ev" | tr '\t\n' '  ')"
+  journal() { printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -Is)" "$(shown "$p")" "${b:-0}" "$cls" "$ev" "$1" >> "$ACTIONS"; }
+  { [ -s "$ACTIONS" ] || printf 'time\tpath\tbytes\tclass\tevidence\tresult\n' > "$ACTIONS"; } 2>/dev/null && journal pending 2>/dev/null \
+    || die "cannot write the action journal $ACTIONS; nothing deleted"
+  # the network fetch and the size measurement took time: re-check the local state right before removing
+  local keep="$NETWORK"; NETWORK=""
+  REFRESH=1 run_gates "$p" "$orig" >/dev/null; rc=$?; NETWORK="$keep"
+  [ "$rc" -eq 0 ] || { journal "aborted: state changed" 2>/dev/null; echo "REFUSED: the target changed while the gates ran; nothing deleted"; return 1; }
   # --one-file-system is defence in depth: gate_mounts already refuses a target with a mount below it
   if rm -rf --one-file-system -- "$p"; then res=ok; else res=fail; fi
-  mkdir -p "$LOGDIR"; ev="$(printf '%s' "$ev" | tr '\t\n' '  ')"
-  [ -s "$ACTIONS" ] || printf 'time\tpath\tbytes\tclass\tevidence\tresult\n' > "$ACTIONS"
-  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -Is)" "$(shown "$p")" "${b:-0}" "$cls" "$ev" "$res" >> "$ACTIONS"
+  journal "$res" 2>/dev/null || { echo "WARNING: $p was processed ($res) but the journal write failed" >&2; return 1; }
   echo "$res: $p (${b:-0} bytes) logged in $ACTIONS"; [ "$res" = ok ]
 }
 
@@ -269,7 +289,8 @@ cmd_repair_alternates() { # restore a repo whose alternates source was deleted, 
   shift; alt="$r/.git/objects/info/alternates"; head="$(rgit "$r" rev-parse HEAD 2>/dev/null)"
   [ -f "$alt" ] || die "$r has no alternates file; nothing to repair"
   cp "$alt" "$alt.pre-repair"
-  { cat "$alt.pre-repair"; for s in "$@"; do objects_dir "$s"; done; } | awk 'NF && !seen[$0]++' \
+  { while IFS= read -r line; do case "$line" in /*) ;; *) line="$r/.git/objects/$line" ;; esac; [ -n "$line" ] && readlink -m "$line"; done < "$alt.pre-repair"
+    for s in "$@"; do objects_dir "$(readlink -f "$s")"; done; } | awk 'NF && !seen[$0]++' \
     | while IFS= read -r line; do [ -d "$line" ] && printf '%s\n' "$line"; done > "$alt"
   if ! rgit "$r" repack -a -d -q 2>/dev/null; then cp "$alt.pre-repair" "$alt"; die "repack failed (objects missing from every store); alternates restored, old packs kept"; fi
   mv "$alt" "$alt.hold"
