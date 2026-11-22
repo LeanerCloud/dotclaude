@@ -54,6 +54,25 @@ Repo-local config can run commands on connect. In a repo you did not create, run
 
 Then: `GIT_CONFIG_NOSYSTEM=1 GIT_OPTIONAL_LOCKS=0 GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=true SSH_ASKPASS=true git -c core.fsmonitor=false -c core.hooksPath=/dev/null -c core.sshCommand=ssh -c core.gitProxy= -c credential.helper= -c protocol.ext.allow=never -c protocol.file.allow=never -C <repo> ls-remote <remote>`.
 
+## storage-cleanup.sh
+
+`scripts/storage-cleanup.sh` encodes the gates below so a deletion cannot skip them (fixtures: `scripts/tests/storage-cleanup.test.sh`):
+
+- `audit [--top N] [PATH...]`: df, btrfs data/metadata allocation, top children by Exclusive size.
+- `gates PATH [--network]` and `delete PATH --class C --evidence TEXT (--network|--offline) [--apply]` (dry run by default; `--apply` needs an explicit `--network` or `--offline`; logs `ACTIONS.tsv`; Linux only). A path is refused unless it is inside `$HOME`, not a symlink (a trailing slash does not hide one), not inside a `.git` dir, holds nothing protected, has no mount point below it and no process of this user using it (cwd/exe/fd/maps; other users' processes cannot be inspected). It must also not be named by any other repo's `objects/info/alternates` (relative and symlinked lines resolved), gitfile or local-path remote, and every checkout inside it (any depth, submodule checkouts included) must be clean, stash-free, host no linked worktrees and have every commit on a remote ref. Local-path remotes (mirrors in the same home) do not count as upstream, bare repos inside the target are refused, a subdirectory or file of a checkout may go only if it is a known build dir (`target`, `build`, `dist`, `out`, `node_modules`, `.next`, `.cache`, `__pycache__`, `.venv`, `venv`, `.gradle`, `.terraform`, `coverage`, plus `STORAGE_CLEANUP_BUILD_DIRS`) holding only ignored output, a checkout git cannot read refuses its subdirectories, and an unreadable part of the tree refuses. `--network` fetches `--prune` first and fails when the fetch fails; `--offline` trusts the remote-tracking refs, which can be stale. Filters are blanked on the command line (direct, include and per-worktree config), so no `filter.*` program runs.
+- `dedupe [--apply] ROOT...`: block-level reflink dedupe (`FIDEDUPERANGE`, kernel byte-compare; nothing moved or deleted); estimate first, then apply. Stops below 20 GiB free or at 85% metadata use.
+- `repair-alternates REPO STORE...`: repack a repo whose alternates source was deleted from complete stores, then prove it is self-contained with the alternates emptied.
+
+Lessons that the gates enforce:
+
+- Per-directory `btrfs filesystem du` sizes overcount: hardlinks count in every directory that holds them and reflinks once per directory. A cleanup that logged 126 GiB freed 26 GiB. Compare `df` before and after.
+- A clone is not deletable while any other repo lists it in `objects/info/alternates` (follow chains and look inside protected trees). A fetch into a repo with a dead alternates source fails with "unpack-objects failed"; repack from a complete store instead.
+- Liveness is cwd, exe, fds and mappings. A `/proc/*/cmdline` scan matches the scanning command itself.
+- Per-repo "unpushed" counts from remote-tracking refs overcount (stale refs, tags, local-path mirror remotes): check live remote heads before calling work unique.
+- A running backup timer can be the only copy of unpushed work: never delete its store wholesale; drop only entries whose every tip is contained in another verified bundle.
+- Never publish security-sensitive unfinished work (auth, crypto, key handling) to a public fork; bundle it.
+- Metadata stays allocated after mass deletion; `btrfs balance -musage=N` (root) returns empty chunks, but only helps once metadata use falls below N percent.
+
 ## Darling notes
 
 Darling builds are slow to redo, so keep the build dir of the active branch and delete only those of merged or abandoned ones. Prefer a shared ccache over duplicated per-worktree build trees.
