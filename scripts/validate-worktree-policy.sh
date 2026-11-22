@@ -18,8 +18,8 @@ if [ "$mode" = staged ]; then
   grep_args+=(--cached)
 fi
 
-# The reclaim fixture suite creates throwaway worktrees under /private/tmp on purpose.
-pathspecs=(AGENTS.md CLAUDE.md skills scripts ':(exclude)scripts/validate-worktree-policy.sh' ':(exclude)scripts/tests/reclaim-merged-worktrees.test.sh')
+# The fixture suites create throwaway worktrees under a scratch dir on purpose.
+pathspecs=(AGENTS.md CLAUDE.md skills scripts ':(exclude)scripts/validate-worktree-policy.sh' ':(exclude)scripts/tests/reclaim-merged-worktrees.test.sh' ':(exclude)scripts/tests/storage-cleanup.test.sh')
 failures=0
 
 fail() {
