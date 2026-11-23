@@ -192,7 +192,7 @@ opencode has no goals; the coordinator is driven by events.
   AGENTS.md), plus `~/.claude/AGENTS.md` and the repo's memory dir. Repo rules win over this skill
   where they are stricter.
 - **Bus:** post a sync on start, an intent before each commit, push or merge, and a result after.
-  Honour per-repo push and build locks (`multi-agent-comms`).
+  Honour per-project push and build locks (`multi-agent-comms`).
 - **Goals:** work toward your current `/goal` (see "Goals"). When the finish line holds, print the
   evidence in your transcript, end the goal the harness's way (update_goal on Codex and Kimi;
   nothing more on Claude), and stop. Never create, replace, edit or budget a goal yourself. To change scope, record a Blocker and

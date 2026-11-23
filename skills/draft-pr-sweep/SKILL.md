@@ -56,7 +56,7 @@ One PR at a time, finished before the next. Order: stack parents before children
    after. PR stays at 400 lines or fewer and one concern; otherwise propose a split.
 5. **Verify locally.** The project's real build and test commands, `act` for workflows,
    `playwright-verify` for web apps. Trace the real user path with real data shapes. Print only
-   failures. Take the per-repo lock before shared builds (`multi-agent-comms`). Record exact
+   failures. Take the per-project lock before shared builds (`multi-agent-comms`). Record exact
    commands and results.
 6. **Push and watch.** `--force-with-lease` only on the head branch of the user's own PR; never on
    the base or `main`, never when the head is a fork or a branch others push to. Push under the
