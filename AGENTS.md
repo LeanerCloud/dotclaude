@@ -74,7 +74,8 @@ Scale ceremony to the project (a solo repo needs no formal process), never the u
 - **Minimal impact**: touch only what was asked. No drive-by refactors, formatting, or comments on
   untouched code. Between two approaches, pick the simpler and proceed.
 - **Shared checkouts**: check for other sessions before editing/building/pushing; serialize shared
-  steps under a per-repo lock (`multi-agent-comms`).
+  steps under a per-project lock held only among that project's workstreams, never across projects
+  (`multi-agent-comms`).
 - **Comments**: default none; only the *why* the code cannot say, 1-2 lines.
 - **Backward compatibility** only for externally consumed libraries.
 - **Flag existing bugs** you read past; keep them in the project's `known-issues.md` (`project-docs`).
