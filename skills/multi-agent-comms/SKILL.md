@@ -38,7 +38,7 @@ flock -w 600 /tmp/agent-locks/<project>-<resource>.lock <command>   # Linux (uti
 lockf -t 600 /tmp/agent-locks/<project>-<resource>.lock <command>   # macOS / BSD
 ```
 
-Name locks by project (a repo is one project unless the user says otherwise), as a single path component: replace every `/` in a branch name with `-` for `<branch-key>` (`feat/foo` -> `feat-foo`), or the lock fails to open. Resources worth locking:
+Name locks by a project name that is unique on this machine (a repo is one project unless the user says otherwise; use its `owner-repo` slug, not the checkout directory name, which two unrelated checkouts can share), as a single path component: replace every `/` in a branch name with `-` for `<branch-key>` (`feat/foo` -> `feat-foo`), or the lock fails to open. Resources worth locking:
 - `git-push-<branch-key>`: every push to a branch from any workflow (`pr-iterate`, `ci-watch`, manual fix) takes `<project>-git-push-<branch-key>` (a branch belongs to one project, so only that project's workstreams take its push lock); same-ref pushes serialize, different PRs don't block.
 - `build` / `install`: the project's own shared build output or install target (a build tree or prefix owned by another project is not yours to lock or wait for).
 - `test-suite`: full runs of the project that contend for ports, databases or CPU it owns.
