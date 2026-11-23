@@ -2,7 +2,7 @@
 name: multi-agent-comms
 description: >-
   Stop concurrent agent sessions clobbering one repo: check for peers, message before overlap,
-  serialize push/build/install under a per-repo lock. Use when several sessions may work one
+  serialize push/build/install under a per-project lock. Use when several sessions may work one
   project.
 ---
 
@@ -24,20 +24,24 @@ Before editing, building, installing or pushing:
 - If a peer says it owns the work, stop editing, building and installing in that tree and tell it exactly what you already changed.
 - **Hosts without session messaging** (Codex, Gemini, opencode, Kimi, scheduled routines; see skills/HOSTS.md): use the section 3 locks, ask the user, or comment on the issue or PR both sessions read.
 
-## 3. Serialize shared steps with a per-repo lock
+## 3. Serialize shared steps with a per-project lock
 
-Run steps that must not happen twice at once under an OS file lock (released on exit, including a crash, so no stale-lock cleanup):
+A lock is scoped to one project and shared only by that project's workstreams. A **project** is the unit that owns its checkout, build tree and runtime prefix (one app bring-up, one feature repo); its **workstreams** are the parallel sessions working inside it. Never take, wait on or invent a lock that spans projects: a session of project A must not queue behind project B, even when both use the same toolchain or runtime.
+
+Resources projects share (host RAM, swap, disk) get no lock. Check the live numbers before a heavy step (MemAvailable, free swap, free disk), bound the work with a timeout, and tell the user if it runs short. A physically single resource (one display, a licence) is the user's call; do not lock around it silently.
+
+Run steps that must not happen twice at once within a project under an OS file lock (released on exit, including a crash, so no stale-lock cleanup):
 
 ```bash
 mkdir -p /tmp/agent-locks
-flock -w 600 /tmp/agent-locks/<repo>-<resource>.lock <command>   # Linux (util-linux)
-lockf -t 600 /tmp/agent-locks/<repo>-<resource>.lock <command>   # macOS / BSD
+flock -w 600 /tmp/agent-locks/<project>-<resource>.lock <command>   # Linux (util-linux)
+lockf -t 600 /tmp/agent-locks/<project>-<resource>.lock <command>   # macOS / BSD
 ```
 
-Name locks by repo, as a single path component: replace every `/` in a branch name with `-` for `<branch-key>` (`feat/foo` -> `feat-foo`), or the lock fails to open. Resources worth locking:
-- `git-push-<branch-key>`: every push to a branch from any workflow (`pr-iterate`, `ci-watch`, manual fix) takes `<repo>-git-push-<branch-key>`; same-ref pushes serialize, different PRs don't block.
-- `build` / `install`: shared build output or system installs.
-- `test-suite`: full runs contending for ports, databases or CPU.
+Name locks by project (a repo is one project unless the user says otherwise), as a single path component: replace every `/` in a branch name with `-` for `<branch-key>` (`feat/foo` -> `feat-foo`), or the lock fails to open. Resources worth locking:
+- `git-push-<branch-key>`: every push to a branch from any workflow (`pr-iterate`, `ci-watch`, manual fix) takes `<project>-git-push-<branch-key>` (a branch belongs to one project, so only that project's workstreams take its push lock); same-ref pushes serialize, different PRs don't block.
+- `build` / `install`: the project's own shared build output or install target (a build tree or prefix owned by another project is not yours to lock or wait for).
+- `test-suite`: full runs of the project that contend for ports, databases or CPU it owns.
 
 If the lock times out, don't retry blindly: find the holder (section 1) and message it (section 2).
 
