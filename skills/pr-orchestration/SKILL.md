@@ -28,7 +28,7 @@ Owned elsewhere, cross-referenced not restated:
 | Rate limits | the `rate-limit-retry` skill |
 | Worktree isolation, staleness/disappearance, crash recovery, post-merge reclaim | the `worktrees` skill |
 | Model tiers, reviewer independence, subsystem pooling, agent reuse | the `subagent-strategy` skill |
-| Peer-session coordination (messaging, per-repo locks) | the `multi-agent-comms` skill |
+| Peer-session coordination (messaging, per-project locks) | the `multi-agent-comms` skill |
 | Priority ordering of issues and PRs | the `work-selection` skill |
 | Verification standards, adversarial verification | `AGENTS.md` §4, §6 |
 | Testing rules, asserting the defect | the `coding-standards` skill |
